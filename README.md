@@ -174,6 +174,25 @@ docker build -t jawa \
 The image supports amd64 and arm64; hashes are architecture-specific.
 `GO_VERSION` is also a build argument (default `1.27.0`).
 
+## Published Docker images
+
+GitHub Actions builds and pushes a Linux amd64 image to
+`ghcr.io/mark3labs/jawa` on every branch or tag push. It can also be triggered
+manually from the Actions tab. Tags include the branch name (sanitized), the
+Git tag for tag pushes, and `sha-<full-commit-sha>`. Only pushes to `master`
+update `latest`.
+
+```sh
+docker pull ghcr.io/mark3labs/jawa:latest
+```
+
+The workflow uses the built-in `GITHUB_TOKEN` with `packages: write`; no extra
+registry credentials are required. Runtime NATS, GitHub, and model credentials
+are not supplied to the image build. GHCR packages may initially be private:
+set the package visibility to public in GitHub package settings if anonymous
+pulls are desired, or authenticate to GHCR for private pulls. The first build
+creates the package and attaches repository metadata through image labels.
+
 ## Automatic Go diagnostics
 
 `golint.go` uses BONNIE's `CompletionHook` and `CompletionFeedback`. Before
