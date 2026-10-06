@@ -62,14 +62,11 @@ func workspaceCleanupPolicy() bonnie.WorkspaceCleanupPolicy {
 // never passed to the model or injected into its sandbox.
 func natsConfig() natschannel.Config {
 	return natschannel.Config{
-		URL:           envOr("NATS_URL", "nats://127.0.0.1:4222"),
-		Subject:       envOr("JAWA_NATS_TASK_SUBJECT", "bonnie.tasks.requests"),
-		AnswerSubject: envOr("JAWA_NATS_ANSWER_SUBJECT", "bonnie.tasks.answers"),
-		ResultSubject: envOr("JAWA_NATS_RESULT_SUBJECT", "bonnie.tasks.results"),
-		// A nonempty stream selects JetStream; provision streams before startup.
-		Stream:   os.Getenv("JAWA_NATS_STREAM"),
-		WorkerID: os.Getenv("JAWA_NATS_WORKER_ID"),
-		Consumer: os.Getenv("JAWA_NATS_CONSUMER"),
+		URL:          envOr("NATS_URL", "nats://127.0.0.1:4222"),
+		RootSubject:  envOr("JAWA_NATS_ROOT_SUBJECT", "bonnie.tasks"),
+		WorkerID:     os.Getenv("JAWA_NATS_WORKER_ID"),
+		Consumer:     os.Getenv("JAWA_NATS_CONSUMER"),
+		CreateStream: os.Getenv("JAWA_NATS_CREATE_STREAM") == "true",
 	}
 }
 

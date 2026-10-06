@@ -1,10 +1,13 @@
 package main
 
-import "testing"
+import (
+	natschannel "github.com/mark3labs/bonnie/channel/nats"
+	"testing"
+)
 
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"NATS_URL", "JAWA_NATS_TASK_SUBJECT", "JAWA_NATS_ANSWER_SUBJECT", "JAWA_NATS_RESULT_SUBJECT", "JAWA_NATS_STREAM", "JAWA_NATS_WORKER_ID", "JAWA_NATS_CONSUMER"} {
+	for _, key := range []string{"NATS_URL", "JAWA_NATS_ROOT_SUBJECT", "JAWA_NATS_WORKER_ID", "JAWA_NATS_CONSUMER", "JAWA_NATS_CREATE_STREAM"} {
 		t.Setenv(key, "")
 	}
 }
@@ -12,25 +15,27 @@ func clearConfigEnv(t *testing.T) {
 func TestNATSDefaults(t *testing.T) {
 	clearConfigEnv(t)
 	cfg := natsConfig()
-	if cfg.URL != "nats://127.0.0.1:4222" || cfg.Subject != "bonnie.tasks.requests" || cfg.AnswerSubject != "bonnie.tasks.answers" || cfg.ResultSubject != "bonnie.tasks.results" {
+	if cfg.URL != "nats://127.0.0.1:4222" || cfg.RootSubject != "bonnie.tasks" || cfg.CreateStream {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
-	if cfg.Stream != "" || cfg.WorkerID != "" || cfg.Consumer != "" || cfg.CreateStream {
-		t.Fatal("default must use Core NATS without creating streams")
+	subjects, err := natschannel.ResolveSubjects(cfg.RootSubject, natschannel.Subjects{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subjects.Tasks != "bonnie.tasks.tasks" || subjects.Results != "bonnie.tasks.results" || subjects.Events != "bonnie.tasks.events" || subjects.Answers != "bonnie.tasks.answers" || subjects.Commands != "bonnie.tasks.commands" || subjects.Queries != "bonnie.tasks.queries" {
+		t.Fatalf("unexpected subjects: %+v", subjects)
 	}
 }
 
 func TestNATSOverrides(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("NATS_URL", "nats://localhost:4223")
-	t.Setenv("JAWA_NATS_TASK_SUBJECT", "test.tasks")
-	t.Setenv("JAWA_NATS_ANSWER_SUBJECT", "test.answers")
-	t.Setenv("JAWA_NATS_RESULT_SUBJECT", "test.results")
-	t.Setenv("JAWA_NATS_STREAM", "JAWA_INPUTS")
+	t.Setenv("JAWA_NATS_ROOT_SUBJECT", "test.agent")
 	t.Setenv("JAWA_NATS_WORKER_ID", "jawa-1")
 	t.Setenv("JAWA_NATS_CONSUMER", "jawa-workers")
+	t.Setenv("JAWA_NATS_CREATE_STREAM", "true")
 	cfg := natsConfig()
-	if cfg.URL != "nats://localhost:4223" || cfg.Subject != "test.tasks" || cfg.AnswerSubject != "test.answers" || cfg.ResultSubject != "test.results" || cfg.Stream != "JAWA_INPUTS" || cfg.WorkerID != "jawa-1" || cfg.Consumer != "jawa-workers" {
+	if cfg.URL != "nats://localhost:4223" || cfg.RootSubject != "test.agent" || cfg.WorkerID != "jawa-1" || cfg.Consumer != "jawa-workers" || !cfg.CreateStream {
 		t.Fatalf("environment overrides not applied: %+v", cfg)
 	}
 }

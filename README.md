@@ -1,6 +1,6 @@
 # Jawa
 
-A BONNIE v0.13.0 coding agent that receives asynchronous tasks over NATS.
+A BONNIE v0.14.0 coding agent that receives asynchronous tasks over NATS.
 BONNIE supplies sandboxed coding tools; built-in `ask_human` and
 `request_approval` tools are disabled with `WithoutHumanInput`. Missing
 requirements are reported in the final response rather than suspending the run.
@@ -8,14 +8,16 @@ requirements are reported in the final response rather than suspending the run.
 
 ## Run locally
 
-Requirements: Go 1.27+, BONNIE v0.13.0, a NATS server, and credentials for your
+Requirements: Go 1.27+, BONNIE v0.14.0, a NATS server, and credentials for your
 chosen model provider configured through KIT/BONNIE. The default model is
 `opencode/glm-5.3-flash`; set `JAWA_MODEL` to override it.
 
-Start a local broker (`nats-server`), then start the agent:
+Start a local JetStream broker (`nats-server -js`), then start the agent:
 
 ```sh
 export NATS_URL=nats://127.0.0.1:4222
+export JAWA_NATS_WORKER_ID=jawa-1
+export JAWA_NATS_CREATE_STREAM=true # local provisioning only
 bonnie dev
 # Or build and run a standalone binary:
 bonnie build --output ./bin/jawa
@@ -31,19 +33,14 @@ With the NATS CLI, subscribe **before** submitting a task:
 ```sh
 nats --server "$NATS_URL" sub bonnie.tasks.results
 # In another terminal (with NATS_URL exported):
-nats --server "$NATS_URL" pub bonnie.tasks.requests \
-  '{"task_id":"coding-001","text":"Write a Go function that reverses a string by rune and test it."}'
+nats --server "$NATS_URL" pub bonnie.tasks.tasks \
+  '{"version":1,"task_id":"coding-001","text":"Write a Go function that reverses a string by rune and test it."}'
 ```
 
 Results include `task_id`, `run_id`, `state`, and `response` or `error`.
 Use a new task ID for each request. Built-in human-input tools are disabled,
-so normal tasks do not suspend for clarification. For a waiting run created
-before that setting changed, answer using its actual `tool_call_id`:
-
-```sh
-nats --server "$NATS_URL" pub bonnie.tasks.answers \
-  '{"task_id":"coding-001","tool_call_id":"CALL_ID_FROM_RESULT","responses":[{"text":"Use Go."}]}'
-```
+so normal tasks do not suspend for clarification. Use BONNIE's typed NATS client
+for answering waiting runs; answers are worker-routed in JetStream mode.
 
 Each run has its own sandbox, not access to the host checkout. Seed shared
 starter files under `workspace/` **before building**, or provide a repository
@@ -58,50 +55,46 @@ uploaded artifacts. BONNIE journals run state under `.bonnie/` by default.
 | --- | --- |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |
 | `NATS_URL` | `nats://127.0.0.1:4222` |
-| `JAWA_NATS_TASK_SUBJECT` | `bonnie.tasks.requests` |
-| `JAWA_NATS_ANSWER_SUBJECT` | `bonnie.tasks.answers` |
-| `JAWA_NATS_RESULT_SUBJECT` | `bonnie.tasks.results` |
-| `JAWA_NATS_STREAM` | Empty: Core NATS; nonempty: JetStream input stream |
-| `JAWA_NATS_WORKER_ID` | Required for JetStream: unique, stable worker token |
+| `JAWA_NATS_ROOT_SUBJECT` | `bonnie.tasks`: derives all protocol subjects and enables JetStream |
+| `JAWA_NATS_WORKER_ID` | Required: unique, stable worker token |
 | `JAWA_NATS_CONSUMER` | Optional shared durable task consumer |
+| `JAWA_NATS_CREATE_STREAM` | `false`; exactly `true` permits stream creation |
 
-Subjects must be distinct literal subjects. BONNIE validates configuration.
-All default task, answer, and result subjects fall under `bonnie.tasks.>`.
-The worker needs subscribe permission for requests/answers and publish permission
-for results. `_INBOX.>` permits NATS request/reply inbox traffic. These permissions
-support the default Core NATS mode; JetStream additionally requires appropriate
-`$JS.API.>` and acknowledgement permissions, so leave `JAWA_NATS_STREAM` unset
-with the currently restricted account.
+The simplified root setup derives `bonnie.tasks.tasks`, `.results`, `.events`,
+`.answers`, `.commands`, and `.queries`. Answers/commands/queries append the
+worker ID for routing. All routes remain under `bonnie.tasks.>`.
+**Migration:** the task subject was `bonnie.tasks.requests`; publishers must
+now use `bonnie.tasks.tasks` and protocol version 1. The old individual subject
+and `JAWA_NATS_STREAM` environment settings are no longer used.
+
+RootSubject always enables JetStream. Permissions limited to `bonnie.tasks.>`
+and `_INBOX.>` are no longer sufficient: grant scoped JetStream API, consumer,
+and acknowledgement permissions and ensure JetStream is available. A stable
+worker ID and provisioned streams are required. Do not deploy this change with
+the old restricted account until its permissions have been updated.
+
 For broker authentication select **one** method: `NATS_NKEY_SEED` (user seed
 value, not file path), `NATS_TOKEN`, or `NATS_USERNAME`/`NATS_PASSWORD`.
 Do not combine those methods or URL credentials. Use TLS and broker permissions
 in deployments. Secrets are loaded by the channel, not injected into the agent
 sandbox. Do not store them in source or task payloads.
 
-Core NATS is best-effort: offline subscribers, overflow, and crashes can lose
-tasks/results. Run one owner for the subject namespace; ordinary subscribers
-receive copies, not shared queue work.
+## Durable NATS setup
 
-## Optional durable delivery with JetStream
+BONNIE derives stable input, result, and event stream names from the root. By
+default the agent binds provisioned streams and never changes existing resources.
+Set `JAWA_NATS_CREATE_STREAM=true` only if the account is authorized to provision
+them; with a root this permits creation of all three streams. Existing streams
+must cover the derived protocol subjects with limits retention. Consult BONNIE's
+NATS documentation for provisioning and consumer permissions.
 
-Start a JetStream-enabled broker (`nats-server -js`). Before starting the agent,
-provision a limits-retention input stream covering `bonnie.tasks.requests` and
-`bonnie.tasks.answers.*`, and a result stream covering `bonnie.tasks.results`.
-Jawa deliberately does not create or modify streams automatically.
-
-```sh
-export JAWA_NATS_STREAM=JAWA_INPUTS
-export JAWA_NATS_WORKER_ID=jawa-1
-./bin/jawa
-```
-
-Use BONNIE's typed `github.com/mark3labs/bonnie/client/nats` client for durable
-submission, result consumption, and routing answers to the original worker.
-Raw JetStream tasks must include `"version":1`. Core answer examples above are
-not JetStream answer routes. Consult the BONNIE NATS client documentation for
-that protocol. Persist each worker's own journal and sandbox storage; do not
-share them between workers. Delivery is at least once, not exactly once:
-external effects and result handlers must be safe to repeat.
+Use `github.com/mark3labs/bonnie/client/nats` with `RootSubject: "bonnie.tasks"`
+for durable submission, result/status consumption, status queries, cancellation,
+and routing answers to the original worker. Raw tasks must include `"version":1`.
+Persist each worker's own journal and sandbox storage; do not share them between
+workers. Delivery is at least once, not exactly once: external effects and result
+handlers must be safe to repeat. Lost worker state cannot be reconstructed from
+the broker alone.
 
 The default Landlock sandbox confines filesystem access but not network
 traffic. For untrusted projects, consider BONNIE's Docker sandbox and explicit
@@ -132,6 +125,7 @@ docker build -t jawa .
 docker run --rm --init --name jawa \
   -v jawa-data:/data \
   -e NATS_URL -e NATS_USERNAME -e NATS_PASSWORD \
+  -e JAWA_NATS_WORKER_ID -e JAWA_NATS_CREATE_STREAM \
   -e GITHUB_TOKEN -e JAWA_MODEL \
   -e OPENCODE_API_KEY \
   jawa

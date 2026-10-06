@@ -3,7 +3,7 @@ module jawa
 go 1.27.0
 
 require (
-	github.com/mark3labs/bonnie v0.13.0
+	github.com/mark3labs/bonnie v0.14.0
 	github.com/mark3labs/kit v0.120.0
 )
 
