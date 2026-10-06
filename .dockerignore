@@ -1,0 +1,6 @@
+.git
+.bonnie
+bin
+.env
+.env.*
+*.log

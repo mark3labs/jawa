@@ -1,0 +1,22 @@
+# BONNIE journals, workspaces, and local binaries
+/.bonnie/
+/bin/
+/jawa
+
+# Local credentials and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and test artifacts
+*.log
+*.test
+*.out
+/coverage/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
