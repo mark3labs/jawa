@@ -12,6 +12,8 @@ import (
 
 	"github.com/mark3labs/bonnie"
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
+	"github.com/mark3labs/bonnie/runtime"
+	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
 )
 
@@ -21,8 +23,11 @@ func main() {
 		// Default to loopback outside Docker. Container port publishing must
 		// restrict access to this unauthenticated API.
 		bonnie.WithAddr(envOr("JAWA_HTTP_ADDR", "127.0.0.1:8080")),
-		bonnie.WithNATS(natsConfig()),
+		withNATS(natsConfig()),
 		bonnie.WithSandboxEnv(codingEnv()),
+		bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(
+			envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"),
+		))),
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
 		bonnie.WithRunWorkspaceCleanup(workspaceCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
@@ -31,10 +36,9 @@ func main() {
 			o.MCPConfig = lightpandaMCPConfig()
 		}),
 
-		// Every tool call runs in a sandbox. The default is landlock, which
-		// confines tool calls to the run's own workspace and needs nothing
-		// installed — it confines the filesystem and the environment, not the
-		// network. Uncomment for stronger isolation, or to cut egress.
+		// Local provides run directories, NOT isolation. Commands inherit the
+		// server environment and can access other container files. Only run
+		// trusted tasks; use Docker/microVM sandboxes for stronger isolation.
 		//
 		//	bonnie.WithSandbox(sandbox.Docker()),
 		//	bonnie.WithNetwork(sandbox.NetworkPolicy{Mode: sandbox.NetworkDenyAll}),
@@ -59,15 +63,40 @@ func workspaceCleanupPolicy() bonnie.WorkspaceCleanupPolicy {
 }
 
 // Authentication is loaded by WithNATS from NATS_* environment variables,
-// never passed to the model or injected into its sandbox.
+// not included in model prompts. Local commands inherit these credentials.
 func natsConfig() natschannel.Config {
 	return natschannel.Config{
-		URL:          envOr("NATS_URL", "nats://127.0.0.1:4222"),
-		RootSubject:  envOr("JAWA_NATS_ROOT_SUBJECT", "bonnie.tasks"),
-		WorkerID:     os.Getenv("JAWA_NATS_WORKER_ID"),
-		Consumer:     os.Getenv("JAWA_NATS_CONSUMER"),
-		CreateStream: os.Getenv("JAWA_NATS_CREATE_STREAM") == "true",
+		URL:           envOr("NATS_URL", "nats://127.0.0.1:4222"),
+		RootSubject:   envOr("JAWA_NATS_ROOT_SUBJECT", "bonnie"),
+		WorkerID:      os.Getenv("JAWA_NATS_WORKER_ID"),
+		Consumer:      os.Getenv("JAWA_NATS_CONSUMER"),
+		CreateStream:  envOr("JAWA_NATS_CREATE_STREAM", "true") == "true",
+		TargetedTasks: true,
 	}
+}
+
+// Work around v0.14.0 WithNATS returning a typed nil on validation failure.
+// A genuinely nil interface lets BONNIE report the error instead of panicking
+// when it attempts to shut down the channel that was never constructed.
+func withNATS(cfg natschannel.Config) bonnie.Option {
+	return bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
+		c := cfg
+		if c.Conn == nil {
+			for field, key := range map[*string]string{
+				&c.URL: "NATS_URL", &c.NKeySeed: "NATS_NKEY_SEED",
+				&c.Token: "NATS_TOKEN", &c.Username: "NATS_USERNAME", &c.Password: "NATS_PASSWORD",
+			} {
+				if *field == "" {
+					*field = os.Getenv(key)
+				}
+			}
+		}
+		ch, err := natschannel.New(r, c)
+		if err != nil {
+			return nil, err
+		}
+		return ch, nil
+	})
 }
 
 // Lightpanda uses local stdio transport; KIT manages the MCP subprocess.
@@ -83,8 +112,8 @@ func lightpandaMCPConfig() *kit.Config {
 	}
 }
 
-// Explicitly allow only the GitHub credential into coding commands. NATS and
-// model-provider credentials must stay in the server process.
+// Explicit coding settings. Local also inherits the server environment,
+// including NATS and model-provider credentials; this is not an allowlist.
 func codingEnv() map[string]string {
 	env := map[string]string{"GH_PROMPT_DISABLED": "1", "LIGHTPANDA_DISABLE_TELEMETRY": "true"}
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {

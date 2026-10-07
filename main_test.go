@@ -15,14 +15,14 @@ func clearConfigEnv(t *testing.T) {
 func TestNATSDefaults(t *testing.T) {
 	clearConfigEnv(t)
 	cfg := natsConfig()
-	if cfg.URL != "nats://127.0.0.1:4222" || cfg.RootSubject != "bonnie.tasks" || cfg.CreateStream {
+	if cfg.URL != "nats://127.0.0.1:4222" || cfg.RootSubject != "bonnie" || !cfg.CreateStream || !cfg.TargetedTasks {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	subjects, err := natschannel.ResolveSubjects(cfg.RootSubject, natschannel.Subjects{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if subjects.Tasks != "bonnie.tasks.tasks" || subjects.Results != "bonnie.tasks.results" || subjects.Events != "bonnie.tasks.events" || subjects.Answers != "bonnie.tasks.answers" || subjects.Commands != "bonnie.tasks.commands" || subjects.Queries != "bonnie.tasks.queries" {
+	if subjects.Tasks != "bonnie.tasks" || subjects.Results != "bonnie.results" || subjects.Events != "bonnie.events" || subjects.Answers != "bonnie.answers" || subjects.Commands != "bonnie.commands" || subjects.Queries != "bonnie.queries" {
 		t.Fatalf("unexpected subjects: %+v", subjects)
 	}
 }
@@ -37,6 +37,14 @@ func TestNATSOverrides(t *testing.T) {
 	cfg := natsConfig()
 	if cfg.URL != "nats://localhost:4223" || cfg.RootSubject != "test.agent" || cfg.WorkerID != "jawa-1" || cfg.Consumer != "jawa-workers" || !cfg.CreateStream {
 		t.Fatalf("environment overrides not applied: %+v", cfg)
+	}
+}
+
+func TestNATSStreamCreationDisabled(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("JAWA_NATS_CREATE_STREAM", "false")
+	if natsConfig().CreateStream {
+		t.Fatal("explicit false must disable stream creation")
 	}
 }
 

@@ -1,6 +1,8 @@
 # Jawa
 
-A BONNIE v0.14.0 coding agent that receives asynchronous tasks over NATS.
+![Jawa logo](logo.png)
+
+A BONNIE v0.15.0 coding agent that receives asynchronous tasks over NATS.
 BONNIE supplies sandboxed coding tools; built-in `ask_human` and
 `request_approval` tools are disabled with `WithoutHumanInput`. Missing
 requirements are reported in the final response rather than suspending the run.
@@ -8,7 +10,7 @@ requirements are reported in the final response rather than suspending the run.
 
 ## Run locally
 
-Requirements: Go 1.27+, BONNIE v0.14.0, a NATS server, and credentials for your
+Requirements: Go 1.27+, BONNIE v0.15.0, a NATS server, and credentials for your
 chosen model provider configured through KIT/BONNIE. The default model is
 `opencode/glm-5.3-flash`; set `JAWA_MODEL` to override it.
 
@@ -31,9 +33,9 @@ an authenticator or an authenticated proxy. NATS must be reachable at startup.
 With the NATS CLI, subscribe **before** submitting a task:
 
 ```sh
-nats --server "$NATS_URL" sub bonnie.tasks.results
+nats --server "$NATS_URL" sub bonnie.results
 # In another terminal (with NATS_URL exported):
-nats --server "$NATS_URL" pub bonnie.tasks.tasks \
+nats --server "$NATS_URL" pub bonnie.tasks \
   '{"version":1,"task_id":"coding-001","text":"Write a Go function that reverses a string by rune and test it."}'
 ```
 
@@ -42,7 +44,8 @@ Use a new task ID for each request. Built-in human-input tools are disabled,
 so normal tasks do not suspend for clarification. Use BONNIE's typed NATS client
 for answering waiting runs; answers are worker-routed in JetStream mode.
 
-Each run has its own sandbox, not access to the host checkout. Seed shared
+Each run starts in its own working directory, but Local mode does not enforce
+separation from other runs or accessible host/container files. Seed shared
 starter files under `workspace/` **before building**, or provide a repository
 URL in the task and ask the agent to clone it. Task `context` is an optional
 array of strings, not a host-filesystem mount. Generated files remain in the
@@ -55,40 +58,92 @@ uploaded artifacts. BONNIE journals run state under `.bonnie/` by default.
 | --- | --- |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |
 | `NATS_URL` | `nats://127.0.0.1:4222` |
-| `JAWA_NATS_ROOT_SUBJECT` | `bonnie.tasks`: derives all protocol subjects and enables JetStream |
+| `JAWA_NATS_ROOT_SUBJECT` | `bonnie`: derives all protocol subjects and enables JetStream |
 | `JAWA_NATS_WORKER_ID` | Required: unique, stable worker token |
 | `JAWA_NATS_CONSUMER` | Optional shared durable task consumer |
-| `JAWA_NATS_CREATE_STREAM` | `false`; exactly `true` permits stream creation |
+| `JAWA_NATS_CREATE_STREAM` | Defaults to `true`; set `false` to disable stream creation |
 
-The simplified root setup derives `bonnie.tasks.tasks`, `.results`, `.events`,
+The simplified root setup derives `bonnie.tasks`, `.results`, `.events`,
 `.answers`, `.commands`, and `.queries`. Answers/commands/queries append the
-worker ID for routing. All routes remain under `bonnie.tasks.>`.
-**Migration:** the task subject was `bonnie.tasks.requests`; publishers must
-now use `bonnie.tasks.tasks` and protocol version 1. The old individual subject
-and `JAWA_NATS_STREAM` environment settings are no longer used.
+worker ID for routing. All routes are now under `bonnie.>`.
+**Migration:** the previous root was `bonnie.tasks`; now the default is
+`bonnie`. Tasks use `bonnie.tasks`, results `bonnie.results`, events
+`bonnie.events`, and control bases `bonnie.answers`, `bonnie.commands`, and
+`bonnie.queries`. Derived stream names also change. Provision the new streams
+or allow creation; existing pending tasks remain in the old namespace and are
+not automatically moved. Coordinate publishers and workers, or temporarily
+use `JAWA_NATS_ROOT_SUBJECT=bonnie.tasks` and client `-root bonnie.tasks` to
+finish old tasks. Remove old root overrides when migrating.
 
 RootSubject always enables JetStream. Permissions limited to `bonnie.tasks.>`
-and `_INBOX.>` are no longer sufficient: grant scoped JetStream API, consumer,
-and acknowledgement permissions and ensure JetStream is available. A stable
-worker ID and provisioned streams are required. Do not deploy this change with
-the old restricted account until its permissions have been updated.
+and `_INBOX.>` are insufficient: grant access to the required `bonnie.*`
+protocol routes plus scoped JetStream API, consumer, and acknowledgement
+permissions. A stable worker ID and provisioned streams are required.
 
 For broker authentication select **one** method: `NATS_NKEY_SEED` (user seed
 value, not file path), `NATS_TOKEN`, or `NATS_USERNAME`/`NATS_PASSWORD`.
 Do not combine those methods or URL credentials. Use TLS and broker permissions
-in deployments. Secrets are loaded by the channel, not injected into the agent
-sandbox. Do not store them in source or task payloads.
+in deployments. Secrets are loaded by the channel; Local commands inherit the server
+environment and can read these credentials. Do not store them in source or task payloads.
+
+## Sample task client
+
+`cmd/submit` submits one task, logs worker acceptance (`task_accepted`) and run
+state events to stderr, then prints the outcome JSON (including the response)
+to stdout:
+
+```sh
+# Set NATS_URL, NATS_USERNAME, and NATS_PASSWORD through your secret manager.
+go run ./cmd/submit -text 'Clone https://github.com/OWNER/REPO, run tests, and report findings.'
+# Explicit ID for correlating/retrying the same request:
+go run ./cmd/submit -id my-request-001 -timeout 30m -text 'Your instructions'
+```
+
+Target a specific worker instead of the shared queue:
+
+```sh
+go run ./cmd/submit -worker jawa-1 -text 'Clone mark3labs/kit, run tests and report findings.'
+```
+
+The agent and client enable `TargetedTasks`. A targeted task goes to
+`bonnie.tasks.worker.<worker-id>` and waits for that worker if it is offline;
+it does not fall back to another worker. Without `-worker`, normal shared-queue
+submission remains available. Worker IDs must be stable safe tokens.
+
+**Stream migration:** existing input streams must add the literal wildcard
+`bonnie.tasks.worker.*` while retaining their current subjects. Update the
+stream through your broker administration tooling before deploying; BONNIE
+validates existing streams but does not modify them. Newly created streams
+include targeted routes automatically. Ensure broker permissions cover them.
+Do not delete streams or resubmit pending tasks just to perform this migration.
+v0.15.0 also bounds internal cache keys, fixing the v0.14.0 result-storage failure
+that caused completed tasks to be redelivered. At-least-once delivery still applies.
+
+Streams must be provisioned. This example uses user/password authentication and
+creates independent result/event consumers, so it does not steal results from
+another application. It removes its consumers on normal exit; the account needs
+consumer create/delete permissions. Forced termination may leave consumers behind
+(their names start with `jawa-cli-`). It acknowledges unrelated messages only in
+its own readers. A production service should use stable consumers and durable,
+idempotent result storage instead.
+
+Acceptance means a worker admitted the task, not that it has completed. Status
+and result streams have no cross-stream ordering: a fast result can arrive before
+its acceptance log. Duplicate status events are suppressed during this CLI run.
+The CLI exits after the first matching outcome, including failures or suspension;
+a task can have multiple attempts under at-least-once delivery. Timeout or Ctrl-C
+stops waiting, not the worker. Results can contain sensitive information.
 
 ## Durable NATS setup
 
 BONNIE derives stable input, result, and event stream names from the root. By
-default the agent binds provisioned streams and never changes existing resources.
-Set `JAWA_NATS_CREATE_STREAM=true` only if the account is authorized to provision
-them; with a root this permits creation of all three streams. Existing streams
+default the agent may create missing streams, so its account needs provisioning
+permissions. Set `JAWA_NATS_CREATE_STREAM=false` to bind only provisioned streams.
+With a root, creation covers all three streams. Existing streams
 must cover the derived protocol subjects with limits retention. Consult BONNIE's
 NATS documentation for provisioning and consumer permissions.
 
-Use `github.com/mark3labs/bonnie/client/nats` with `RootSubject: "bonnie.tasks"`
+Use `github.com/mark3labs/bonnie/client/nats` with `RootSubject: "bonnie"`
 for durable submission, result/status consumption, status queries, cancellation,
 and routing answers to the original worker. Raw tasks must include `"version":1`.
 Persist each worker's own journal and sandbox storage; do not share them between
@@ -96,13 +151,15 @@ workers. Delivery is at least once, not exactly once: external effects and resul
 handlers must be safe to repeat. Lost worker state cannot be reconstructed from
 the broker alone.
 
-The default Landlock sandbox confines filesystem access but not network
-traffic. For untrusted projects, consider BONNIE's Docker sandbox and explicit
-network policies. Do not give the agent deployment credentials unnecessarily.
+Jawa explicitly uses `sandbox.Local()`: it provides **no isolation**. The outer
+Docker container is the only filesystem/process boundary. Only accept trusted
+tasks and repositories; use Docker/microVM per-run sandboxes for untrusted code.
+Running the binary outside Docker gives commands access as your host user.
 
 ## Docker
 
-The image includes Go 1.27.0, `gh`, Git, build tools, ripgrep, and Lightpanda
+The image includes Go 1.27.0, `gh`, Git, build tools, ripgrep, `file`, GNU
+`time`, Bash, Python 3 with pip/venv/Pillow, and Lightpanda
 (for headless browsing). System-wide Git configuration sets the default commit
 identity to `Jawa <jawa@bonnie>`, including inside per-run sandboxes. Repository
 configuration can override it. This is commit metadata only, not a GitHub bot
@@ -116,7 +173,7 @@ in `main.go` replaces MCP servers from KIT config files.
 
 MCP subprocesses are managed by KIT in the agent process environment, not by
 BONNIE's per-run shell sandbox. Treat Lightpanda as trusted software with the
-container's access; do not assume browser tools have Landlock confinement.
+container's access, just like Local coding commands.
 
 ```sh
 docker build -t jawa .
@@ -143,17 +200,18 @@ network can still reach the API; use trusted networks or add authentication.
 
 `GITHUB_TOKEN` is explicitly passed into sandboxed coding commands so `gh` can
 authenticate without `gh auth login`. **Commands can read this token**: use a
-least-privilege, repository-scoped token and only trusted tasks. NATS credentials
-and model keys are not passed into the coding environment. Never print tokens.
+least-privilege, repository-scoped token and only trusted tasks. Local also inherits NATS credentials
+and model keys from the server environment. Never print tokens.
 For Git operations over HTTPS, run `gh auth setup-git` in the run workspace
 before cloning private repositories. Writes, pushes, and PR creation still
 require authorization in the task.
 
-The default Landlock sandbox requires a Linux host with Landlock enabled and a
-container security profile that permits Landlock syscalls. No privileged mode
-or Docker socket is required or recommended. If your runtime blocks those
-syscalls, use a reviewed seccomp profile permitting them rather than disabling
-all isolation. Preserve the `jawa-data` volume for waiting/resumed runs.
+Local does not require Landlock syscalls. Do not use privileged mode, mount the
+Docker socket, or expose the unauthenticated HTTP API. Preserve the `jawa-data`
+volume for run files, but HOME caches and /tmp are container-local and shared
+among runs. Run one trusted worker per container to limit cross-task exposure.
+Existing Landlock executions may not resume transparently with a different
+backend; finish them before switching or submit new tasks, retaining old data.
 
 Lightpanda currently publishes its Linux binaries under `nightly`, so that
 default is mutable. For reproducible deployments use an available immutable
@@ -167,6 +225,13 @@ docker build -t jawa \
 
 The image supports amd64 and arm64; hashes are architecture-specific.
 `GO_VERSION` is also a build argument (default `1.27.0`).
+
+The container sets `JAWA_SANDBOX_ROOT=/w`, a short symlink to the persistent
+`/data/.bonnie/workspaces` directory. Run files remain persistent. Local
+commands inherit `TMPDIR=/tmp`, giving tests short writable temporary paths. Outside Docker the
+sandbox root defaults to `.bonnie/workspaces`. Deeply nested socket paths can
+still exceed Linux's limit; check actual paths before classifying test failures.
+Use workspace-local Python virtualenvs for additional dependencies.
 
 ## Published Docker images
 
@@ -189,27 +254,28 @@ creates the package and attaches repository metadata through image labels.
 
 ## Automatic Go diagnostics
 
-`golint.go` uses BONNIE's `CompletionHook` and `CompletionFeedback`. Before
-accepting a candidate final response it scans workspace Go modules and batches:
+`golint.go` uses BONNIE's completion hook to check changed Go packages, not
+whole repositories. At execution start it hashes existing Go files. At completion
+it compares them and checks new files, excluding clean files in newly cloned
+Git repositories. This covers shell edits without turning read-only validation
+requests into unsolicited repair work. Existing user changes present at startup
+are not considered new edits. The baseline is execution-local: resume/recovery
+starts a new baseline. Changes committed inside a newly cloned repository may
+not be detected; always run explicit validation before committing/pushing.
 
-1. `go fix ./...` per module (may rewrite source).
-2. `gopls check` for Go files belonging to each module.
-3. `golangci-lint run ./...` per module.
+Go code orchestrates sandboxed `find`/`sha256sum` and Git commands through
+`RunScope.Exec`; no Python helper or direct host filesystem reads are used. Diagnostics
+use `go list` to select buildable Go/test files for the current environment,
+excluding ignored scripts and alternate-platform files. `gopls` runs per changed
+package with a ten-minute module budget, and golangci-lint checks only changed
+packages with a two-minute budget. No automatic go fix or source rewriting occurs.
+Feedback is capped at 12 KB and permits two repair turns. Unresolved diagnostics
+can still fail completion; agents must not repair unrelated code to satisfy them.
+Clean test/report tasks receive no completion repair prompt.
 
-All commands use `RunScope.Exec`, sharing the agent's sandbox. Module scans
-exclude Git metadata, vendor directories, and common tool caches. Scanning all
-modules rather than an in-memory edit list includes shell edits and survives
-resume/recovery; it also checks pre-existing code, even on read-only tasks.
-Each command has a 20-second timeout; diagnostic feedback is capped at 12 KB.
-Nonempty output (including go fix rewrites), missing tools, or failed checks
-request another turn. At most two repair turns are allowed; unresolved feedback
-then fails the run rather than publishing the rejected response. Checks are
-skipped on model failure or human-input suspension. A failed module scan fails
-the run. Run checks explicitly before pushing: the completion hook cannot undo
-external effects performed during the candidate turn.
-
-The Docker image installs pinned `gopls v0.23.0` and `golangci-lint v2.14.0`.
-For local execution install these tools on PATH as well.
+The hook requires Bash, find, sha256sum, Git, Go, gopls, and golangci-lint on
+PATH. The Docker image includes them; Python remains available for coding tasks
+but is not required by the hook.
 
 ## Activity and workspace retention
 

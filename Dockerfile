@@ -4,7 +4,7 @@ FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.14.0
+RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.15.0
 COPY . .
 RUN bonnie build --output /out/jawa
 RUN GOBIN=/out go install golang.org/x/tools/gopls@v0.23.0 \
@@ -19,6 +19,7 @@ ARG LIGHTPANDA_SHA256
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl git gnupg build-essential pkg-config ripgrep \
+       bash file time python3 python3-pip python3-venv python3-pil \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -42,20 +43,30 @@ RUN set -eu; \
     fi; \
     chmod 0755 /usr/local/bin/lightpanda; \
     lightpanda --help >/dev/null
-# System config is readable inside BONNIE's per-run sandbox (HOME is per run).
+# Debian login shells reset PATH; BONNIE uses sh -lc for coding commands.
+# Put Go on the standard path so it works regardless of profile behavior.
+RUN ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+# Default Git identity for coding commands.
 RUN git config --system user.name "Jawa" \
     && git config --system user.email "jawa@bonnie"
 RUN useradd --create-home --uid 10001 --shell /bin/bash jawa \
-    && mkdir -p /data/.bonnie \
-    && chown -R jawa:jawa /data
+    && mkdir -p /data/.bonnie/workspaces \
+    && chown -R jawa:jawa /data \
+    && ln -s /data/.bonnie/workspaces /w
 COPY --from=build /out/jawa /out/gopls /out/golangci-lint /usr/local/bin/
 ENV LIGHTPANDA_DISABLE_TELEMETRY=true \
     GH_PROMPT_DISABLED=1 \
-    JAWA_HTTP_ADDR=0.0.0.0:8080
+    JAWA_HTTP_ADDR=0.0.0.0:8080 \
+    JAWA_SANDBOX_ROOT=/w \
+    TMPDIR=/tmp \
+    PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 EXPOSE 8080
 # Pass NATS_URL, NATS_USERNAME, NATS_PASSWORD, GITHUB_TOKEN and model-provider
 # credentials at runtime. Never use build arguments for credentials.
 USER jawa
 WORKDIR /data
+# Check the same login-shell mode the agent uses, as the runtime user.
+RUN sh -lc 'command -v go && command -v gofmt && go version && gh --version && gopls version && golangci-lint version'
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/jawa"]
