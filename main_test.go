@@ -8,6 +8,7 @@ import (
 
 func TestCodingSandboxes(t *testing.T) {
 	t.Setenv("JAWA_SANDBOX_ROOT", "")
+	t.Setenv("JAWA_SANDBOX_IMAGE", "")
 	providers := codingSandboxes()
 	if len(providers) != 2 || providers[0].Name() != "local" || providers[1].Name() != "microsandbox" {
 		t.Fatal("expected local default and microsandbox option")
@@ -15,6 +16,13 @@ func TestCodingSandboxes(t *testing.T) {
 	image := providers[1].(sandbox.Imaged).Image()
 	if image != "ghcr.io/mark3labs/jawa:latest" {
 		t.Fatalf("unexpected guest image %q", image)
+	}
+}
+
+func TestSandboxImageOverride(t *testing.T) {
+	t.Setenv("JAWA_SANDBOX_IMAGE", "jawa:local")
+	if codingSandboxes()[1].(sandbox.Imaged).Image() != "jawa:local" {
+		t.Fatal("guest image override ignored")
 	}
 }
 

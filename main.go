@@ -55,7 +55,7 @@ func codingSandboxes() []sandbox.Provider {
 	return []sandbox.Provider{
 		sandbox.Local(sandbox.WithLocalRoot(envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"))),
 		sandbox.Microsandbox(
-			sandbox.WithMicrosandboxImage("ghcr.io/mark3labs/jawa:latest"),
+			sandbox.WithMicrosandboxImage(envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")),
 			sandbox.WithMicrosandboxMemory(4096),
 			sandbox.WithMicrosandboxCPUs(2),
 		),
