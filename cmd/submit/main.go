@@ -18,7 +18,17 @@ import (
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
 	bonnienats "github.com/mark3labs/bonnie/client/nats"
 	gonats "github.com/nats-io/nats.go"
+	"github.com/subosito/gotenv"
 )
+
+// Load preserves existing environment values. Omit parser errors from the
+// returned message because they can contain credential-bearing source lines.
+func loadEnvFile(path string) error {
+	if err := gotenv.Load(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("could not load %s; check permissions and dotenv syntax", path)
+	}
+	return nil
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -28,9 +38,16 @@ func main() {
 }
 
 func run() error {
+	if err := loadEnvFile(".env"); err != nil {
+		return err
+	}
+	defaultRoot := os.Getenv("JAWA_NATS_ROOT_SUBJECT")
+	if defaultRoot == "" {
+		defaultRoot = "bonnie"
+	}
 	id := flag.String("id", "", "Task ID (reuse only for the same task)")
 	text := flag.String("text", "", "Task instructions")
-	root := flag.String("root", "bonnie", "NATS root subject")
+	root := flag.String("root", defaultRoot, "NATS root subject")
 	worker := flag.String("worker", "", "Target worker ID; empty uses the shared queue")
 	timeout := flag.Duration("timeout", 30*time.Minute, "Maximum time to wait; does not cancel the worker")
 	flag.Parse()

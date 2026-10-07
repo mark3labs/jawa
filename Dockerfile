@@ -4,7 +4,7 @@ FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.15.0
+RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.16.0
 COPY . .
 RUN bonnie build --output /out/jawa
 RUN GOBIN=/out go install golang.org/x/tools/gopls@v0.23.0 \
@@ -51,8 +51,8 @@ RUN ln -s /usr/local/go/bin/go /usr/local/bin/go \
 RUN git config --system user.name "Jawa" \
     && git config --system user.email "jawa@bonnie"
 RUN useradd --create-home --uid 10001 --shell /bin/bash jawa \
-    && mkdir -p /data/.bonnie/workspaces \
-    && chown -R jawa:jawa /data \
+    && mkdir -p /data/.bonnie/workspaces /workspace \
+    && chown -R jawa:jawa /data /workspace \
     && ln -s /data/.bonnie/workspaces /w
 COPY --from=build /out/jawa /out/gopls /out/golangci-lint /usr/local/bin/
 ENV LIGHTPANDA_DISABLE_TELEMETRY=true \

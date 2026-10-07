@@ -2,8 +2,21 @@ package main
 
 import (
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
+	"github.com/mark3labs/bonnie/sandbox"
 	"testing"
 )
+
+func TestCodingSandboxes(t *testing.T) {
+	t.Setenv("JAWA_SANDBOX_ROOT", "")
+	providers := codingSandboxes()
+	if len(providers) != 2 || providers[0].Name() != "local" || providers[1].Name() != "microsandbox" {
+		t.Fatal("expected local default and microsandbox option")
+	}
+	image := providers[1].(sandbox.Imaged).Image()
+	if image != "ghcr.io/mark3labs/jawa:latest" {
+		t.Fatalf("unexpected guest image %q", image)
+	}
+}
 
 func clearConfigEnv(t *testing.T) {
 	t.Helper()

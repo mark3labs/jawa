@@ -25,9 +25,7 @@ func main() {
 		bonnie.WithAddr(envOr("JAWA_HTTP_ADDR", "127.0.0.1:8080")),
 		withNATS(natsConfig()),
 		bonnie.WithSandboxEnv(codingEnv()),
-		bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(
-			envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"),
-		))),
+		bonnie.WithSandboxes(codingSandboxes()...),
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
 		bonnie.WithRunWorkspaceCleanup(workspaceCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
@@ -51,6 +49,17 @@ func main() {
 		//	bonnie.WithTelegram(telegram.Config{Username: "mybot"}),
 		//	bonnie.WithGitHub(github.Config{BotName: "mybot"}),
 	).Serve()
+}
+
+func codingSandboxes() []sandbox.Provider {
+	return []sandbox.Provider{
+		sandbox.Local(sandbox.WithLocalRoot(envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"))),
+		sandbox.Microsandbox(
+			sandbox.WithMicrosandboxImage("ghcr.io/mark3labs/jawa:latest"),
+			sandbox.WithMicrosandboxMemory(4096),
+			sandbox.WithMicrosandboxCPUs(2),
+		),
+	}
 }
 
 func workspaceCleanupPolicy() bonnie.WorkspaceCleanupPolicy {
