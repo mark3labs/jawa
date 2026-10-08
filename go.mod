@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/bonnie v0.16.0
+	github.com/mark3labs/bonnie v0.18.0
 	github.com/mark3labs/kit v0.120.0
 	github.com/nats-io/nats.go v1.47.0
 	github.com/subosito/gotenv v1.6.0

@@ -82,7 +82,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.16.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.18.0
 bonnie chat
 ```
 
@@ -116,22 +116,22 @@ bonnie build --output ./bin/jawa
 ./bin/jawa --sandbox microsandbox
 ```
 
-Install the [microsandbox](https://github.com/superradcompany/microsandbox)
-`msb` CLI on the agent host and configure its Linux/KVM requirements first.
-Each guest uses `ghcr.io/mark3labs/jawa:latest`, 4 GiB RAM, and 2 CPUs, providing
-the same coding tools as the published image. Ensure the host can pull it from
-GHCR. Local remains available with `--sandbox local`.
+On a Linux/KVM-capable host, BONNIE automatically installs its pinned
+microsandbox runtime when `msb` is absent. Existing installations are kept;
+upgrade an older installation yourself if needed. Initial installation needs
+network access. Each guest uses `ghcr.io/mark3labs/jawa:latest`, 4 GiB RAM,
+and 2 CPUs; `JAWA_SANDBOX_IMAGE` can override the image for testing.
 
-The stock Jawa container does not include `msb` or configure KVM. To select
-microsandbox inside a container, its runtime must provide those prerequisites;
-passing the flag alone is not sufficient. Lightpanda MCP runs alongside the
-agent, while coding commands and completion checks run inside the selected
-backend. Preserve backend state and avoid changing backends for in-flight runs.
+Container deployments must provide KVM and the runtime's host prerequisites.
+Lightpanda MCP runs alongside the agent; coding commands and completion checks
+run in the selected backend. Keep backend state and avoid switching backends
+for in-flight runs.
 
 ## Develop
 
 Requires Go 1.27+. Edit `instructions.md` for agent behavior and `main.go` for
-runtime configuration.
+runtime configuration. Put starter files in `context/`; BONNIE copies them
+into new run working directories.
 
 ```sh
 go test ./...

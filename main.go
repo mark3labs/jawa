@@ -1,7 +1,7 @@
 // Command serves the agent defined by this tree.
 //
 // This file is yours; BONNIE never rewrites it. The tree's data lives at its
-// default paths — instructions.md is the system prompt, workspace/ is the
+// default paths — instructions.md is the system prompt, context/ supplies the
 // agent's root for files — and the tools under tools/ are wired by codegen
 // into bonnie_gen.go. Everything else is an option below.
 package main
@@ -27,7 +27,7 @@ func main() {
 		bonnie.WithSandboxEnv(codingEnv()),
 		bonnie.WithSandboxes(codingSandboxes()...),
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
-		bonnie.WithRunWorkspaceCleanup(workspaceCleanupPolicy()),
+		bonnie.WithRunSandboxCleanup(sandboxCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
 		bonnie.WithoutHumanInput(),
 		bonnie.WithKit(func(o *kit.Options) {
@@ -62,8 +62,8 @@ func codingSandboxes() []sandbox.Provider {
 	}
 }
 
-func workspaceCleanupPolicy() bonnie.WorkspaceCleanupPolicy {
-	return bonnie.WorkspaceCleanupPolicy{
+func sandboxCleanupPolicy() bonnie.SandboxCleanupPolicy {
+	return bonnie.SandboxCleanupPolicy{
 		CompletedAfter: 7 * 24 * time.Hour,
 		FailedAfter:    14 * 24 * time.Hour,
 		CancelledAfter: 3 * 24 * time.Hour,

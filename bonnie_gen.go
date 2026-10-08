@@ -18,7 +18,7 @@ var _instructions string
 
 var _skills embed.FS
 
-var _workspace embed.FS
+var _contextFiles embed.FS
 
 // init hands the tree's discovered code and embedded data to the runtime
 // before main runs, so main.go never has to name a tool or an embed. Each
@@ -27,7 +27,7 @@ func init() {
 	bonnie.Register(bonnie.Tree{
 		Instructions: _instructions,
 		Skills:       _skills,
-		Workspace:    _workspace,
+		ContextFiles: _contextFiles,
 		Tools:        []kit.Tool{},
 	})
 }

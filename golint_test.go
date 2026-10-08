@@ -91,7 +91,7 @@ func TestCompletionScanFailure(t *testing.T) {
 	}
 }
 func TestCleanupRetention(t *testing.T) {
-	p := workspaceCleanupPolicy()
+	p := sandboxCleanupPolicy()
 	if p.CompletedAfter != 7*24*time.Hour || p.FailedAfter != 14*24*time.Hour || p.CancelledAfter != 3*24*time.Hour || p.RetiredAfter != 3*24*time.Hour {
 		t.Fatalf("unexpected policy %+v", p)
 	}
