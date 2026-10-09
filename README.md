@@ -94,11 +94,21 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 
 | Variable | Default / purpose |
 | --- | --- |
+| `JAWA_NAME` | `jawa`; agent display name (`--name` overrides) |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |
-| `JAWA_NATS_WORKER_ID` | Required, e.g. `jawa-1` (letters, digits, hyphens) |
+| `JAWA_NATS_WORKER_ID` | Required, e.g. `jawa-1` (letters, digits, hyphens); `--nats-worker-id` overrides |
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
 | `JAWA_NATS_CREATE_STREAM` | `true` |
 | `JAWA_NATS_CONSUMER` | Optional shared task consumer override |
+
+The compiled binary also accepts serving flags for the agent name and worker ID:
+
+```sh
+./bin/jawa --name jawa-dev --nats-worker-id jawa-1 --sandbox microsandbox
+```
+
+Flags override environment/`.env` values. The display name does not change NATS
+routing; worker IDs must still be unique and stable for each instance.
 
 The root derives `bonnie.tasks`, `bonnie.results`, `bonnie.events`, and the
 `bonnie.answers`, `bonnie.commands`, and `bonnie.queries` control routes.

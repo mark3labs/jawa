@@ -16,6 +16,7 @@ import (
 //go:embed instructions.md
 var _instructions string
 
+//go:embed skills
 var _skills embed.FS
 
 var _contextFiles embed.FS

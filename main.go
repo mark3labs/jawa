@@ -18,6 +18,7 @@ import (
 	"github.com/mark3labs/bonnie/runtime"
 	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
+	"github.com/spf13/cobra"
 	"github.com/subosito/gotenv"
 )
 
@@ -40,7 +41,11 @@ func main() {
 		// Default to loopback outside Docker. Container port publishing must
 		// restrict access to this unauthenticated API.
 		bonnie.WithAddr(envOr("JAWA_HTTP_ADDR", "127.0.0.1:8080")),
-		withNATS(natsConfig()),
+		bonnie.WithCommand(func(root *cobra.Command, agent *bonnie.Agent) {
+			servingFlags(root, func(name string, cfg natschannel.Config) {
+				agent.Configure(bonnie.WithName(name), withNATS(cfg))
+			})
+		}),
 		bonnie.WithSandboxEnv(codingEnv()),
 		bonnie.WithSandboxes(codingSandboxes()...),
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
@@ -66,6 +71,25 @@ func main() {
 		//	bonnie.WithTelegram(telegram.Config{Username: "mybot"}),
 		//	bonnie.WithGitHub(github.Config{BotName: "mybot"}),
 	).Serve()
+}
+
+// Apply serving configuration after Cobra parses flags, not during registration.
+// Register the NATS channel only once: channel options are additive.
+func servingFlags(root *cobra.Command, apply func(string, natschannel.Config)) {
+	cfg := natsConfig()
+	name := envOr("JAWA_NAME", "jawa")
+	root.Flags().StringVar(&name, "name", name, "agent display name")
+	root.Flags().StringVar(&cfg.WorkerID, "nats-worker-id", cfg.WorkerID, "unique, stable NATS worker ID (required)")
+	previous := root.PreRunE
+	root.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if previous != nil {
+			if err := previous(cmd, args); err != nil {
+				return err
+			}
+		}
+		apply(name, cfg)
+		return nil
+	}
 }
 
 func codingSandboxes() []sandbox.Provider {

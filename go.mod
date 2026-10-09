@@ -7,6 +7,7 @@ require (
 	github.com/mark3labs/bonnie v0.19.0
 	github.com/mark3labs/kit v0.120.0
 	github.com/nats-io/nats.go v1.47.0
+	github.com/spf13/cobra v1.10.2
 	github.com/subosito/gotenv v1.6.0
 )
 
@@ -105,7 +106,6 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
