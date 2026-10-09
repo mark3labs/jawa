@@ -1,0 +1,60 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium', headless:true, args:['--no-sandbox']});
+const page = await browser.newPage({viewport:{width:1440,height:1000}});
+const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+const base=process.env.JAWA_SMOKE_URL || 'http://127.0.0.1:18080';
+try {
+ await page.goto(base+'/setup');
+ await page.getByLabel('Username',{exact:true}).fill('smoke-admin');
+ await page.getByLabel('Password',{exact:true}).fill('smoke-test-password-123');
+ await page.getByRole('button',{name:'Create administrator'}).click();
+ await page.getByRole('heading',{name:'Project board'}).waitFor();
+ await page.getByRole('button',{name:'New project'}).click();
+ await page.getByLabel('Name',{exact:true}).fill('Smoke project');
+ await page.getByLabel('Repository URL').fill('https://github.com/example/smoke.git');
+ await page.getByRole('button',{name:'Create project',exact:true}).click();
+ await page.getByRole('heading',{name:'Smoke project'}).waitFor();
+ for (const title of ['First smoke card','Second smoke card']) {
+  await page.getByRole('button',{name:'Add card'}).click();
+  await page.getByLabel('Title',{exact:true}).fill(title);
+  await page.getByLabel('Description').fill('Browser test');
+  await page.getByRole('button',{name:'Create card',exact:true}).click();
+  await page.getByRole('heading',{name:title}).waitFor();
+ }
+ const first=page.locator('.task-card').filter({hasText:'First smoke card'});
+ await Promise.all([page.waitForEvent('load'), first.getByRole('combobox').selectOption('Building')]);
+ await page.locator('.task-list[data-status="Building"] .task-card').waitFor();
+ // Exercise actual pointer drag using the SortableJS handle.
+ const second=page.locator('.task-card').filter({hasText:'Second smoke card'});
+ await second.locator('.drag-handle').waitFor({state:'visible'});
+ const handle=await second.locator('.drag-handle').boundingBox();
+ const target=await page.locator('.task-list[data-status="Done"]').boundingBox();
+ await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);
+ await page.mouse.down();
+ await page.mouse.move(handle.x+20,handle.y+20,{steps:8});
+ await page.waitForTimeout(200);
+ await page.mouse.move(target.x+target.width/2,target.y+60,{steps:25});
+ await page.waitForTimeout(300);
+ await Promise.all([page.waitForEvent('load'), page.mouse.up()]);
+ await page.locator('.task-list[data-status="Done"] .task-card').waitFor();
+ await page.getByLabel('Filter cards').fill('First');
+ await page.waitForTimeout(200);
+ assert.equal(await page.locator('.task-card:visible').count(),1);
+ await page.getByLabel('Filter cards').fill('');
+ await page.reload();
+ assert.equal(await page.locator('.task-list[data-status="Done"] .task-card').count(),1);
+ await page.screenshot({path:'../../../.bonnie/orchestrator-smoke/board.png',fullPage:true});
+ await page.getByText('Worker connection settings').click();
+ await page.getByLabel('NATS username').fill('smoke-worker');
+ await page.getByLabel('New NATS password').fill('worker-smoke-password-123');
+ await page.getByRole('button',{name:'Rotate credentials'}).click();
+ await page.getByRole('heading',{name:'Project board'}).waitFor();
+ await page.getByRole('button',{name:'Sign out'}).click();
+ await page.getByLabel('Username',{exact:true}).fill('smoke-admin');
+ await page.getByLabel('Password',{exact:true}).fill('smoke-test-password-123');
+ await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await page.getByRole('heading',{name:'Project board'}).waitFor();
+ assert.deepEqual(errors,[]);
+ console.log('PASS: setup, project/card creation, keyboard move, pointer drag, Datastar filtering, persistence, NATS rotation, logout/login; no browser errors.');
+} finally { await browser.close(); }

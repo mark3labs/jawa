@@ -9,6 +9,37 @@ requests. Lightpanda MCP provides browser tools.
 The image includes Go, Git, GitHub CLI, Go linters, Python, and common development
 utilities.
 
+## Orchestrator (foundation preview)
+
+The same binary can serve a local control plane with SQLite and an embedded,
+authenticated, persistent NATS JetStream server:
+
+```sh
+go build -o ./bin/jawa .
+./bin/jawa orchestrator --data-dir ./jawa-data \
+  --listen 127.0.0.1:8080 --nats-listen 127.0.0.1:4222
+```
+
+Open http://127.0.0.1:8080 and create an admin username/password. Add projects tied
+to GitHub or Forgejo repository URLs, then create cards. The Todo / Building / Done
+board supports drag-and-drop and keyboard moves, persistent ordering, and optional
+issue links. Open **Worker connection settings** to set NATS credentials before
+connecting workers; initial random credentials deliberately cannot be used.
+
+**This is not yet the automated factory:** moving a card to Building currently only
+changes its stored state. Durable agent dispatch, execution history, Git-provider
+API integration, and PR/CI/review verification are next. Done is currently manual.
+
+The UI uses templ, shadcn-templ buttons, Datastar, and locally bundled SortableJS.
+Datastar Pro Rocket requires a licensed distribution not present here; the drag
+wrapper currently uses a standard custom element instead. See
+[`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for UI
+regeneration and browser smoke-test instructions.
+
+Keep HTTP and NATS on loopback unless protected by appropriate TLS and network
+controls. There is no native orchestrator TLS configuration yet. Keep the data
+directory private and back it up; do not share it with agent workspaces.
+
 ## Run with Docker
 
 Configure your environment:
@@ -82,7 +113,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.19.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.20.0
 bonnie chat
 ```
 
@@ -100,6 +131,8 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
 | `JAWA_NATS_CREATE_STREAM` | `true` |
 | `JAWA_NATS_CONSUMER` | Optional shared task consumer override |
+| `JAWA_NATS_PRESENCE` | Set `true` to enable BONNIE JetStream KV worker discovery |
+| `JAWA_NATS_PRESENCE_BUCKET` | `jawa_workers`; use the same bucket for a discovery scope |
 
 The compiled binary also accepts serving flags for the agent name and worker ID:
 

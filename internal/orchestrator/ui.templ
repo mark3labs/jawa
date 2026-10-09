@@ -1,0 +1,90 @@
+package orchestrator
+
+import (
+ "net/http"
+ "strconv"
+ "github.com/axadrn/shadcn-templ/v2/components/button"
+)
+
+func renderPage(w http.ResponseWriter,r *http.Request,s *Store) {
+ projects,e:=s.Projects(); if e!=nil {http.Error(w,"Unable to load projects", http.StatusInternalServerError);return}
+ cards,e:=s.Cards(""); if e!=nil {http.Error(w,"Unable to load cards", http.StatusInternalServerError);return}
+ w.Header().Set("Content-Type","text/html; charset=utf-8")
+ _ = page(CSRFToken(r),projects,cards,s.NATSConfig()).Render(r.Context(),w)
+}
+func authPageWithRequest(w http.ResponseWriter,r *http.Request,kind,msg string) {
+ w.Header().Set("Content-Type","text/html; charset=utf-8")
+ _ = auth(CSRFToken(r),kind,msg).Render(r.Context(),w)
+}
+func cardCount(cards []Card,project,status string) int {n:=0;for _,c:=range cards {if c.ProjectID==project&&c.Status==status {n++}};return n}
+
+templ head(title string) {
+ <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>{ title }</title><link rel="stylesheet" href="/assets/style.css"/><script type="module" src="/assets/app.js"></script></head>
+}
+
+templ submit(label string) {
+ @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn primary"}) { { label } }
+}
+
+templ page(csrf string,projects []Project,cards []Card,nats NATSConfig) {
+ <!doctype html>
+ <html lang="en">
+ @head("Jawa · Orchestrator")
+ <body data-signals="{filter: ''}">
+ <main class="shell">
+ <header class="topbar"><div class="brand"><span class="brand-mark">J</span>Jawa <span class="muted">/ Orchestrator</span></div><form method="post" action="/logout"><input type="hidden" name="_csrf" value={ csrf }/>@button.Button(button.Props{Type:button.TypeSubmit,Class:"btn"}) { Sign out }</form></header>
+ <section class="intro"><div><div class="eyebrow">Workspace</div><h1>Project board</h1><p class="muted">Foundation preview · Building cards are queued locally; agent dispatch is not enabled yet.</p></div><div class="top-actions"><input class="filter" aria-label="Filter cards" data-bind:filter placeholder="Filter cards…"/>@button.Button(button.Props{Class:"btn primary",Attributes:templ.Attributes{"data-open":"project-dialog"}}) { ＋ New project }</div></section>
+ <p id="notice" class="notice" role="alert" hidden></p>
+ if len(projects)==0 {
+ <section class="column"><h2>Your workspace is ready</h2><p>Create a project to organize work.</p></section>
+ }
+ for _,p:=range projects {
+ <section class="project"><div class="column-head"><div><h2>{ p.Name }</h2><p class="muted">{ p.Provider } · { p.Repo } · { p.BaseBranch }</p></div>@button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-open":"card-"+p.ID}}) { ＋ Add card }</div>
+ <jawa-board csrf={ csrf } project-id={ p.ID }>
+ <div class="board">
+ for _,status:=range []string{"Todo","Building","Done"} {
+ <section class="column"><div class="column-head"><h3>{ status }</h3><span class="count">{ strconv.Itoa(cardCount(cards,p.ID,status)) }</span></div><div class="task-list" data-status={ status }>
+ for _,c:=range cards {
+ if c.ProjectID==p.ID&&c.Status==status {
+ <article class="task-card" data-card-id={ c.ID } data-title={ c.Title } data-status={ c.Status } data-show={ strconv.Quote(c.Title+" "+c.Description)+".toLowerCase().includes($filter.toLowerCase())" }>
+ <div class="card-top"><h4 class="task-title">{ c.Title }</h4><button type="button" class="drag-handle" aria-label="Drag card">⠿</button></div>
+ if c.Description!="" {
+ <p class="card-desc">{ c.Description }</p>
+ }
+ <div class="card-foot">
+ if c.IssueURL!="" {
+ <a class="issue-link" href={ c.IssueURL } target="_blank" rel="noopener noreferrer">↗ Issue</a>
+ }
+ <label class="muted">Move <select class="move-select" aria-label={ "Move "+c.Title } data-move-card={ c.ID }><option value="">to…</option><option>Todo</option><option>Building</option><option>Done</option></select></label>
+ </div></article>
+ }
+ }
+ </div></section>
+ }
+ </div></jawa-board>
+ <dialog id={ "card-"+p.ID }><form method="post" action="/cards"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="project_id" value={ p.ID }/><h2>New card</h2><label class="field">Title<input name="title" required/></label><label class="field">Description<textarea name="description"></textarea></label><label class="field">Issue URL<input name="issue_url" type="url"/></label><div class="dialog-actions"><button type="button" class="btn" data-close>Cancel</button>@submit("Create card")</div></form></dialog>
+ </section>
+ }
+ <details class="settings"><summary>Worker connection settings</summary><p class="muted">Embedded NATS: { nats.URL }. Set credentials before connecting agents. Rotation disconnects clients using old credentials. Remote connections require a TLS proxy; the default listener is loopback.</p><form method="post" action="/settings/nats"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="url" value={ nats.URL }/><label class="field">NATS username<input name="username" value={ nats.Username } required/></label><label class="field">New NATS password<input name="password" type="password" minlength="12" required autocomplete="new-password"/></label>@submit("Rotate credentials")</form></details>
+ <dialog id="project-dialog"><form method="post" action="/projects"><input type="hidden" name="_csrf" value={ csrf }/><h2>Create project</h2><label class="field">Name<input name="name" required/></label><label class="field">Provider<select name="provider"><option value="github">GitHub</option><option value="forgejo">Forgejo</option></select></label><label class="field">Repository URL<input name="repo" placeholder="https://github.com/owner/repo.git" required/></label><label class="field">Base branch<input name="base_branch" value="main" required/></label><div class="dialog-actions"><button type="button" class="btn" data-close>Cancel</button>@submit("Create project")</div></form></dialog>
+ </main></body></html>
+}
+
+templ auth(csrf,kind,msg string) {
+ <!doctype html><html lang="en">@head("Jawa · "+kind)<body><main class="auth-wrap"><section class="auth-card"><div class="brand"><span class="brand-mark">J</span>Jawa</div>
+ if kind=="setup" {
+ <h1>Set up your workspace</h1><p class="muted">Create your administrator account. Use a password of at least 12 characters.</p>
+ } else {
+ <h1>Welcome back</h1>
+ }
+ if msg!="" {
+ <p class="notice" role="alert">{ msg }</p>
+ }
+ <form method="post" action={ "/"+kind }><input type="hidden" name="_csrf" value={ csrf }/><label class="field">Username<input name="username" required autocomplete="username"/></label><label class="field">Password<input type="password" name="password" required autocomplete="current-password"/></label>
+ if kind=="setup" {
+ @submit("Create administrator")
+ } else {
+ @submit("Sign in")
+ }
+ </form></section></main></body></html>
+}

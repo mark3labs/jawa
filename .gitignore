@@ -16,6 +16,9 @@
 *.out
 /coverage/
 
+# Frontend build dependencies
+node_modules/
+
 # Editor and OS files
 .idea/
 .vscode/

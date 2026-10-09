@@ -9,6 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"jawa/internal/orchestrator"
 	"log"
 	"os"
 	"time"
@@ -42,9 +43,14 @@ func main() {
 		// restrict access to this unauthenticated API.
 		bonnie.WithAddr(envOr("JAWA_HTTP_ADDR", "127.0.0.1:8080")),
 		bonnie.WithCommand(func(root *cobra.Command, agent *bonnie.Agent) {
-			servingFlags(root, func(name string, cfg natschannel.Config) {
-				agent.Configure(bonnie.WithName(name), withNATS(cfg))
-			})
+			root.AddCommand(orchestrator.Command())
+			configureServing(root, agent)
+			// BONNIE also exposes an explicit `serve` command.
+			for _, cmd := range root.Commands() {
+				if cmd.Name() == "serve" {
+					configureServing(cmd, agent)
+				}
+			}
 		}),
 		bonnie.WithSandboxEnv(codingEnv()),
 		bonnie.WithSandboxes(codingSandboxes()...),
@@ -76,6 +82,13 @@ func main() {
 // Apply serving configuration after Cobra parses flags, not during registration.
 // Register the NATS channel only once: channel options are additive.
 func servingFlags(root *cobra.Command, apply func(string, natschannel.Config)) {
+	servingFlagsE(root, func(name string, cfg natschannel.Config) error {
+		apply(name, cfg)
+		return nil
+	})
+}
+
+func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) error) {
 	cfg := natsConfig()
 	name := envOr("JAWA_NAME", "jawa")
 	root.Flags().StringVar(&name, "name", name, "agent display name")
@@ -87,8 +100,7 @@ func servingFlags(root *cobra.Command, apply func(string, natschannel.Config)) {
 				return err
 			}
 		}
-		apply(name, cfg)
-		return nil
+		return apply(name, cfg)
 	}
 }
 
@@ -112,7 +124,7 @@ func sandboxCleanupPolicy() bonnie.SandboxCleanupPolicy {
 	}
 }
 
-// Authentication is loaded by WithNATS from NATS_* environment variables,
+// Authentication is loaded by withNATS from NATS_* environment variables,
 // not included in model prompts. Local commands inherit these credentials.
 func natsConfig() natschannel.Config {
 	return natschannel.Config{
@@ -130,17 +142,7 @@ func natsConfig() natschannel.Config {
 // when it attempts to shut down the channel that was never constructed.
 func withNATS(cfg natschannel.Config) bonnie.Option {
 	return bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
-		c := cfg
-		if c.Conn == nil {
-			for field, key := range map[*string]string{
-				&c.URL: "NATS_URL", &c.NKeySeed: "NATS_NKEY_SEED",
-				&c.Token: "NATS_TOKEN", &c.Username: "NATS_USERNAME", &c.Password: "NATS_PASSWORD",
-			} {
-				if *field == "" {
-					*field = os.Getenv(key)
-				}
-			}
-		}
+		c := natsAuthConfig(cfg)
 		ch, err := natschannel.New(r, c)
 		if err != nil {
 			return nil, err
