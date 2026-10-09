@@ -82,7 +82,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.18.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.19.0
 bonnie chat
 ```
 
