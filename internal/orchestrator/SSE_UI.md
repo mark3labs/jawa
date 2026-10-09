@@ -1,31 +1,34 @@
-# Datastar SSE UI integration
+# Datastar SSE views
 
-`renderFragments(ctx, store, workflow, csrf)` returns board, activity, and empty
-notice components. `Snapshot(request, store, workflow)` renders their HTML.
-`app.snapshot` owns finite responses; `app.events` owns the live transport.
+The shared shell owns `@get('/events?view=…&project=…&state=…&card=…')`.
+Validated viewParams scope both full rendering and SSE snapshots; unknown values
+fall back safely. Forms submit hidden view/project/state/card fields alongside
+CSRF and their normal named fields, so mutation responses patch the originating view.
+Native forms redirect to the same canonical view (project creation goes to its board).
 
-The stable page shell initializes `@get('/events')`. The authenticated stream
-rechecks session validity and snapshots once per second, emitting changed DOM
-fragments plus 15-second heartbeat comments. This is server-side snapshot polling,
-not browser polling. Disconnects and session revocation terminate the stream.
-Write deadlines are refreshed for bounded, long-lived responses.
+The authenticated stream rechecks session validity and snapshots once per second,
+emitting changed HTML plus 15-second heartbeat comments. This is server-side
+snapshot polling, not browser polling. Streams terminate on disconnect, revocation,
+or shutdown. Write deadlines are refreshed to bound slow consumers.
 
-Datastar morphs `board-content`, `activity-panel`, and `notice` by ID using
-`datastar-patch-elements`. Unsolicited updates omit notice so action failures remain
-visible. Mutation success clears notice and patches dialog-close signals; failure
-patches an escaped notice without closing dialogs or navigating away.
+Stable element patch roots:
+- Board: `board-content` (only the selected project's lanes/cards).
+- Runs: `runs-content` (card/state filters, newest-first rows).
+- Agents: `agents-content` (presence summaries and endpoints).
+- Settings: static form content, deliberately not morphed.
+- All screens: `sidebar-nav`, `agent-status`, and action-only `notice`.
 
-Forms use `data-on:submit__prevent="@post('/…', {contentType:'form'})"` and submit
-`_csrf` plus named fields. Native authentication/logout still navigate normally.
-Dialogs live outside patched board/activity roots, preserving drafts. Disclosure
-panels use `data-preserve-attr="open"` to preserve expansion during morphing.
+Live updates omit notice; mutation success clears it or shows a success flash.
+Expected failures return finite SSE notices rather than navigation/raw SQL errors.
+Dialog-close signals accompany success. Project creation patches `goto` with a
+server-generated same-origin board URL; the stable shell navigates through a
+Datastar effect. No script strings from user input are executed.
 
-Sortable handles gestures only. A stable hidden form submits moves through Datastar.
-During drag, board-content uses `data-ignore-morph`; rejected or unchanged moves
-keep authoritative layout. A no-change drop requests finite GET /snapshot.
+Dialogs are outside patch roots, preserving drafts. Run disclosures preserve `open`.
+Rocket wraps SortableJS; entire noninteractive cards are draggable. During a drag,
+board-content uses data-ignore-morph. Drop restores authoritative layout before
+submitting a hidden Datastar form; unchanged drops request a finite snapshot.
 
-The UI uses prebuilt shadcn Card, Badge, Input, Button, Label, Textarea, Alert,
-Separator and dialog primitives. Native selects preserve form semantics without
-requiring component registry scripts. CSS is compiled through Tailwind with Nova
-styles; generated CSS/JS and templ output are intentionally embedded and committed.
-See CONTRACT.md for regeneration and browser smoke instructions.
+Rocket also wraps card popovers, keyboard shortcuts, copy controls and relative
+timestamps. Prebuilt shadcn-templ components retain their markup and styles. See
+CONTRACT.md for builds and integrated browser smoke instructions.

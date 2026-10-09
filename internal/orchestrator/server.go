@@ -96,9 +96,13 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	if r.URL.Path == "/" && r.Method == http.MethodGet {
+	if r.Method == http.MethodGet && r.URL.Path == "/" {
+		http.Redirect(w, r, "/board", http.StatusSeeOther)
+		return
+	}
+	if kind, ok := viewFromPath(r.URL.Path); ok && r.Method == http.MethodGet {
 		a.ensureCSRF(w, r)
-		renderWorkflowPage(w, r, a.s, a.workflow)
+		renderWorkflowPage(w, r, a.s, a.workflow, parseViewParams(r, kind))
 		return
 	}
 	if r.URL.Path == "/activity" && r.Method == http.MethodGet {
@@ -115,7 +119,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/events" {
 			a.events(w, r)
 		} else {
-			a.snapshot(w, r, false)
+			a.snapshot(w, r, false, mutationEffects{})
 		}
 		return
 	}
@@ -134,13 +138,18 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var err error
+	var fx mutationEffects
 	switch r.URL.Path {
 	case "/logout":
 		a.clear(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	case "/projects":
-		_, err = a.s.CreateProjectDetails(r.FormValue("name"), strings.ToLower(r.FormValue("provider")), r.FormValue("repo"), r.FormValue("base_branch"))
+		var project Project
+		project, err = a.s.CreateProjectDetails(r.FormValue("name"), strings.ToLower(r.FormValue("provider")), r.FormValue("repo"), r.FormValue("base_branch"))
+		if err == nil {
+			fx.goTo = boardPath(project.ID)
+		}
 	case "/cards":
 		_, err = a.s.CreateCardDetails(r.FormValue("project_id"), r.FormValue("title"), r.FormValue("description"), r.FormValue("issue_url"))
 	case "/cards/move":
@@ -180,16 +189,25 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/settings/nats":
 		err = a.rotateNATS(r.FormValue("url"), r.FormValue("username"), r.FormValue("password"))
+		if err == nil {
+			fx.flash = "Worker credentials rotated. Agents using the old password were disconnected."
+		}
 	}
 	if err != nil {
 		a.responseError(w, r, "Unable to apply request: "+err.Error()+". Refresh the board and try again.", http.StatusBadRequest)
 		return
 	}
 	if datastarRequest(r) {
-		a.snapshot(w, r, true)
+		a.snapshot(w, r, true, fx)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// Native form fallback: return to the screen the form came from.
+	back := parseViewParams(r, "")
+	if fx.goTo != "" {
+		http.Redirect(w, r, fx.goTo, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, back.Path(), http.StatusSeeOther)
 }
 func (a *app) ensureCSRF(w http.ResponseWriter, r *http.Request) {
 	if len(CSRFToken(r)) == 64 {

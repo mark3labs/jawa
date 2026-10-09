@@ -11,22 +11,30 @@ independent PR readiness policy. GET /events pushes authenticated Datastar SSE e
 provides a finite refresh. Mutations return element/signal patches. Stable keyed
 DOM roots preserve filtering, drafts, disclosures, and the page shell without reloads. No browser NATS connection is used.
 
-## UI build
+## Views and UI build
 
-`ui.templ` uses templ and prebuilt shadcn-templ Card, Badge, Input, Textarea,
-Label, Alert, Separator, Button and dialog primitives with compiled Tailwind/Nova CSS. Datastar 1.0.4 supplies declarative
-filtering. SortableJS lives in `jawa-board`, a project-scoped standard custom element
-with lifecycle cleanup, rollback on rejected moves, and keyboard-accessible selects.
-Datastar Pro Rocket is licensed and unavailable in this workspace; this wrapper is
-an explicit fallback, not a claim of Rocket integration.
+Authenticated routes: `/board?project=<id>`, `/runs?state=<tab>&card=<id>`,
+`/agents`, `/settings`. `/` redirects to `/board`. Board shows one project;
+execution history, agent inspection, and configuration live in separate views.
 
-From repository root regenerate templates:
-`go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate -f internal/orchestrator/ui.templ`.
+Templates are separated into `layout.templ`, `board.templ`, `runs.templ`,
+`agents.templ`, and `settings.templ`. Prebuilt shadcn-templ Card, Empty, Avatar,
+Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator
+and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
+Rocket light-DOM components encapsulate Sortable, native popover actions, shortcuts,
+relative timestamps and clipboard behavior; templ retains ownership of markup.
+
+Regenerate templates from repository root:
+`go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate ./internal/orchestrator`.
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
-Generated `ui_templ.go` and frontend assets are intentionally checked in and embedded;
-production requires neither Node nor CDN access. Datastar is vendored from
-https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar.js
-with its license in frontend/DATASTAR-LICENSE.md.
+Generated templ output and frontend assets are intentionally checked in and embedded;
+production requires neither Node nor CDN access. The build locates shadcn components
+using `go list -m` and copies the self-hosted Inter Latin variable font.
+
+Datastar/Rocket is vendored from the official v1.0.4 bundle:
+https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rocket.js.
+It includes Datastar v1.0.4 and Rocket beta.2 (beta API). Datastar's license is in
+frontend/DATASTAR-LICENSE.md, Inter's OFL license in frontend/INTER-LICENSE.
 
 ## Full offline browser smoke
 

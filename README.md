@@ -57,13 +57,20 @@ is guidance, not a scheduler-enforced timeout. Review comments arriving after Do
 do not automatically reopen work. Use one orchestrator per database and NATS scope;
 its stable durable consumers are not multi-orchestrator isolated.
 
-The UI uses templ, prebuilt shadcn-templ components with Tailwind/Nova styling,
-Datastar SSE element/signal patches, and locally bundled SortableJS. Board actions
-do not reload the page; live patches preserve drafts and expanded history.
-Datastar Pro Rocket requires a licensed distribution not present here; the drag
-wrapper currently uses a standard custom element instead. See
-[`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for UI
-regeneration and browser smoke-test instructions.
+The UI separates **Board** (one project at a time), **Runs**, **Agents**, and
+**Settings** into bookmarkable views. It uses templ and prebuilt shadcn-templ
+components, with a dark Jawa-inspired robe-brown/sand/amber palette, compact
+cards, keyboard-accessible action menus, and self-hosted Inter typography.
+Datastar SSE morphs only each view's keyed content, sidebar counts, and agent
+chip. Rocket (Datastar v1.0.4 + Rocket beta.2) wraps SortableJS, menus, relative
+timestamps, clipboard controls, and keyboard shortcuts. No production CDN is used.
+
+Keyboard shortcuts: `c` opens a new card, `/` focuses the board filter, and
+`g` followed by `b`, `r`, `a`, or `s` opens Board, Runs, Agents, or Settings.
+Shortcuts are disabled while typing or using a dialog. Card actions are in the
+ellipsis menu; detailed execution history lives in Runs, not inside board cards.
+See [`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for
+UI regeneration and browser smoke-test instructions.
 
 Keep HTTP and NATS on loopback unless protected by appropriate TLS and network
 controls. There is no native orchestrator TLS configuration yet. Keep the data

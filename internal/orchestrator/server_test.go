@@ -117,7 +117,8 @@ func TestAuthCSRFAndRoutes(t *testing.T) {
 		t.Fatal("insecure session cookie")
 	}
 	status(t, request(a, "POST", "/setup", nil), 409)
-	status(t, request(a, "GET", "/", nil, session, csrf), 200)
+	status(t, request(a, "GET", "/", nil, session, csrf), 303)
+	status(t, request(a, "GET", "/board", nil, session, csrf), 200)
 	status(t, request(a, "POST", "/projects", url.Values{"name": {"bad"}}, session), 403)
 	status(t, request(a, "GET", "/projects", nil, session), 405)
 	status(t, request(a, "POST", "/projects", url.Values{"_csrf": {csrf.Value}, "name": {"demo"}, "provider": {"github"}, "repo": {"https://github.com/org/repo"}, "base_branch": {"main"}}, session, csrf), 303)

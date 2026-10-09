@@ -1,0 +1,110 @@
+package orchestrator
+
+import (
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/input"
+	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/separator"
+)
+
+templ settingsContent(d pageData) {
+	<div id="settings-content" class="view settings-view">
+		<div class="view-head">
+			<div>
+				<h1>Settings</h1>
+				<p class="meta">Connect agents, review provider access and rotate credentials.</p>
+			</div>
+		</div>
+		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
+			@card.Header() {
+				@card.Title() {
+					Worker connection
+				}
+				@card.Description() {
+					Agents connect to the embedded NATS server with these credentials. Rotating them disconnects workers using the old password. Remote access needs TLS in front of NATS.
+				}
+			}
+			@card.Content() {
+				<div class="field">
+					@label.Label(label.Props{For: "nats-url"}) {
+						Server address
+					}
+					<div class="input-row">
+						@input.Input(input.Props{ID: "nats-url", Value: natsDisplayURL(d.nats.URL), Attributes: templ.Attributes{"readonly": true}})
+						<jawa-copy text={ natsDisplayURL(d.nats.URL) }>
+							<button type="button" class="btn" aria-label="Copy server address">
+								@icon("copy")
+								<span class="copy-label">Copy</span>
+							</button>
+						</jawa-copy>
+					</div>
+				</div>
+				<form method="post" action="/settings/nats" data-reset-on-success data-on:submit__prevent="@post('/settings/nats', {contentType:'form'})">
+					<input type="hidden" name="_csrf" value={ d.csrf }/>
+					@viewFields(d.v)
+					<input type="hidden" name="url" value={ d.nats.URL }/>
+					<div class="field-grid">
+						@textField("nats-user", "username", "Username", d.nats.Username, true)
+						<div class="field">
+							@label.Label(label.Props{For: "nats-password"}) {
+								New password
+							}
+							@input.Input(input.Props{ID: "nats-password", Name: "password", Type: "password", Required: true, Placeholder: "At least 12 characters", Attributes: templ.Attributes{"minlength": "12", "autocomplete": "new-password"}})
+						</div>
+					</div>
+					<div class="form-actions">
+						@submit("Rotate credentials")
+					</div>
+				</form>
+			}
+		}
+		@card.Card(card.Props{Class: "panel", ID: "connect-agent"}) {
+			@card.Header() {
+				@card.Title() {
+					Connect an agent
+				}
+				@card.Description() {
+					Run this on any machine that can reach the server. Use the worker password you set above.
+				}
+			}
+			@card.Content() {
+				@connectBlock(d)
+			}
+		}
+		@card.Card(card.Props{Class: "panel", ID: "providers"}) {
+			@card.Header() {
+				@card.Title() {
+					Git providers
+				}
+				@card.Description() {
+					The orchestrator verifies pull requests, CI and review feedback using read-only tokens from its own environment. Values are never shown.
+				}
+			}
+			@card.Content() {
+				<ul class="rows">
+					for _, p := range providerConfigs() {
+						<li class="row">
+							@icon("key")
+							<div class="row-text">
+								<strong>{ p.Name }</strong>
+								<span class="muted mono">{ p.Detail }</span>
+							</div>
+							if p.Configured {
+								@badge.Badge(badge.Props{Class: "badge-ok"}) {
+									Configured
+								}
+							} else {
+								@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+									Not configured
+								}
+							}
+						</li>
+					}
+				</ul>
+				@separator.Separator()
+				<p class="muted small">Cards reach Done only after the pull request, its CI and review feedback pass verification. Done means ready for human review and merge; Jawa never merges for you.</p>
+			}
+		}
+	</div>
+}

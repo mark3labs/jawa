@@ -69,7 +69,7 @@ func TestSSESnapshotAndAuthentication(t *testing.T) {
 			w = request(a, "GET", "/snapshot", nil, session, csrf)
 		}
 		body := assertSSE(t, w)
-		for _, text := range []string{`id="board-content"`, `id="activity-panel"`, "Real project", "Real card", "data: elements "} {
+		for _, text := range []string{`id="board-content"`, `id="agent-status"`, "Real project", "Real card", "data: elements "} {
 			if !strings.Contains(body, text) {
 				t.Fatalf("missing %q: %s", text, body)
 			}
@@ -98,7 +98,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	session, csrf := sseCookies(t, a)
 	form := url.Values{"_csrf": {csrf.Value}, "name": {"SSE project"}, "provider": {"github"}, "repo": {"https://github.com/example/repo"}, "base_branch": {"main"}}
 	body := assertSSE(t, sseRequest(a, "POST", "/projects", form, session, csrf))
-	for _, text := range []string{`id="notice"`, `id="board-content"`, `id="activity-panel"`, `event: datastar-patch-signals`, `"projectOpen":false`} {
+	for _, text := range []string{`id="notice"`, `id="board-content"`, `id="agent-status"`, `event: datastar-patch-signals`, `"projectOpen":false`} {
 		if !strings.Contains(body, text) {
 			t.Fatalf("missing %q", text)
 		}

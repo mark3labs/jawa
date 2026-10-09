@@ -9,7 +9,6 @@ import (
 	"github.com/a-h/templ"
 	"net/http"
 	"net/url"
-	"slices"
 	"time"
 
 	"github.com/mark3labs/bonnie/presence"
@@ -18,17 +17,26 @@ import (
 //go:embed assets/*
 var uiAssets embed.FS
 
-// uiSnapshot is shared by the full page and SSE, so both show the same guards.
+// uiSnapshot is shared by full pages and SSE, so both show the same guards.
 type uiSnapshot struct {
 	projects []Project
 	cards    []Card
 	workers  []presence.Record
 	attempts []Attempt
-	message  string
+	nats     NATSConfig
+	presence bool // false when presence discovery failed
+	now      time.Time
+}
+
+// pageData is everything a view needs to render. Views never query storage.
+type pageData struct {
+	csrf string
+	v    viewParams
+	uiSnapshot
 }
 
 func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, error) {
-	var snap uiSnapshot
+	snap := uiSnapshot{now: time.Now(), nats: s.NATSConfig(), presence: true}
 	var err error
 	if snap.projects, err = s.Projects(); err != nil {
 		return snap, fmt.Errorf("load projects: %w", err)
@@ -36,35 +44,54 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	if snap.cards, err = s.Cards(""); err != nil {
 		return snap, fmt.Errorf("load cards: %w", err)
 	}
-	snap.message = "Live activity is not connected."
 	if wf != nil {
 		presenceCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		snap.workers, err = wf.Workers(presenceCtx)
 		cancel()
-		snap.message = "Live activity · connected via server events."
-		if err != nil {
-			snap.message = "Agent presence unavailable; activity will retry."
-		}
-		snap.attempts, err = wf.Attempts()
-		if err != nil {
+		snap.presence = err == nil
+		if snap.attempts, err = wf.Attempts(); err != nil {
 			return snap, fmt.Errorf("load attempt history: %w", err)
 		}
 	}
 	return snap, nil
 }
 
-// renderFragments returns only stable patch roots, never the shell or open forms.
-func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string) ([]templ.Component, error) {
+func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams) (pageData, error) {
 	snap, err := loadUISnapshot(ctx, s, wf)
+	if err != nil {
+		return pageData{}, err
+	}
+	if v.View == viewBoard {
+		if p, ok := selectedProject(snap.projects, v.Project); ok {
+			v.Project = p.ID
+		}
+	}
+	return pageData{csrf: csrf, v: v, uiSnapshot: snap}, nil
+}
+
+// renderFragments returns only stable patch roots, never the shell or open
+// forms: the active view's root, the sidebar navigation, the agent chip and,
+// last, the (empty) notice. Live updates omit that last fragment.
+func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams) ([]templ.Component, error) {
+	d, err := loadPageData(ctx, s, wf, csrf, v)
 	if err != nil {
 		return nil, err
 	}
-	return []templ.Component{boardContent(csrf, snap.projects, snap.cards, snap.attempts), activityPanel(snap.workers, snap.attempts, snap.message), notification("")}, nil
+	var out []templ.Component
+	switch v.View {
+	case viewBoard:
+		out = append(out, boardContent(d))
+	case viewRuns:
+		out = append(out, runsContent(d))
+	case viewAgents:
+		out = append(out, agentsContent(d))
+	}
+	return append(out, sidebarNav(d), agentStatus(d), notification("", "")), nil
 }
 
-// Snapshot renders HTML for a parent's Datastar patch-elements SSE frame.
-func Snapshot(r *http.Request, s *Store, wf *Workflow) (string, error) {
-	fragments, err := renderFragments(r.Context(), s, wf, CSRFToken(r))
+// Snapshot renders HTML for a Datastar patch-elements SSE frame.
+func Snapshot(r *http.Request, s *Store, wf *Workflow, v viewParams) (string, error) {
+	fragments, err := renderFragments(r.Context(), s, wf, CSRFToken(r), v)
 	if err != nil {
 		return "", err
 	}
@@ -77,45 +104,19 @@ func Snapshot(r *http.Request, s *Store, wf *Workflow) (string, error) {
 	return out.String(), nil
 }
 
-func renderWorkflowPage(w http.ResponseWriter, r *http.Request, s *Store, wf *Workflow) {
-	snap, err := loadUISnapshot(r.Context(), s, wf)
+func renderWorkflowPage(w http.ResponseWriter, r *http.Request, s *Store, wf *Workflow, v viewParams) {
+	d, err := loadPageData(r.Context(), s, wf, CSRFToken(r), v)
 	if err != nil {
 		http.Error(w, "Unable to load workspace", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = page(CSRFToken(r), snap.projects, snap.cards, s.NATSConfig(), snap.workers, snap.attempts, snap.message).Render(r.Context(), w)
+	_ = appPage(d).Render(r.Context(), w)
 }
 
-func displayValue(s string) string {
-	if s == "" {
-		return "Not reported"
-	}
-	return s
-}
-func activityCounts(workers []presence.Record, attempts []Attempt) string {
-	return fmt.Sprintf("%d agents · %d attempts", len(workers), len(attempts))
-}
 func inspectRecord(r presence.Record) string {
 	b, _ := json.MarshalIndent(r, "", "  ")
 	return string(b)
-}
-func workerAvailability(r presence.Record) string {
-	for _, e := range r.Endpoints {
-		if r.State == presence.Ready && e.Input && e.Ready {
-			return "Available (advertised)"
-		}
-	}
-	return displayValue(string(r.State)) + " · input not ready"
-}
-func workerRun(r presence.Record, attempts []Attempt) string {
-	for _, a := range slices.Backward(attempts) {
-
-		if a.WorkerID == r.Identity.Worker && a.State == "running" {
-			return displayValue(a.RunID)
-		}
-	}
-	return "None reported"
 }
 func latestAttempt(cardID string, attempts []Attempt) []Attempt {
 	var latest *Attempt
@@ -170,22 +171,6 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 		return !active
 	}
 	return false
-}
-func laneHint(status string) string {
-	switch status {
-	case "Building":
-		return "Drop a Todo card here to start work."
-	case "Done":
-		return "Verified pull requests arrive here."
-	}
-	return "Your next idea starts here."
-}
-func postAction(route string, confirm bool) string {
-	action := "@post('" + route + "', {contentType:'form'})"
-	if confirm {
-		return "$deleteOpen = true"
-	}
-	return action
 }
 
 func passwordAutocomplete(kind string) string {

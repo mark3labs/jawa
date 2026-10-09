@@ -6,6 +6,8 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -55,16 +57,16 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 	_ = newSSEWriter(w).write(elementsFrame(notice))
 }
 
-// Unsolicited snapshots never include the third (empty notice) fragment. The
-// browser's data-ignore-morph on board-content protects a drag in progress;
-// activity-panel remains independently morphable.
-func (a *app) liveSnapshot(r *http.Request) (string, error) {
-	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r))
+// Unsolicited snapshots never include the last (notice) fragment, so a failed
+// action stays visible. The browser's data-ignore-morph on the board protects a
+// drag in progress; the other roots are independently morphable.
+func (a *app) liveSnapshot(r *http.Request, v viewParams) (string, error) {
+	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v)
 	if err != nil {
 		return "", err
 	}
 	var out bytes.Buffer
-	for _, fragment := range fragments[:2] {
+	for _, fragment := range fragments[:len(fragments)-1] {
 		if err := fragment.Render(r.Context(), &out); err != nil {
 			return "", err
 		}
@@ -72,13 +74,20 @@ func (a *app) liveSnapshot(r *http.Request) (string, error) {
 	return out.String(), nil
 }
 
-func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool) {
+// mutationEffects holds what a successful mutation adds to its response.
+type mutationEffects struct {
+	flash string // info notice shown instead of clearing it
+	goTo  string // same-origin path the browser should navigate to
+}
+
+func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx mutationEffects) {
+	v := parseViewParams(r, "")
 	var content string
 	var err error
 	if mutation {
-		content, err = Snapshot(r, a.s, a.workflow)
+		content, err = a.mutationSnapshot(r, v, fx)
 	} else {
-		content, err = a.liveSnapshot(r)
+		content, err = a.liveSnapshot(r, v)
 	}
 	if err != nil {
 		a.responseError(w, r, "Unable to refresh workspace. Please try again.", http.StatusServiceUnavailable)
@@ -88,24 +97,57 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool) {
 	if err := stream.write(elementsFrame(content)); err != nil {
 		return
 	}
-	if mutation {
-		var signals string
-		switch r.URL.Path {
-		case "/projects":
-			signals = `{"projectOpen":false}`
-		case "/cards":
-			signals = `{"cardOpen":false}`
-		case "/cards/delete":
-			signals = `{"deleteOpen":false,"deleteCard":""}`
-		}
-		if signals != "" {
-			_ = stream.write("event: datastar-patch-signals\ndata: signals " + signals + "\n\n")
+	if !mutation {
+		return
+	}
+	signals := map[string]string{}
+	switch r.URL.Path {
+	case "/projects":
+		signals["projectOpen"] = "false"
+	case "/cards":
+		signals["cardOpen"] = "false"
+	case "/cards/delete":
+		signals["deleteOpen"] = "false"
+		signals["deleteCard"] = `""`
+	}
+	if fx.goTo != "" {
+		signals["goto"] = strconv.Quote(fx.goTo)
+	}
+	if len(signals) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(signals))
+	for k := range signals {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, `"`+k+`":`+signals[k])
+	}
+	_ = stream.write("event: datastar-patch-signals\ndata: signals {" + strings.Join(parts, ",") + "}\n\n")
+}
+
+func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects) (string, error) {
+	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v)
+	if err != nil {
+		return "", err
+	}
+	if fx.flash != "" {
+		fragments[len(fragments)-1] = notification(fx.flash, "info")
+	}
+	var out bytes.Buffer
+	for _, fragment := range fragments {
+		if err := fragment.Render(r.Context(), &out); err != nil {
+			return "", err
 		}
 	}
+	return out.String(), nil
 }
 
 func (a *app) events(w http.ResponseWriter, r *http.Request) {
-	content, err := a.liveSnapshot(r)
+	v := parseViewParams(r, "")
+	content, err := a.liveSnapshot(r, v)
 	if err != nil {
 		http.Error(w, "workspace unavailable", http.StatusServiceUnavailable)
 		return
@@ -126,7 +168,7 @@ func (a *app) events(w http.ResponseWriter, r *http.Request) {
 			if r.Context().Err() != nil || !a.authed(r) {
 				return
 			}
-			next, err := a.liveSnapshot(r)
+			next, err := a.liveSnapshot(r, v)
 			if err != nil {
 				return
 			} // Never send internal errors into an open stream.

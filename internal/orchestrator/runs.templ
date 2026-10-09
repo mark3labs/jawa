@@ -1,0 +1,136 @@
+package orchestrator
+
+import (
+	"strconv"
+
+	"github.com/axadrn/shadcn-templ/v2/components/empty"
+)
+
+templ runsContent(d pageData) {
+	<div id="runs-content" class="view runs-view">
+		<div class="view-head">
+			<div>
+				<h1>Runs</h1>
+				<p class="meta">Every attempt agents have made, newest first.</p>
+			</div>
+			if d.v.Card != "" {
+				if c, ok := cardByID(d.cards, d.v.Card); ok {
+					<a class="chip filter-chip" href="/runs" title="Clear filter">
+						<span>{ cardKey(d.projects, c) }</span>
+						<span aria-hidden="true">✕</span>
+					</a>
+				}
+			}
+		</div>
+		<nav class="tabs" aria-label="Filter runs by state">
+			for _, tab := range runStateTabs {
+				<a class="tab" href={ templ.SafeURL(runsPath(d.v, tab)) } aria-current={ isCurrent(d.v.State == tab) }>
+					<span>{ tabLabel(tab) }</span>
+					<span class="tab-count">{ strconv.Itoa(countRunStates(filterRuns(d.attempts, viewParams{Card: d.v.Card, State: "all"}), tab)) }</span>
+				</a>
+			}
+		</nav>
+		if rows := filterRuns(d.attempts, d.v); len(rows) > 0 {
+			<div class="run-list" role="list">
+				<div class="run-head" aria-hidden="true">
+					<span></span>
+					<span>Card</span>
+					<span>State</span>
+					<span>Attempt</span>
+					<span>Agent</span>
+					<span>PR</span>
+					<span>Updated</span>
+				</div>
+				for _, a := range rows {
+					@runRow(d, a)
+				}
+			</div>
+		} else {
+			@empty.Empty(empty.Props{Class: "page-empty"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon("runs")
+					}
+					@empty.Title() {
+						No runs here yet
+					}
+					@empty.Description() {
+						Move a card to Building and an agent will pick it up. Each attempt shows up here with its branch, pull request and result.
+					}
+				}
+			}
+		}
+	</div>
+}
+
+templ runRow(d pageData, a Attempt) {
+	<details id={ "run-" + a.ID } class={ "run", "tone-" + runTone(a) } role="listitem" data-preserve-attr="open">
+		<summary class="run-row">
+			@toneIcon(runTone(a))
+			<span class="run-main">
+				if c, ok := cardByID(d.cards, a.CardID); ok {
+					<span class="run-key">{ cardKey(d.projects, c) }</span>
+					<span class="run-title">{ c.Title }</span>
+				} else {
+					<span class="run-key">{ shortID(a.CardID) }</span>
+					<span class="run-title muted">Deleted card</span>
+				}
+			</span>
+			<span class={ "run-state", "tone-" + runTone(a) }>{ runLabel(a) }</span>
+			<span class="run-attempt">#{ strconv.Itoa(a.Number) }</span>
+			<span class="run-worker">{ displayDash(a.WorkerID) }</span>
+			<span class="run-pr">
+				if pr := safeActivityURL(a.PRURL); pr != "" {
+					<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer">
+						@icon("pr")
+						<span>PR</span>
+					</a>
+				} else {
+					<span class="muted">—</span>
+				}
+			</span>
+			<span class="run-time">
+				<jawa-time datetime={ timeAttr(a.UpdatedAt) }>{ relativeTime(a.UpdatedAt, d.now) }</jawa-time>
+			</span>
+		</summary>
+		<div class="run-body">
+			<dl class="facts">
+				<div>
+					<dt>Branch</dt>
+					<dd class="mono">
+						@icon("branch")
+						<span>{ attemptBranch(a) }</span>
+						<jawa-copy text={ attemptBranch(a) } aria-label="Copy branch name">
+							<button type="button" class="icon-btn" tabindex="-1">
+								@icon("copy")
+							</button>
+						</jawa-copy>
+					</dd>
+				</div>
+				<div>
+					<dt>Run state</dt>
+					<dd>{ displayDash(a.RunState) }</dd>
+				</div>
+				<div>
+					<dt>Run ID</dt>
+					<dd class="mono">{ displayDash(a.RunID) }</dd>
+				</div>
+				<div>
+					<dt>Task ID</dt>
+					<dd class="mono">{ a.TaskID }</dd>
+				</div>
+				<div>
+					<dt>Created</dt>
+					<dd>{ a.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC") }</dd>
+				</div>
+			</dl>
+			if a.Error != "" {
+				<p class={ "card-note", "tone-" + runTone(a) }>{ a.Error }</p>
+			}
+			if a.Result != "" {
+				<h4 class="body-label">Agent result</h4>
+				<pre class="result">{ a.Result }</pre>
+			}
+		</div>
+	</details>
+}

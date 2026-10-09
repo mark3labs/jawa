@@ -1,0 +1,144 @@
+package orchestrator
+
+import (
+	"strconv"
+
+	"github.com/axadrn/shadcn-templ/v2/components/avatar"
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/empty"
+	"github.com/axadrn/shadcn-templ/v2/components/table"
+	"github.com/mark3labs/bonnie/presence"
+)
+
+templ agentsContent(d pageData) {
+	<div id="agents-content" class="view agents-view">
+		<div class="view-head">
+			<div>
+				<h1>Agents</h1>
+				<p class="meta">Workers announce themselves over NATS presence. Availability is advisory, not a scheduling guarantee.</p>
+			</div>
+			<div class="view-stats">
+				<span class="stat"><strong>{ strconv.Itoa(readyWorkers(d.workers)) }</strong> available</span>
+				<span class="stat"><strong>{ strconv.Itoa(len(d.workers)) }</strong> connected</span>
+			</div>
+		</div>
+		if !d.presence {
+			<p class="card-note tone-blocked">Presence discovery is unavailable right now. This page will recover on its own.</p>
+		}
+		if len(d.workers) == 0 {
+			@empty.Empty(empty.Props{Class: "page-empty"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon("agents")
+					}
+					@empty.Title() {
+						No agents online
+					}
+					@empty.Description() {
+						Start a Jawa agent with presence enabled and it appears here within seconds. Use the credentials from Settings.
+					}
+				}
+				@empty.Content() {
+					@connectBlock(d)
+				}
+			}
+		} else {
+			<div class="agent-grid">
+				for _, w := range d.workers {
+					@agentCard(d, w)
+				}
+			</div>
+		}
+	</div>
+}
+
+templ connectBlock(d pageData) {
+	<div class="connect">
+		<pre class="snippet">{ connectSnippet(d.nats.URL, d.nats.Username) }</pre>
+		<jawa-copy text={ connectSnippet(d.nats.URL, d.nats.Username) }>
+			<button type="button" class="btn">
+				@icon("copy")
+				<span class="copy-label">Copy</span>
+			</button>
+		</jawa-copy>
+	</div>
+}
+
+templ agentCard(d pageData, w presence.Record) {
+	@card.Card(card.Props{ID: "agent-" + w.Identity.Worker, Class: "agent-card"}) {
+		<div class="agent-head">
+			@avatar.Avatar(avatar.Props{Size: avatar.SizeLg}) {
+				@avatar.Fallback() {
+					{ initial(w.Identity.Worker) }
+				}
+			}
+			<div class="agent-id">
+				<h3>{ w.Identity.Worker }</h3>
+				<p class="mono muted">{ shortID(w.Identity.Instance) }</p>
+			</div>
+			if workerReady(w) {
+				@badge.Badge(badge.Props{Class: "badge-ok"}) {
+					Available
+				}
+			} else {
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+					{ string(w.State) }
+				}
+			}
+		</div>
+		<div class="agent-run">
+			if a, ok := workerCurrentRun(w, d.attempts); ok {
+				if c, found := cardByID(d.cards, a.CardID); found {
+					@toneIcon(runTone(a))
+					<a href={ templ.SafeURL(runsForCardPath(c.ID)) }>
+						<span class="run-key">{ cardKey(d.projects, c) }</span>
+						{ c.Title }
+					</a>
+				}
+			} else {
+				<span class="muted">Idle</span>
+			}
+			<span class="spacer"></span>
+			<jawa-time datetime={ timeAttr(w.UpdatedAt) }>{ relativeTime(w.UpdatedAt, d.now) }</jawa-time>
+		</div>
+		@table.Table(table.Props{Class: "endpoints"}) {
+			@table.Header() {
+				@table.Row() {
+					@table.Head() {
+						Channel
+					}
+					@table.Head() {
+						Address
+					}
+					@table.Head() {
+						Status
+					}
+				}
+			}
+			@table.Body() {
+				for _, e := range w.Endpoints {
+					@table.Row() {
+						@table.Cell() {
+							{ e.Channel }
+						}
+						@table.Cell(table.CellProps{Class: "mono"}) {
+							{ e.Address }
+						}
+						@table.Cell() {
+							if e.Ready {
+								<span class="ready-yes">Ready</span>
+							} else {
+								<span class="muted">Not ready</span>
+							}
+						}
+					}
+				}
+			}
+		}
+		<details id={ "inspect-" + w.Identity.Worker } data-preserve-attr="open">
+			<summary>Inspect record</summary>
+			<pre class="result">{ inspectRecord(w) }</pre>
+		</details>
+	}
+}

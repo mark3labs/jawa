@@ -1,11 +1,13 @@
-# Live activity
+# Runs and agents
 
-The UI consumes authenticated GET /events using Datastar @get, not /activity
-polling. The server renders keyed board/activity fragments and pushes changes
-as datastar-patch-elements events. Mutations return element patches and dialog
-close signals; action errors patch an escaped notice without navigation.
+Runs (`/runs`) and Agents (`/agents`) are separate authenticated views, not sections
+beneath the kanban. Runs can be narrowed by state and card. Agents show availability,
+current work, last update, channel endpoints, and optional raw-record inspection.
 
-GET /activity remains available for JSON inspection and integration assertions.
-See SSE_UI.md and UI_SSE.md for component roots and wire behavior.
-History/worker disclosures use data-preserve-attr="open"; create/delete dialogs
-are outside patched regions so drafts survive live updates.
+Each view subscribes to its scoped Datastar SSE stream. A live `agent-status` chip
+and sidebar counts appear everywhere. Board cards link to detailed Runs rather than
+expanding logs in the board. Provider token configuration is shown as boolean status
+in Settings only; credentials never enter these snapshots.
+
+GET /activity remains available for JSON inspection/integration assertions, but the
+browser UI does not poll it. See SSE_UI.md for scoped patch roots and lifecycle.

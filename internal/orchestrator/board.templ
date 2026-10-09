@@ -1,0 +1,215 @@
+package orchestrator
+
+import (
+	"strconv"
+
+	"github.com/axadrn/shadcn-templ/v2/components/button"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/empty"
+)
+
+templ boardContent(d pageData) {
+	<div id="board-content" class="view board-view">
+		if p, ok := selectedProject(d.projects, d.v.Project); ok {
+			<div class="view-head">
+				<div class="view-title">
+					<span class="proj-mark lg">{ initial(p.Name) }</span>
+					<div>
+						<h1>{ p.Name }</h1>
+						<p class="meta">
+							<span class="chip plain">{ providerLabel(p.Provider) }</span>
+							if u := repoURL(p.Repo); u != "" {
+								<a class="meta-link" href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">{ repoLabel(p.Repo) }</a>
+							} else {
+								<span>{ repoLabel(p.Repo) }</span>
+							}
+							<span class="meta-sep">·</span>
+							@icon("branch")
+							<span>{ p.BaseBranch }</span>
+						</p>
+					</div>
+				</div>
+				<div class="view-stats">
+					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Building"))) }</strong> building</span>
+					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
+				</div>
+			</div>
+			<jawa-board project={ p.ID }>
+				<div class="lanes">
+					for _, status := range []string{"Todo", "Building", "Done"} {
+						<section class={ "lane", "lane-" + status } aria-label={ laneName(status) }>
+							<header class="lane-head">
+								@laneIcon(status)
+								<h2>{ laneName(status) }</h2>
+								<span class="lane-count">{ strconv.Itoa(len(cardsIn(d.cards, p.ID, status))) }</span>
+								if status == "Todo" {
+									<button type="button" class="icon-btn lane-add" aria-label="New card" data-on:click="$cardOpen = true">
+										@icon("plus")
+									</button>
+								}
+							</header>
+							<div id={ "lane-" + p.ID + "-" + status } class="task-list" data-status={ status }>
+								for _, c := range cardsIn(d.cards, p.ID, status) {
+									@taskCard(d, c)
+								}
+								if len(cardsIn(d.cards, p.ID, status)) == 0 {
+									<p class="lane-empty">{ laneHint(status) }</p>
+								}
+							</div>
+						</section>
+					}
+				</div>
+			</jawa-board>
+		} else {
+			@empty.Empty(empty.Props{Class: "page-empty"}) {
+				@empty.Header() {
+					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
+						@icon("board")
+					}
+					@empty.Title() {
+						Create your first project
+					}
+					@empty.Description() {
+						Connect a GitHub or Forgejo repository. Cards you move to Building are built by an agent and arrive as pull requests.
+					}
+				}
+				@empty.Content() {
+					@button.Button(button.Props{Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$projectOpen = true"}}) {
+						@icon("plus")
+						New project
+					}
+				}
+			}
+		}
+	</div>
+}
+
+templ taskCard(d pageData, c Card) {
+	@card.Card(card.Props{ID: "card-" + c.ID, Class: "task-card", Attributes: templ.Attributes{"data-card-id": c.ID, "data-title": c.Title, "data-status": c.Status, "data-show": filterExpr(d.projects, c)}}) {
+		<div class="card-top">
+			<span class="card-key">{ cardKey(d.projects, c) }</span>
+			@cardMenu(d, c)
+		</div>
+		<h3 class="card-title">{ c.Title }</h3>
+		if c.Description != "" {
+			<p class="card-desc">{ c.Description }</p>
+		}
+		<div class="card-meta">
+			@cardChips(d, c)
+		</div>
+		@cardNote(d, c)
+	}
+}
+
+templ cardChips(d pageData, c Card) {
+	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
+		<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
+			@toneIcon(runTone(la[0]))
+			<span>{ runLabel(la[0]) }</span>
+		</a>
+		if pr := safeActivityURL(la[0].PRURL); pr != "" {
+			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
+				@icon("pr")
+				<span>PR</span>
+			</a>
+		}
+		if la[0].WorkerID != "" && attemptActive(la[0]) {
+			<span class="chip plain" title="Assigned agent">
+				@icon("agents")
+				<span>{ la[0].WorkerID }</span>
+			</span>
+		}
+	} else if c.Status == "Building" {
+		<span class="chip tone-queued">
+			@toneIcon("queued")
+			<span>Not started</span>
+		</span>
+	}
+	if iss := safeActivityURL(c.IssueURL); iss != "" {
+		<a class="chip" href={ templ.SafeURL(iss) } target="_blank" rel="noopener noreferrer" title="Open linked issue">
+			@icon("issue")
+			<span>Issue</span>
+		</a>
+	}
+	<span class="chip-time">
+		<jawa-time datetime={ timeAttr(cardUpdated(c, d.attempts)) }>{ relativeTime(cardUpdated(c, d.attempts), d.now) }</jawa-time>
+	</span>
+}
+
+templ cardNote(d pageData, c Card) {
+	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 && la[0].Error != "" && !attemptActive(la[0]) && runTone(la[0]) != "ready" {
+		<p class={ "card-note", "tone-" + runTone(la[0]) }>{ la[0].Error }</p>
+	}
+}
+
+// cardMenu is a Rocket-managed popover: the component positions the native
+// popover next to its trigger and closes it after an action is chosen.
+templ cardMenu(d pageData, c Card) {
+	<jawa-menu>
+		<button type="button" class="icon-btn" popovertarget={ "menu-" + c.ID } aria-label={ "Actions for " + c.Title } aria-haspopup="menu">
+			@icon("more")
+		</button>
+		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
+			if c.Status == "Todo" {
+				@menuPost(d, c, "/cards/move", "Start work", "play", [][2]string{{"status", "Building"}, {"position", "0"}})
+			}
+			if canAction(c, d.attempts, "start") {
+				@menuPost(d, c, "/cards/retry", "Start work", "play", nil)
+			}
+			if canAction(c, d.attempts, "retry") {
+				@menuPost(d, c, "/cards/retry", "Retry attempt", "retry", nil)
+			}
+			if c.Status != "Todo" {
+				if canAction(c, d.attempts, "reset") {
+					@menuPost(d, c, "/cards/reset", "Reset to Todo", "reset", nil)
+				} else {
+					@menuDisabled("Reset to Todo", "reset", actionReason(c, d.attempts, "reset"))
+				}
+			}
+			if len(latestAttempt(c.ID, d.attempts)) > 0 {
+				<a class="menu-item" role="menuitem" href={ templ.SafeURL(runsForCardPath(c.ID)) }>
+					@icon("runs")
+					<span>View runs</span>
+				</a>
+			}
+			if iss := safeActivityURL(c.IssueURL); iss != "" {
+				<a class="menu-item" role="menuitem" href={ templ.SafeURL(iss) } target="_blank" rel="noopener noreferrer">
+					@icon("external")
+					<span>Open issue</span>
+				</a>
+			}
+			<div class="menu-sep" role="separator"></div>
+			if canAction(c, d.attempts, "delete") {
+				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOpen = true" }>
+					@icon("trash")
+					<span>Delete…</span>
+				</button>
+			} else {
+				@menuDisabled("Delete", "trash", actionReason(c, d.attempts, "delete"))
+			}
+		</div>
+	</jawa-menu>
+}
+
+templ menuPost(d pageData, c Card, route, label, ic string, extra [][2]string) {
+	<form method="post" action={ route } data-on:submit__prevent={ "@post('" + route + "', {contentType:'form'})" }>
+		<input type="hidden" name="_csrf" value={ d.csrf }/>
+		@viewFields(d.v)
+		<input type="hidden" name="card_id" value={ c.ID }/>
+		for _, kv := range extra {
+			<input type="hidden" name={ kv[0] } value={ kv[1] }/>
+		}
+		<button type="submit" class="menu-item" role="menuitem">
+			@icon(ic)
+			<span>{ label }</span>
+		</button>
+	</form>
+}
+
+templ menuDisabled(label, ic, reason string) {
+	<div class="menu-item disabled" role="menuitem" aria-disabled="true" title={ reason }>
+		@icon(ic)
+		<span>{ label }</span>
+		<span class="menu-reason">{ reason }</span>
+	</div>
+}

@@ -1,0 +1,536 @@
+package orchestrator
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
+	"github.com/axadrn/shadcn-templ/v2/components/breadcrumb"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/dialog"
+	"github.com/axadrn/shadcn-templ/v2/components/input"
+	"github.com/axadrn/shadcn-templ/v2/components/kbd"
+	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/textarea"
+)
+
+func authPageWithRequest(w http.ResponseWriter, r *http.Request, kind, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = auth(CSRFToken(r), kind, msg).Render(r.Context(), w)
+}
+
+templ head(title string) {
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width,initial-scale=1"/>
+		<meta name="color-scheme" content="dark"/>
+		<title>{ title }</title>
+		<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"/>
+		<link rel="preload" href="/assets/inter.woff2" as="font" type="font/woff2" crossorigin/>
+		<link rel="stylesheet" href="/assets/style.css"/>
+		<script type="module" src="/assets/app.js"></script>
+	</head>
+}
+
+// logo is the Jawa mark: a hooded figure whose two eyes glow amber.
+templ logo(size int) {
+	<svg class="logo" width={ strconv.Itoa(size) } height={ strconv.Itoa(size) } viewBox="0 0 32 32" aria-hidden="true">
+		<path d="M16 2.5c-6.4 0-10.5 5-10.5 11.4V25c0 2.2 1.6 4.2 4.2 4.2h12.6c2.6 0 4.2-2 4.2-4.2V13.9C26.5 7.5 22.4 2.5 16 2.5z" fill="#3b2d1d" stroke="#6b5036" stroke-width="1"/>
+		<path d="M9.2 15.2c0-3.2 2.9-5.4 6.8-5.4s6.8 2.2 6.8 5.4v2.2c0 2.6-2.9 4.6-6.8 4.6s-6.8-2-6.8-4.6z" fill="#0d0a07"/>
+		<circle cx="12.6" cy="15.6" r="3" fill="#ffb000" opacity=".18"></circle>
+		<circle cx="19.4" cy="15.6" r="3" fill="#ffb000" opacity=".18"></circle>
+		<circle cx="12.6" cy="15.6" r="1.35" fill="#ffc533"></circle>
+		<circle cx="19.4" cy="15.6" r="1.35" fill="#ffc533"></circle>
+	</svg>
+}
+
+templ icon(name string) {
+	<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		switch name {
+			case "board":
+				<rect x="3" y="3" width="7" height="18" rx="1.5"></rect>
+				<rect x="14" y="3" width="7" height="11" rx="1.5"></rect>
+			case "runs":
+				<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+			case "agents":
+				<rect x="4" y="8" width="16" height="12" rx="3"></rect>
+				<path d="M12 8V5"></path>
+				<circle cx="12" cy="3.7" r="1.2"></circle>
+				<circle cx="9" cy="14" r="1.1" fill="currentColor"></circle>
+				<circle cx="15" cy="14" r="1.1" fill="currentColor"></circle>
+			case "settings":
+				<path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path>
+				<circle cx="15" cy="7" r="2"></circle>
+				<circle cx="9" cy="17" r="2"></circle>
+			case "plus":
+				<path d="M12 5v14M5 12h14"></path>
+			case "more":
+				<circle cx="5.5" cy="12" r="1.2" fill="currentColor"></circle>
+				<circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+				<circle cx="18.5" cy="12" r="1.2" fill="currentColor"></circle>
+			case "search":
+				<circle cx="11" cy="11" r="6.5"></circle>
+				<path d="m20 20-4-4"></path>
+			case "branch":
+				<circle cx="6" cy="5.5" r="2"></circle>
+				<circle cx="6" cy="18.5" r="2"></circle>
+				<circle cx="18" cy="9" r="2"></circle>
+				<path d="M6 7.5v9M18 11c0 4-12 2-12 6"></path>
+			case "pr":
+				<circle cx="6" cy="5.5" r="2"></circle>
+				<circle cx="6" cy="18.5" r="2"></circle>
+				<circle cx="18" cy="18.5" r="2"></circle>
+				<path d="M6 7.5v9M18 16.5V10a3 3 0 0 0-3-3h-3m2-2.5-2 2.5 2 2.5"></path>
+			case "issue":
+				<circle cx="12" cy="12" r="8.5"></circle>
+				<circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>
+			case "external":
+				<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>
+			case "copy":
+				<rect x="9" y="9" width="11" height="11" rx="2"></rect>
+				<path d="M5 15V6a2 2 0 0 1 2-2h9"></path>
+			case "check":
+				<path d="m5 12.5 4.5 4.5L19 7"></path>
+			case "trash":
+				<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>
+			case "reset":
+				<path d="M4 9h10a5 5 0 0 1 0 10H8M4 9l4-4M4 9l4 4"></path>
+			case "play":
+				<path d="M8 5.5v13l11-6.5z" fill="currentColor"></path>
+			case "retry":
+				<path d="M20 11a8 8 0 1 0-2.3 6M20 4v7h-7"></path>
+			case "logout":
+				<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"></path>
+			case "key":
+				<circle cx="8" cy="15" r="4"></circle>
+				<path d="m11 12 8-8M16 7l3 3"></path>
+			case "server":
+				<rect x="3" y="4" width="18" height="7" rx="2"></rect>
+				<rect x="3" y="13" width="18" height="7" rx="2"></rect>
+				<path d="M7 7.5h.01M7 16.5h.01"></path>
+		}
+	</svg>
+}
+
+// laneIcon is the Linear-style status glyph shown on board columns.
+templ laneIcon(status string) {
+	<svg class={ "ic lane-ic lane-" + status } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+		switch status {
+			case "Todo":
+				<circle cx="12" cy="12" r="8" stroke-dasharray="3.2 3.2"></circle>
+			case "Building":
+				<circle cx="12" cy="12" r="8"></circle>
+				<path d="M12 7a5 5 0 0 1 0 10z" fill="currentColor" stroke="none"></path>
+			default:
+				<circle cx="12" cy="12" r="8.5" fill="currentColor" stroke="none"></circle>
+				<path d="m8.4 12.3 2.5 2.5 4.8-5.2" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+		}
+	</svg>
+}
+
+// toneIcon is the glyph for an attempt's state.
+templ toneIcon(tone string) {
+	<svg class={ "ic tone-ic tone-" + tone } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		switch tone {
+			case "running":
+				<circle cx="12" cy="12" r="8"></circle>
+				<path class="spin" d="M12 4a8 8 0 0 1 8 8" stroke-width="3"></path>
+			case "blocked":
+				<circle cx="12" cy="12" r="8.5"></circle>
+				<path d="M12 7.5v5M12 15.8h.01"></path>
+			case "failed":
+				<circle cx="12" cy="12" r="8.5"></circle>
+				<path d="m9 9 6 6M15 9l-6 6"></path>
+			case "ready":
+				<circle cx="12" cy="12" r="8.5" fill="currentColor" stroke="none"></circle>
+				<path d="m8.4 12.3 2.5 2.5 4.8-5.2" stroke="var(--bg)"></path>
+			default:
+				<circle cx="12" cy="12" r="8" stroke-dasharray="1.5 3.4"></circle>
+		}
+	</svg>
+}
+
+templ submit(title string) {
+	@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary"}) {
+		{ title }
+	}
+}
+
+templ textField(id, name, title, value string, required bool) {
+	<div class="field">
+		@label.Label(label.Props{For: id}) {
+			{ title }
+		}
+		@input.Input(input.Props{ID: id, Name: name, Value: value, Required: required})
+	</div>
+}
+
+// viewFields keeps mutations aware of the screen they came from, so the
+// response patches the right roots.
+templ viewFields(v viewParams) {
+	<input type="hidden" name="view" value={ string(v.View) }/>
+	<input type="hidden" name="project" value={ v.Project }/>
+	<input type="hidden" name="card" value={ v.Card }/>
+	<input type="hidden" name="state" value={ v.State }/>
+}
+
+func viewLabel(v viewKind) string {
+	switch v {
+	case viewRuns:
+		return "Runs"
+	case viewAgents:
+		return "Agents"
+	case viewSettings:
+		return "Settings"
+	}
+	return "Board"
+}
+
+func pageTitle(d pageData) string {
+	if d.v.View == viewBoard {
+		if p, ok := projectByID(d.projects, d.v.Project); ok {
+			return p.Name + " · Jawa"
+		}
+	}
+	return viewLabel(d.v.View) + " · Jawa"
+}
+
+func shellSignals() string {
+	return "{filter:'',projectOpen:false,cardOpen:false,deleteOpen:false,deleteCard:'',goto:''}"
+}
+
+func isCurrent(active bool) string {
+	if active {
+		return "page"
+	}
+	return "false"
+}
+
+templ appPage(d pageData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		@head(pageTitle(d))
+		<body class="style-nova app">
+			<div
+				class="shell"
+				data-signals={ shellSignals() }
+				data-init={ "@get('" + d.v.EventsURL() + "')" }
+				data-effect="if ($goto.startsWith('/')) window.location.assign($goto)"
+				data-on:board-refresh={ d.v.SnapshotAction() }
+			>
+				@sidebar(d)
+				<div class="main">
+					@topbar(d)
+					<main class="content" id="content">
+						@notification("", "")
+						switch d.v.View {
+							case viewRuns:
+								@runsContent(d)
+							case viewAgents:
+								@agentsContent(d)
+							case viewSettings:
+								@settingsContent(d)
+							default:
+								@boardContent(d)
+						}
+					</main>
+				</div>
+				@dialogs(d)
+				<jawa-shortcuts></jawa-shortcuts>
+			</div>
+		</body>
+	</html>
+}
+
+templ sidebar(d pageData) {
+	<aside class="sidebar">
+		<a class="brand" href="/board">
+			@logo(26)
+			<span class="brand-name">Jawa</span>
+			<span class="brand-tag">Orchestrator</span>
+		</a>
+		@sidebarNav(d)
+		<div class="sidebar-foot">
+			<div class="hints" aria-label="Keyboard shortcuts">
+				<span>@kbd.Kbd() { C }</span><span>new card</span>
+				<span>@kbd.Kbd() { / }</span><span>filter</span>
+				<span>@kbd.Kbd() { G }@kbd.Kbd() { B }</span><span>go to…</span>
+			</div>
+			<form method="post" action="/logout">
+				<input type="hidden" name="_csrf" value={ d.csrf }/>
+				<button type="submit" class="nav-item nav-quiet">
+					@icon("logout")
+					<span>Sign out</span>
+				</button>
+			</form>
+		</div>
+	</aside>
+}
+
+// sidebarNav is a live patch root: counts follow the work in progress.
+templ sidebarNav(d pageData) {
+	<nav id="sidebar-nav" class="nav" aria-label="Primary">
+		<div class="nav-group">
+			<div class="nav-label">Workspace</div>
+			<a class="nav-item" href="/runs" aria-current={ isCurrent(d.v.View == viewRuns) }>
+				@icon("runs")
+				<span>Runs</span>
+				if n := countRunStates(d.attempts, "active"); n > 0 {
+					<span class="nav-count live">{ strconv.Itoa(n) }</span>
+				}
+			</a>
+			<a class="nav-item" href="/agents" aria-current={ isCurrent(d.v.View == viewAgents) }>
+				@icon("agents")
+				<span>Agents</span>
+				<span class={ "nav-count", templ.KV("online", readyWorkers(d.workers) > 0) }>{ strconv.Itoa(readyWorkers(d.workers)) }</span>
+			</a>
+			<a class="nav-item" href="/settings" aria-current={ isCurrent(d.v.View == viewSettings) }>
+				@icon("settings")
+				<span>Settings</span>
+			</a>
+		</div>
+		<div class="nav-group">
+			<div class="nav-label nav-label-row">
+				<span>Projects</span>
+				<button type="button" class="icon-btn" aria-label="New project" data-on:click="$projectOpen = true">
+					@icon("plus")
+				</button>
+			</div>
+			for _, p := range d.projects {
+				<a class="nav-item" href={ templ.SafeURL(boardPath(p.ID)) } aria-current={ isCurrent(d.v.View == viewBoard && d.v.Project == p.ID) } data-project-id={ p.ID } data-project-name={ p.Name }>
+					<span class="proj-mark">{ initial(p.Name) }</span>
+					<span class="nav-text">{ p.Name }</span>
+					if n := buildingCount(d.cards, p.ID); n > 0 {
+						<span class="nav-count live">{ strconv.Itoa(n) }</span>
+					}
+				</a>
+			}
+			if len(d.projects) == 0 {
+				<p class="nav-empty">No projects yet.</p>
+			}
+		</div>
+	</nav>
+}
+
+templ topbar(d pageData) {
+	<header class="topbar">
+		@breadcrumb.Breadcrumb() {
+			@breadcrumb.List() {
+				@breadcrumb.Item() {
+					@breadcrumb.Link(breadcrumb.LinkProps{Href: "/board"}) {
+						Workspace
+					}
+				}
+				@breadcrumb.Separator()
+				@breadcrumb.Item() {
+					if _, ok := projectByID(d.projects, d.v.Project); ok && d.v.View == viewBoard {
+						@breadcrumb.Link(breadcrumb.LinkProps{Href: "/board"}) {
+							Board
+						}
+					} else {
+						@breadcrumb.Page() {
+							{ viewLabel(d.v.View) }
+						}
+					}
+				}
+				if d.v.View == viewBoard {
+					if p, ok := projectByID(d.projects, d.v.Project); ok {
+						@breadcrumb.Separator()
+						@breadcrumb.Item() {
+							@breadcrumb.Page() {
+								{ p.Name }
+							}
+						}
+					}
+				}
+			}
+		}
+		<div class="topbar-actions">
+			if d.v.View == viewBoard {
+				<label class="search">
+					@icon("search")
+					@input.Input(input.Props{ID: "card-filter", Class: "filter", Placeholder: "Filter cards", Attributes: templ.Attributes{"aria-label": "Filter cards", "data-bind:filter": "", "autocomplete": "off"}})
+					@kbd.Kbd() { / }
+				</label>
+			}
+			@agentStatus(d)
+			if len(d.projects) > 0 {
+				@button.Button(button.Props{Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$cardOpen = true"}}) {
+					@icon("plus")
+					New card
+				}
+			}
+		</div>
+	</header>
+}
+
+// agentStatus is a live patch root present on every screen.
+templ agentStatus(d pageData) {
+	<a id="agent-status" class={ "agent-chip", templ.KV("online", readyWorkers(d.workers) > 0), templ.KV("degraded", !d.presence) } href="/agents" title="Open agents">
+		<span class="pulse-dot"></span>
+		if !d.presence {
+			<span>Presence unavailable</span>
+		} else if n := readyWorkers(d.workers); n == 0 {
+			<span>No agents online</span>
+		} else if n == 1 {
+			<span>1 agent online</span>
+		} else {
+			<span>{ strconv.Itoa(n) } agents online</span>
+		}
+	</a>
+}
+
+// notification is an independent patch root; errors never discard a draft.
+templ notification(message, tone string) {
+	@alert.Alert(alert.Props{ID: "notice", Class: "notice " + tone, Attributes: templ.Attributes{"role": "alert", "aria-live": "polite", "hidden": message == ""}}) {
+		{ message }
+	}
+}
+
+templ dialogs(d pageData) {
+	<dialog id="project-dialog" aria-labelledby="project-dialog-title" data-effect="if ($projectOpen && !el.open) el.showModal(); else if (!$projectOpen && el.open) el.close()" data-on:close="$projectOpen = false" data-on:cancel="$projectOpen = false">
+		<form method="post" action="/projects" data-on:submit__prevent="@post('/projects', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			@dialog.Title(dialog.TitleProps{ID: "project-dialog-title"}) {
+				New project
+			}
+			<p class="muted">Connect a repository so agents can open pull requests against it.</p>
+			@textField("project-name", "name", "Name", "", true)
+			<div class="field">
+				@label.Label(label.Props{For: "project-provider"}) {
+					Provider
+				}
+				<select id="project-provider" name="provider">
+					<option value="github">GitHub</option>
+					<option value="forgejo">Forgejo</option>
+				</select>
+			</div>
+			@textField("project-repo", "repo", "Repository URL", "", true)
+			@textField("project-base", "base_branch", "Base branch", "main", true)
+			<div class="dialog-actions">
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$projectOpen = false"}}) {
+					Cancel
+				}
+				@submit("Create project")
+			</div>
+		</form>
+	</dialog>
+	<dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="if ($cardOpen && !el.open) el.showModal(); else if (!$cardOpen && el.open) el.close()" data-on:close="$cardOpen = false" data-on:cancel="$cardOpen = false">
+		<form method="post" action="/cards" data-on:submit__prevent="@post('/cards', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			@dialog.Title(dialog.TitleProps{ID: "card-dialog-title"}) {
+				New card
+			}
+			<p class="muted">Describe the outcome you want. An agent plans and ships it as a pull request.</p>
+			<div class="field">
+				@label.Label(label.Props{For: "card-project"}) {
+					Project
+				}
+				<select name="project_id" id="card-project" required>
+					for _, p := range d.projects {
+						<option value={ p.ID } selected?={ p.ID == d.v.Project }>{ p.Name }</option>
+					}
+				</select>
+			</div>
+			@textField("card-title", "title", "Title", "", true)
+			<div class="field">
+				@label.Label(label.Props{For: "card-description"}) {
+					Description
+				}
+				@textarea.Textarea(textarea.Props{ID: "card-description", Name: "description", Rows: 5})
+			</div>
+			<div class="field">
+				@label.Label(label.Props{For: "card-issue"}) {
+					Issue URL
+				}
+				@input.Input(input.Props{ID: "card-issue", Name: "issue_url", Type: "url", Placeholder: "https://github.com/owner/repo/issues/1"})
+			</div>
+			<div class="dialog-actions">
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {
+					Cancel
+				}
+				@submit("Create card")
+			</div>
+		</form>
+	</dialog>
+	<dialog id="delete-dialog" aria-labelledby="delete-dialog-title" data-effect="if ($deleteOpen && !el.open) el.showModal(); else if (!$deleteOpen && el.open) el.close()" data-on:close="$deleteOpen = false" data-on:cancel="$deleteOpen = false">
+		@dialog.Title(dialog.TitleProps{ID: "delete-dialog-title"}) {
+			Delete this card?
+		}
+		@dialog.Description() {
+			This permanently removes the card and its attempt history. This cannot be undone.
+		}
+		<form method="post" action="/cards/delete" data-on:submit__prevent="@post('/cards/delete', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" data-bind:delete-card/>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$deleteOpen = false"}}) {
+					Keep card
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+					Delete permanently
+				}
+			}
+		</form>
+	</dialog>
+	<form id="move-form" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
+		<input type="hidden" name="_csrf" value={ d.csrf }/>
+		@viewFields(d.v)
+		<input name="card_id"/>
+		<input name="status"/>
+		<input name="position"/>
+	</form>
+}
+
+templ auth(csrf, kind, msg string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		@head("Jawa · " + kind)
+		<body class="style-nova auth-body">
+			<main class="auth-wrap">
+				@card.Card(card.Props{Class: "auth-card"}) {
+					<div class="auth-brand">
+						@logo(40)
+						<span>Jawa</span>
+					</div>
+					if kind == "setup" {
+						<h1>Set up your workspace</h1>
+						<p class="muted">Create your administrator account. Use a password of at least 12 characters.</p>
+					} else {
+						<h1>Welcome back</h1>
+						<p class="muted">Sign in to your engineering workspace.</p>
+					}
+					if msg != "" {
+						@alert.Alert(alert.Props{Class: "notice"}) {
+							{ msg }
+						}
+					}
+					<form method="post" action={ "/" + kind }>
+						<input type="hidden" name="_csrf" value={ csrf }/>
+						<div class="field">
+							@label.Label(label.Props{For: "auth-user"}) {
+								Username
+							}
+							@input.Input(input.Props{ID: "auth-user", Name: "username", Required: true, Attributes: templ.Attributes{"autocomplete": "username"}})
+						</div>
+						<div class="field">
+							@label.Label(label.Props{For: "auth-password"}) {
+								Password
+							}
+							@input.Input(input.Props{ID: "auth-password", Name: "password", Type: "password", Required: true, Attributes: templ.Attributes{"autocomplete": passwordAutocomplete(kind), "minlength": passwordMinLength(kind)}})
+						</div>
+						if kind == "setup" {
+							@submit("Create administrator")
+						} else {
+							@submit("Sign in")
+						}
+					</form>
+				}
+			</main>
+		</body>
+	</html>
+}
