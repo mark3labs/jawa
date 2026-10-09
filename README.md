@@ -88,6 +88,10 @@ bonnie chat
 
 ## Configuration
 
+The Jawa binary loads `.env` from its current working directory before reading
+configuration. Existing environment variables take precedence. A missing `.env`
+is allowed; unreadable or invalid files stop startup without printing their contents.
+
 | Variable | Default / purpose |
 | --- | --- |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |

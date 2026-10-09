@@ -7,6 +7,9 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -15,9 +18,23 @@ import (
 	"github.com/mark3labs/bonnie/runtime"
 	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
+	"github.com/subosito/gotenv"
 )
 
+// Load preserves exported environment values and ignores an absent file.
+// Parser errors may contain secrets, so do not include them in diagnostics.
+func loadEnvFile(path string) error {
+	if err := gotenv.Load(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("could not load %s; check permissions and dotenv syntax", path)
+	}
+	return nil
+}
+
 func main() {
+	if err := loadEnvFile(".env"); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
 	bonnie.New(
 		bonnie.WithModel(envOr("JAWA_MODEL", "opencode/glm-5.3-flash")),
 		// Default to loopback outside Docker. Container port publishing must
