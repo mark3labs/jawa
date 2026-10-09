@@ -48,10 +48,9 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		if pos < 0 {
 			return false, errors.New("provider: task/project configuration mismatch")
 		}
-		expected := fmt.Sprintf("jawa/card/%s/attempt/%d", a.CardID, a.Number)
-		// Legacy workflow tasks do not contain this instruction. Never guess a branch.
-		if a.Number < 1 || strings.Count(task.Text, "\nBranch: ") != 1 || !strings.HasSuffix(task.Text, "\nBranch: "+expected) {
-			return false, errors.New("provider: task lacks deterministic Branch instruction")
+		expected, branchErr := assignedBranch(a)
+		if branchErr != nil {
+			return false, fmt.Errorf("provider: %w", branchErr)
 		}
 		host, owner, name, err := providerRepository(repo)
 		if err != nil {

@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -396,7 +395,7 @@ func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Number != first.Number+1 || second.ID == first.ID || second.TaskID == first.TaskID || !strings.Contains(second.TaskJSON, fmt.Sprintf("jawa/card/%s/attempt/%d", c.ID, second.Number)) {
+	if second.Number != first.Number+1 || second.ID == first.ID || second.TaskID == first.TaskID || !strings.Contains(second.TaskJSON, taskBranch(c.Title, c.ID, second.Number)) {
 		t.Fatalf("retry did not create isolated attempt: first=%+v second=%+v", first, second)
 	}
 	// A delayed successful result for the prior task must not complete the new attempt.

@@ -240,7 +240,7 @@ try {
   assert.equal(JSON.parse(attempt.Result).pr_url, pr);
   assert.equal(attempt.Ready, false);
   assert.equal(attempt.Number, 1);
-  assert.ok(attempt.TaskJSON.includes(`Branch: jawa/card/${attempt.CardID}/attempt/1`));
+  assert.ok(JSON.parse(attempt.TaskJSON).text.split('\nBranch: ')[1].endsWith(`-${attempt.CardID.slice(0,6)}-a1`));
  }
  assert.ok(data.cards.every(c => c.Status === 'Building'));
  for (const title of ['First smoke card', 'Second smoke card']) {
@@ -291,7 +291,7 @@ try {
  await run.locator('.card-note').filter({hasText: 'provider: credentials missing'}).waitFor();
  assert.equal(JSON.parse(await run.locator('.result').textContent()).pr_url, pr);
  assert.equal(await run.locator('.run-pr a').getAttribute('href'), pr);
- await run.getByText(`jawa/card/${firstID}/attempt/1`, {exact: true}).waitFor();
+ await run.getByText(JSON.parse(data.attempts.find(a=>a.CardID===firstID).TaskJSON).text.split('\nBranch: ')[1], {exact: true}).waitFor();
  const runID = await run.getAttribute('id');
  await run.evaluate(el => el.smokeIdentity = 'stable-history');
  const runsStable = await stableDocument();
@@ -317,7 +317,7 @@ try {
  await guards('Second smoke card');
  const retried = await waitActivity(d => d.attempts.some(a => a.CardID === secondID && a.Number === 2 && a.Result && a.Error === 'provider: credentials missing'), 'retry blocker');
  assert.deepEqual(immutableHistory(retried.attempts.filter(a => a.CardID === secondID && a.Number === 1)), immutableHistory(original));
- assert.ok(retried.attempts.find(a => a.CardID === secondID && a.Number === 2).TaskJSON.includes(`Branch: jawa/card/${secondID}/attempt/2`));
+ assert.ok(JSON.parse(retried.attempts.find(a => a.CardID === secondID && a.Number === 2).TaskJSON).text.split('\nBranch: ')[1].endsWith(`-${secondID.slice(0,6)}-a2`));
  await screen(`/runs?card=${secondID}`, 'runs');
  await expect(page.locator('details.run')).toHaveCount(2);
  for (const row of await page.locator('details.run').all()) {

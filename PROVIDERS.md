@@ -17,10 +17,10 @@ Tokens stay in process environment/request headers only, never tasks, database r
 The immutable prompt must end with this additional, unique line:
 
 ```
-Branch: jawa/card/<card-id>/attempt/<attempt-number>
+Branch: jawa/<title-slug>-<first-6-card-id-chars>-a<attempt-number>
 ```
 
-The PR must use exactly that deterministic branch in the configured repository (fork heads are blocked), target the configured base, and match the reported PR number and host/path. Legacy tasks without this line block with `task lacks deterministic Branch instruction`. No branch is guessed and no persisted task is rewritten. The workflow emits this branch instruction for each new attempt.
+The PR must use exactly that deterministic branch in the configured repository (fork heads are blocked), target the configured base, and match the reported PR number and host/path. Legacy tasks without this line block with `task lacks deterministic Branch instruction`. Existing `jawa/card/<full-card-id>/attempt/<number>` assignments are still accepted. The assigned branch is read from immutable TaskJSON, not recalculated from the current title. No persisted task is rewritten. The workflow emits this branch instruction for each new attempt.
 
 ## Readiness policy
 

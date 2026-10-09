@@ -23,7 +23,7 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 	// testProject creates an unconfigured project; workflowCard supplies the
 	// real GitHub repository/base branch required by the production verifier.
 	card := workflowCard(t, s)
-	branch := fmt.Sprintf("jawa/card/%s/attempt/1", card.ID)
+	branch := taskBranch(card.Title, card.ID, 1)
 	sha := strings.Repeat("a", 40)
 	root := "/repos/example/repo"
 	prPath := root + "/pulls/7"

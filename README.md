@@ -48,6 +48,9 @@ read access; workers need their own push/PR credentials. See [PROVIDERS.md](PROV
 for supported API policy and required permissions. Missing credentials or incomplete
 evidence leaves the card blocked in Building rather than falsely completing it.
 
+New branches use `jawa/<title-slug>-<6-char-card-id>-a<attempt>`, for example
+`jawa/update-ci-6780b3-a1`. Existing assignments are preserved.
+
 Retry creates another numbered branch/attempt after a terminal failed/blocked
 outcome. Legacy Building cards without attempts offer Start work. Reset to Todo
 preserves history; Delete requires confirmation. Active attempts cannot be reset/deleted. Active attempts cannot be manually moved out of Building: cancellation,

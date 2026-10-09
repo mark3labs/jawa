@@ -132,9 +132,13 @@ func latestAttempt(cardID string, attempts []Attempt) []Attempt {
 	return []Attempt{*latest}
 }
 
-// The branch comes from the immutable task identity, never a reported PR URL.
+// Display the immutable assigned ref, not a guess from the current card title.
 func attemptBranch(a Attempt) string {
-	return fmt.Sprintf("jawa/card/%s/attempt/%d", a.CardID, a.Number)
+	branch, err := assignedBranch(a)
+	if err != nil {
+		return "Not reported"
+	}
+	return branch
 }
 func safeActivityURL(raw string) string {
 	u, err := url.Parse(raw)
