@@ -1,67 +1,89 @@
 import './datastar.js';
 import Sortable from 'sortablejs';
 
-// Standard custom-element fallback. Datastar Pro Rocket is licensed and is not
-// distributed by this repository; this element can be adapted when supplied.
+// Sortable handles gestures only. Datastar owns every request and DOM update.
 class JawaBoard extends HTMLElement {
   connectedCallback() {
     if (this.sortables) return;
-    this.busy = false;
     this.sortables = [...this.querySelectorAll('.task-list')].map(list => Sortable.create(list, {
-      group: `project-${this.getAttribute('project-id')}`, animation: 160,
-      handle: '.drag-handle', ghostClass: 'drag-ghost',
-      onEnd: e => {
-        if (e.from === e.to && e.oldIndex === e.newIndex) return;
-        this.move(e.item, e.to, e.newIndex, e.from, e.oldIndex);
+      group: `project-${this.getAttribute('project-id')}`,
+      animation: 160,
+      handle: '.drag-handle',
+      ghostClass: 'drag-ghost',
+      onStart: () => document.getElementById('board-content').setAttribute('data-ignore-morph', ''),
+      onEnd: event => {
+        const {item, from, to, oldIndex, newIndex} = event;
+        const status = to.dataset.status;
+        // Keep the authoritative layout until the server accepts the move.
+        from.insertBefore(item, from.children[oldIndex] || null);
+        document.getElementById('board-content')?.removeAttribute('data-ignore-morph');
+        if (from !== to || oldIndex !== newIndex) this.move(item.dataset.cardId, status, newIndex);
+        else this.dispatchEvent(new CustomEvent('board-refresh', {bubbles: true}));
       }
     }));
-    this.onChange = e => {
-      const select = e.target.closest('[data-move-card]');
-      if (!select || !select.value) return;
-      const card = select.closest('.task-card');
-      const from = card.parentElement;
-      const old = [...from.children].indexOf(card);
-      const to = this.querySelector(`.task-list[data-status="${select.value}"]`);
+    this.onChange = event => {
+      const select = event.target.closest('[data-move-card]');
+      if (!select?.value) return;
+      const status = select.value;
       select.value = '';
-      to.append(card);
-      this.move(card, to, to.children.length - 1, from, old);
+      const target = [...this.querySelectorAll('.task-list')].find(list => list.dataset.status === status);
+      this.move(select.dataset.moveCard, status, target.querySelectorAll('.task-card').length);
     };
     this.addEventListener('change', this.onChange);
   }
+  move(cardId, status, position) {
+    const form = document.getElementById('move-form');
+    form.elements.card_id.value = cardId;
+    form.elements.status.value = status;
+    form.elements.position.value = String(position);
+    form.requestSubmit();
+  }
   disconnectedCallback() {
-    this.sortables?.forEach(s => s.destroy());
+    this.sortables?.forEach(sortable => sortable.destroy());
     this.sortables = null;
     this.removeEventListener('change', this.onChange);
   }
-  async move(card, to, position, from, oldIndex) {
-    const revert = () => from.insertBefore(card, from.children[oldIndex] || null);
-    if (this.busy) { revert(); return; }
-    this.busy = true;
-    this.sortables.forEach(s => s.option('disabled', true));
-    this.querySelectorAll('select').forEach(s => s.disabled = true);
-    card.classList.add('saving');
-    try {
-      const response = await fetch('/cards/move', {
-        method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': this.getAttribute('csrf')},
-        body: new URLSearchParams({card_id: card.dataset.cardId, status: to.dataset.status, position: String(position)})
-      });
-      if (!response.ok || response.redirected && new URL(response.url).pathname !== '/') throw new Error('Move rejected. Refresh the board and try again.');
-      this.dispatchEvent(new CustomEvent('card-moved', {bubbles: true, composed: true, detail: {cardId: card.dataset.cardId, status: to.dataset.status, position}}));
-      location.reload();
-    } catch (error) {
-      revert();
-      const notice = document.querySelector('#notice');
-      notice.textContent = error.message; notice.hidden = false;
-    } finally {
-      card.classList.remove('saving'); this.busy = false;
-      this.sortables.forEach(s => s.option('disabled', false));
-      this.querySelectorAll('select').forEach(s => s.disabled = false);
-    }
-  }
 }
 customElements.define('jawa-board', JawaBoard);
-document.addEventListener('click', e => {
-  const opener = e.target.closest('[data-open]');
-  if (opener) document.getElementById(opener.dataset.open)?.showModal();
-  if (e.target.closest('[data-close]')) e.target.closest('dialog')?.close();
+
+document.addEventListener('click', event => {
+  const opener = event.target.closest('[data-open]');
+  if (opener) {
+    const dialog = document.getElementById(opener.dataset.open);
+    if (dialog?.id === 'card-dialog') {
+      const select = dialog.querySelector('[name="project_id"]');
+      select.replaceChildren(...[...document.querySelectorAll('[data-project-id]')].map(project => {
+        const option = document.createElement('option');
+        option.value = project.dataset.projectId;
+        option.textContent = project.dataset.projectName;
+        return option;
+      }));
+      select.value = opener.dataset.project || select.options[0]?.value || '';
+    }
+    dialog?.showModal();
+  }
+  if (event.target.closest('[data-close]')) event.target.closest('dialog')?.close();
+});
+
+// Close creation dialogs only after a successful SSE response; failures retain drafts.
+// Datastar's fetch lifecycle is transport-level, not a polling loop.
+document.addEventListener('datastar-fetch', event => {
+  const {type, el} = event.detail;
+  if (type === 'started') {
+    if (el?.matches('form')) {
+      el.dataset.pending = '';
+      el.querySelectorAll('button[type="submit"]').forEach(button => button.disabled = true);
+    }
+  }
+  if (type === 'finished') {
+    if (el?.matches('form')) {
+      delete el.dataset.pending;
+      el.querySelectorAll('button[type="submit"]').forEach(button => button.disabled = false);
+      const dialog = el.closest('dialog');
+      if (dialog && !document.getElementById('notice')?.textContent.trim()) {
+        dialog.close();
+        el.reset();
+      }
+    }
+  }
 });

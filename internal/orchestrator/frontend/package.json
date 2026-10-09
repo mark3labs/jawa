@@ -1,1 +1,20 @@
-{"name":"jawa-orchestrator-ui","version":"1.0.0","private":true,"type":"module","scripts":{"build":"esbuild src/app.js --bundle --minify --outfile=../assets/app.js && cp src/style.css ../assets/style.css","dev":"esbuild src/app.js --bundle --outfile=../assets/app.js --watch","test:smoke":"node smoke.mjs"},"dependencies":{"sortablejs":"^1.15.6"},"devDependencies":{"esbuild":"^0.28.2","playwright":"^1.58.2"}}
+{
+  "name": "jawa-orchestrator-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --minify --outfile=../assets/app.js && MOD=\"$(go env GOPATH)/pkg/mod/github.com/axadrn/shadcn-templ/v2@v2.0.0-beta.13\" && cp src/style.css src/.build.css && printf '\\n@source \"%s/components\";\\n' \"$MOD\" >> src/.build.css && tailwindcss -i src/.build.css -o ../assets/style.css --minify; status=$?; rm -f src/.build.css; exit $status",
+    "dev": "esbuild src/app.js --bundle --outfile=../assets/app.js --watch",
+    "test:smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "sortablejs": "^1.15.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.1",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.58.2",
+    "tailwindcss": "^4.2.1"
+  }
+}

@@ -2,9 +2,12 @@ package orchestrator
 
 import (
 	"crypto/tls"
+	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,16 +19,56 @@ import (
 
 func testApp(t *testing.T) *app {
 	t.Helper()
-	s, e := OpenStore(":memory:")
-	if e != nil {
-		t.Fatal(e)
+	s, err := OpenStore(filepath.Join(t.TempDir(), "board.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		if err := s.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	return &app{s: s}
+	opts, err := natsOptions(s, "127.0.0.1:0", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	internalPassword := newID()
+	hash, err := bcrypt.GenerateFromPassword([]byte(internalPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.Users = []*server.User{{Username: opts.Username, Password: opts.Password}, {Username: "jawa-internal", Password: string(hash)}}
+	opts.Username, opts.Password = "", ""
+	ns, err := server.NewServer(opts.Clone())
+	if err != nil {
+		t.Fatal(err)
+	}
+	go ns.Start()
+	t.Cleanup(func() { ns.Shutdown(); ns.WaitForShutdown() })
+	if !ns.ReadyForConnections(5 * time.Second) {
+		t.Fatal("NATS not ready")
+	}
+	opts = opts.Clone()
+	opts.Port = ns.Addr().(*net.TCPAddr).Port
+	nc, err := nats.Connect(ns.ClientURL(), nats.InProcessServer(ns), nats.UserInfo("jawa-internal", internalPassword))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(nc.Close)
+
+	w, err := NewWorkflow(t.Context(), s, nc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// LIFO cleanup: stop workflow consumers before closing NATS and the store.
+	t.Cleanup(func() {
+		if err := w.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	w.SetVerifier(ProviderVerifier(s, nil))
+	return &app{s: s, workflow: w, ns: ns, options: opts.Clone()}
+
 }
 func request(a *app, method, path string, form url.Values, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
@@ -95,6 +138,30 @@ func TestAuthCSRFAndRoutes(t *testing.T) {
 	if cards[0].Status != "Building" {
 		t.Fatal("card not moved")
 	}
+	// A real durable publish must accompany the lane transition, exactly once.
+	waitWorkflow(t, func() bool {
+		attempts, err := a.workflow.Attempts()
+		return err == nil && len(attempts) == 1 && attempts[0].Published
+	})
+	status(t, request(a, "POST", "/cards/move", url.Values{"_csrf": {csrf.Value}, "card_id": {cards[0].ID}, "status": {"Building"}, "position": {"0"}}, session, csrf), 303)
+	status(t, request(a, "POST", "/cards/move", url.Values{"_csrf": {csrf.Value}, "card_id": {cards[0].ID}, "status": {"Done"}, "position": {"0"}}, session, csrf), 400)
+	cards, _ = a.s.Cards("")
+	if cards[0].Status != "Building" {
+		t.Fatal("unverified manual Done changed lane")
+	}
+	activity := request(a, "GET", "/activity", nil, session)
+	status(t, activity, 200)
+	var snapshot struct {
+		Attempts []Attempt
+		Cards    []Card
+	}
+	if err := json.Unmarshal(activity.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Attempts) != 1 || !snapshot.Attempts[0].Published || len(snapshot.Cards) != 1 {
+		t.Fatalf("bad activity: %+v", snapshot)
+	}
+	status(t, request(a, "GET", "/activity", nil), 303)
 	status(t, request(a, "POST", "/logout", url.Values{"_csrf": {csrf.Value}}, session, csrf), 303)
 	status(t, request(a, "GET", "/", nil, session), 303)
 	w := request(a, "GET", "/login", nil)
@@ -147,32 +214,19 @@ func TestSecureCookiesBodyLimitAndAssets(t *testing.T) {
 }
 func TestNATSAuthenticationAndRotation(t *testing.T) {
 	a := testApp(t)
-	dir := t.TempDir()
-	opts, e := natsOptions(a.s, "127.0.0.1:0", dir)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if opts.Username == "" || opts.Password == "" {
+	opts := a.options
+	initial := opts.Users[0]
+	if initial.Username == "" || initial.Password == "" {
 		t.Fatal("missing initial credentials")
 	}
-	if _, e = bcrypt.Cost([]byte(opts.Password)); e != nil {
+	if _, e := bcrypt.Cost([]byte(initial.Password)); e != nil {
 		t.Fatal(e)
 	}
-	persisted, e := natsOptions(a.s, "127.0.0.1:0", dir)
-	if e != nil || persisted.Password != opts.Password {
+	persisted, e := natsOptions(a.s, "127.0.0.1:0", t.TempDir())
+	if e != nil || persisted.Password != initial.Password {
 		t.Fatal("initial hash not persisted")
 	}
-	ns, e := server.NewServer(opts)
-	if e != nil {
-		t.Fatal(e)
-	}
-	go ns.Start()
-	t.Cleanup(func() { ns.Shutdown(); ns.WaitForShutdown() })
-	if !ns.ReadyForConnections(5 * time.Second) {
-		t.Fatal("NATS not ready")
-	}
-	a.ns = ns
-	a.options = opts.Clone()
+	ns := a.ns
 	connect := func(user, pass string) (*nats.Conn, error) {
 		return nats.Connect(ns.ClientURL(), nats.UserInfo(user, pass), nats.NoReconnect(), nats.Timeout(time.Second))
 	}
@@ -211,6 +265,17 @@ func TestNATSAuthenticationAndRotation(t *testing.T) {
 		nc.Close()
 		t.Fatal("anonymous accepted after rotation")
 	}
+	// The internal workflow connection must still publish after worker rotation.
+	p, e := a.s.CreateProjectDetails("rotation", "github", "https://github.com/example/repo", "main")
+	if e != nil {
+		t.Fatal(e)
+	}
+	card, e := a.s.CreateCard(p.ID, "after rotation", "test")
+	if e != nil {
+		t.Fatal(e)
+	}
+	status(t, request(a, "POST", "/cards/move", url.Values{"_csrf": {csrf.Value}, "card_id": {card.ID}, "status": {"Building"}, "position": {"0"}}, session, csrf), 303)
+	waitWorkflow(t, func() bool { result, err := a.workflow.CardResult(card.ID); return err == nil && result.Published })
 	var hash string
 	if e = a.s.db.QueryRow("SELECT value FROM settings WHERE key='nats_password'").Scan(&hash); e != nil {
 		t.Fatal(e)

@@ -7,8 +7,11 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mark3labs/bonnie/presence"
+	"github.com/nats-io/nats.go"
 	"log"
 	"net"
 	"net/http"
@@ -48,6 +51,7 @@ type loginAttempts struct {
 }
 type app struct {
 	s        *Store
+	workflow *Workflow
 	ns       *server.Server
 	options  *server.Options // Latest successfully applied options; guarded by mu.
 	mu       sync.Mutex
@@ -69,9 +73,9 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil {
 			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-				http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+				a.responseError(w, r, "Request too large. Please shorten the form and try again.", http.StatusRequestEntityTooLarge)
 			} else {
-				http.Error(w, "invalid form", http.StatusBadRequest)
+				a.responseError(w, r, "Invalid form. Please refresh and try again.", http.StatusBadRequest)
 			}
 			return
 		}
@@ -85,23 +89,45 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.authed(r) {
+		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || datastarRequest(r) {
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 	if r.URL.Path == "/" && r.Method == http.MethodGet {
 		a.ensureCSRF(w, r)
-		renderPage(w, r, a.s)
+		renderWorkflowPage(w, r, a.s, a.workflow)
+		return
+	}
+	if r.URL.Path == "/activity" && r.Method == http.MethodGet {
+		a.activity(w, r)
+		return
+	}
+	if r.URL.Path == "/events" || r.URL.Path == "/snapshot" {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			a.responseError(w, r, "Method not allowed. Use GET to refresh the workspace.", http.StatusMethodNotAllowed)
+			return
+		}
+		a.ensureCSRF(w, r)
+		if r.URL.Path == "/events" {
+			a.events(w, r)
+		} else {
+			a.snapshot(w, r, false)
+		}
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/settings/nats":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/settings/nats":
 	default:
 		http.NotFound(w, r)
 		return
 	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		a.responseError(w, r, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
 	}
 	if !a.csrf(w, r) {
@@ -123,22 +149,44 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if raw != "" {
 			for _, c := range raw {
 				if c < '0' || c > '9' {
-					http.Error(w, "invalid position", http.StatusBadRequest)
+					a.responseError(w, r, "Invalid card position. Refresh the board and try again.", http.StatusBadRequest)
 					return
 				}
 			}
 			pos, err = strconv.Atoi(raw)
 			if err != nil {
-				http.Error(w, "invalid position", http.StatusBadRequest)
+				a.responseError(w, r, "Invalid card position. Refresh the board and try again.", http.StatusBadRequest)
 				return
 			}
 		}
-		err = a.s.MoveCard(r.FormValue("card_id"), r.FormValue("status"), pos)
+		if a.workflow == nil {
+			err = errors.New("workflow is unavailable")
+		} else {
+			err = a.workflow.MoveCard(r.FormValue("card_id"), r.FormValue("status"), pos)
+		}
+	case "/cards/retry":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.Retry(r.FormValue("card_id"))
+		}
+	case "/cards/reset", "/cards/delete":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else if r.URL.Path == "/cards/reset" {
+			err = a.workflow.ResetCard(r.FormValue("card_id"))
+		} else {
+			err = a.workflow.DeleteCard(r.FormValue("card_id"))
+		}
 	case "/settings/nats":
 		err = a.rotateNATS(r.FormValue("url"), r.FormValue("username"), r.FormValue("password"))
 	}
 	if err != nil {
-		http.Error(w, "Unable to apply request: "+err.Error(), http.StatusBadRequest)
+		a.responseError(w, r, "Unable to apply request: "+err.Error()+". Refresh the board and try again.", http.StatusBadRequest)
+		return
+	}
+	if datastarRequest(r) {
+		a.snapshot(w, r, true)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -165,7 +213,7 @@ func (a *app) csrf(w http.ResponseWriter, r *http.Request) bool {
 		v = r.Header.Get("X-CSRF-Token")
 	}
 	if e != nil || len(c.Value) != 64 || subtle.ConstantTimeCompare([]byte(c.Value), []byte(v)) != 1 {
-		http.Error(w, "invalid CSRF token", http.StatusForbidden)
+		a.responseError(w, r, "Invalid CSRF token. Refresh the page and try again.", http.StatusForbidden)
 		return false
 	}
 	return true
@@ -201,7 +249,7 @@ func (a *app) issue(w http.ResponseWriter, r *http.Request) error {
 }
 func (a *app) setup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		a.responseError(w, r, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
 	}
 	ok, err := a.s.HasAdmin()
@@ -302,7 +350,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		a.responseError(w, r, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
 	}
 	if !a.csrf(w, r) {
@@ -371,7 +419,7 @@ func natsOptions(s *Store, listen, dir string) (*server.Options, error) {
 }
 func (a *app) rotateNATS(url, user, pass string) error {
 	user = strings.TrimSpace(user)
-	if user == "" || len(user) > 128 || len(pass) < 12 || len(pass) > 72 {
+	if user == "jawa-internal" || user == "" || len(user) > 128 || len(pass) < 12 || len(pass) > 72 {
 		return fmt.Errorf("username and 12–72 byte password required")
 	}
 	a.mu.Lock()
@@ -397,8 +445,16 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	var next *server.Options
 	if a.ns != nil {
 		next = a.options.Clone()
-		next.Username = user
-		next.Password = string(hash)
+		if len(next.Users) > 0 {
+			for i, u := range next.Users {
+				if u.Username != "jawa-internal" {
+					next.Users[i] = &server.User{Username: user, Password: string(hash)}
+				}
+			}
+			next.Username, next.Password = "", ""
+		} else {
+			next.Username, next.Password = user, string(hash)
+		}
 		if err = a.ns.ReloadOptions(next); err != nil {
 			return fmt.Errorf("NATS reload failed")
 		}
@@ -445,6 +501,14 @@ func Command() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		// Internal credentials are process-local and independent of worker rotation.
+		systemPassword := newID()
+		systemHash, err := bcrypt.GenerateFromPassword([]byte(systemPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		opts.Users = []*server.User{{Username: opts.Username, Password: opts.Password}, {Username: "jawa-internal", Password: string(systemHash)}}
+		opts.Username, opts.Password = "", ""
 		ns, err := server.NewServer(opts.Clone())
 		if err != nil {
 			return err
@@ -456,9 +520,20 @@ func Command() *cobra.Command {
 		}
 		opts = opts.Clone()
 		opts.Port = ns.Addr().(*net.TCPAddr).Port
-		srv := &http.Server{Addr: listen, Handler: &app{s: s, ns: ns, options: opts}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+		conn, err := nats.Connect(ns.ClientURL(), nats.InProcessServer(ns), nats.UserInfo("jawa-internal", systemPassword))
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		workflow, err := NewWorkflow(cmd.Context(), s, conn)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = workflow.Close() }()
+		workflow.SetVerifier(ProviderVerifier(s, nil))
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		srv := &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Addr: listen, Handler: &app{s: s, ns: ns, options: opts, workflow: workflow}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 		done := make(chan error, 1)
 		go func() { done <- srv.ListenAndServe() }()
 		select {
@@ -482,4 +557,38 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", "127.0.0.1:4222", "Authenticated embedded NATS listen address")
 	return cmd
+}
+
+func (a *app) activity(w http.ResponseWriter, r *http.Request) {
+	workers := []presence.Record{}
+	attempts := []Attempt{}
+	var err error
+	if a.workflow != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		workers, err = a.workflow.Workers(ctx)
+		cancel()
+		if err != nil {
+			http.Error(w, "presence unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if workers == nil {
+			workers = []presence.Record{}
+		}
+		attempts, err = a.workflow.Attempts()
+		if err != nil {
+			http.Error(w, "attempts unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	cards, err := a.s.Cards("")
+	if err != nil {
+		http.Error(w, "cards unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Workers  []presence.Record `json:"workers"`
+		Attempts []Attempt         `json:"attempts"`
+		Cards    []Card            `json:"cards"`
+	}{workers, attempts, cards})
 }

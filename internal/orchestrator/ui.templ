@@ -4,14 +4,17 @@ import (
  "net/http"
  "strconv"
  "github.com/axadrn/shadcn-templ/v2/components/button"
+ "github.com/axadrn/shadcn-templ/v2/components/card"
+ "github.com/axadrn/shadcn-templ/v2/components/input"
+ "github.com/axadrn/shadcn-templ/v2/components/textarea"
+ "github.com/axadrn/shadcn-templ/v2/components/badge"
+ "github.com/axadrn/shadcn-templ/v2/components/alert"
+ "github.com/axadrn/shadcn-templ/v2/components/separator"
+ "github.com/axadrn/shadcn-templ/v2/components/label"
+ "github.com/axadrn/shadcn-templ/v2/components/dialog"
+ "github.com/mark3labs/bonnie/presence"
 )
 
-func renderPage(w http.ResponseWriter,r *http.Request,s *Store) {
- projects,e:=s.Projects(); if e!=nil {http.Error(w,"Unable to load projects", http.StatusInternalServerError);return}
- cards,e:=s.Cards(""); if e!=nil {http.Error(w,"Unable to load cards", http.StatusInternalServerError);return}
- w.Header().Set("Content-Type","text/html; charset=utf-8")
- _ = page(CSRFToken(r),projects,cards,s.NATSConfig()).Render(r.Context(),w)
-}
 func authPageWithRequest(w http.ResponseWriter,r *http.Request,kind,msg string) {
  w.Header().Set("Content-Type","text/html; charset=utf-8")
  _ = auth(CSRFToken(r),kind,msg).Render(r.Context(),w)
@@ -22,69 +25,171 @@ templ head(title string) {
  <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>{ title }</title><link rel="stylesheet" href="/assets/style.css"/><script type="module" src="/assets/app.js"></script></head>
 }
 
-templ submit(label string) {
- @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn primary"}) { { label } }
+templ submit(title string) {
+ @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn primary"}) { { title }
+ }
 }
 
-templ page(csrf string,projects []Project,cards []Card,nats NATSConfig) {
- <!doctype html>
- <html lang="en">
- @head("Jawa · Orchestrator")
- <body data-signals="{filter: ''}">
- <main class="shell">
- <header class="topbar"><div class="brand"><span class="brand-mark">J</span>Jawa <span class="muted">/ Orchestrator</span></div><form method="post" action="/logout"><input type="hidden" name="_csrf" value={ csrf }/>@button.Button(button.Props{Type:button.TypeSubmit,Class:"btn"}) { Sign out }</form></header>
- <section class="intro"><div><div class="eyebrow">Workspace</div><h1>Project board</h1><p class="muted">Foundation preview · Building cards are queued locally; agent dispatch is not enabled yet.</p></div><div class="top-actions"><input class="filter" aria-label="Filter cards" data-bind:filter placeholder="Filter cards…"/>@button.Button(button.Props{Class:"btn primary",Attributes:templ.Attributes{"data-open":"project-dialog"}}) { ＋ New project }</div></section>
- <p id="notice" class="notice" role="alert" hidden></p>
+templ textField(id,name,title,value string,required bool) {
+ <div class="field">@label.Label(label.Props{For:id}) { { title }
+ } @input.Input(input.Props{ID:id,Name:name,Value:value,Required:required})</div>
+}
+
+templ page(csrf string,projects []Project,cards []Card,nats NATSConfig,workers []presence.Record,attempts []Attempt,activityMessage string) {
+ <!doctype html><html lang="en">@head("Jawa · Orchestrator")
+ <body class="style-nova">
+ <aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">J</span>Jawa</a><div class="eyebrow">Workspace</div><a class="nav-item active" href="#board-content">▦ Project board</a><a class="nav-item" href="#activity-panel">◉ Agents &amp; activity</a><a class="nav-item" href="#connection-settings">⚙ Connections</a><div class="sidebar-footer">Agent orchestration<br/><span class="muted">Build with confidence.</span></div></aside>
+ <main class="shell" data-signals="{filter:'',notice:'',busy:false,projectOpen:false,cardOpen:false,deleteOpen:false,deleteCard:''}" data-init="@get('/events')" data-on:board-refresh="@get('/snapshot')"><header class="topbar"><span class="muted">Workspace / <strong>Overview</strong></span><form method="post" action="/logout"><input type="hidden" name="_csrf" value={ csrf }/>@button.Button(button.Props{Type:button.TypeSubmit,Class:"btn"}) { Sign out }</form></header>
+ <section class="intro"><div><div class="eyebrow">Your engineering workspace</div><h1>Project board</h1><p class="muted">From an idea to a verified pull request. Agents take it from here.</p></div><div class="top-actions">@input.Input(input.Props{ID:"card-filter",Class:"filter",Placeholder:"Filter cards…",Attributes:templ.Attributes{"aria-label":"Filter cards","data-bind:filter":""}}) @button.Button(button.Props{Class:"btn primary",Attributes:templ.Attributes{"data-open":"project-dialog","data-on:click":"$projectOpen = true"}}) { ＋ New project }</div></section>
+ @notification("")
+ @boardContent(csrf,projects,cards,attempts)
+ @activityPanel(workers,attempts,activityMessage)
+ @separator.Separator()
+ <details class="settings" id="connection-settings"><summary>Worker connection settings</summary><p class="muted">Embedded NATS: { nats.URL }. Rotation disconnects clients using old credentials. Remote connections require a TLS proxy; the default listener is loopback.</p><form method="post" action="/settings/nats" data-on:submit__prevent="@post('/settings/nats', {contentType:'form'})"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="url" value={ nats.URL }/>@textField("nats-user","username","NATS username",nats.Username,true)<div class="field">@label.Label(label.Props{For:"nats-password"}) { New NATS password } @input.Input(input.Props{ID:"nats-password",Name:"password",Type:"password",Required:true,Attributes:templ.Attributes{"minlength":"12","autocomplete":"new-password"}})</div>@submit("Rotate credentials")</form></details>
+ <dialog id="project-dialog" aria-labelledby="project-dialog-title" data-effect="if ($projectOpen &amp;&amp; !el.open) el.showModal(); else if (!$projectOpen &amp;&amp; el.open) el.close()" data-on:close="$projectOpen = false" data-on:cancel="$projectOpen = false"><form method="post" action="/projects" data-on:submit__prevent="@post('/projects', {contentType:'form'})"><input type="hidden" name="_csrf" value={ csrf }/>@dialog.Title(dialog.TitleProps{ID:"project-dialog-title"}) { Create project }<p class="muted">Connect a repository to give your agents a home.</p>@textField("project-name","name","Name","",true)<div class="field">@label.Label(label.Props{For:"project-provider"}) { Provider }<select id="project-provider" name="provider"><option value="github">GitHub</option><option value="forgejo">Forgejo</option></select></div>@textField("project-repo","repo","Repository URL","",true)@textField("project-base","base_branch","Base branch","main",true)<div class="dialog-actions">@button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-close":true,"data-on:click":"$projectOpen = false"}}) { Cancel }@submit("Create project")</div></form></dialog>
+ <dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="if ($cardOpen &amp;&amp; !el.open) el.showModal(); else if (!$cardOpen &amp;&amp; el.open) el.close()" data-on:close="$cardOpen = false" data-on:cancel="$cardOpen = false"><form method="post" action="/cards" data-on:submit__prevent="@post('/cards', {contentType:'form'})"><input type="hidden" name="_csrf" value={ csrf }/>@dialog.Title(dialog.TitleProps{ID:"card-dialog-title"}) { New card }<p class="muted">Describe the outcome. Your agent handles the implementation.</p><div class="field">@label.Label(label.Props{For:"card-project"}) { Project }<select name="project_id" id="card-project" required></select></div>@textField("card-title","title","Title","",true)<div class="field">@label.Label(label.Props{For:"card-description"}) { Description } @textarea.Textarea(textarea.Props{ID:"card-description",Name:"description",Rows:4})</div><div class="field">@label.Label(label.Props{For:"card-issue"}) { Issue URL } @input.Input(input.Props{ID:"card-issue",Name:"issue_url",Type:"url"})</div><div class="dialog-actions">@button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-close":true,"data-on:click":"$cardOpen = false"}}) { Cancel }@submit("Create card")</div></form></dialog>
+ <dialog id="delete-dialog" aria-labelledby="delete-dialog-title" data-effect="if ($deleteOpen &amp;&amp; !el.open) el.showModal(); else if (!$deleteOpen &amp;&amp; el.open) el.close()" data-on:close="$deleteOpen = false" data-on:cancel="$deleteOpen = false">
+ @dialog.Title(dialog.TitleProps{ID:"delete-dialog-title"}) { Delete this card? }
+ @dialog.Description() { This permanently removes the card and its attempt history. This cannot be undone. }
+ <form method="post" action="/cards/delete" data-on:submit__prevent="@post('/cards/delete', {contentType:'form'})"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="card_id" data-bind:delete-card/>
+ @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
+ @button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-on:click":"$deleteOpen = false"}}) { Keep card }
+ @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn danger"}) { Delete permanently }
+ }</form></dialog>
+ <form id="move-form" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})"><input type="hidden" name="_csrf" value={ csrf }/><input name="card_id"/><input name="status"/><input name="position"/></form>
+ </main></body></html>
+}
+
+templ boardContent(csrf string,projects []Project,cards []Card,attempts []Attempt) {
+ <div id="board-content">
  if len(projects)==0 {
- <section class="column"><h2>Your workspace is ready</h2><p>Create a project to organize work.</p></section>
+ @card.Card(card.Props{Class:"empty-workspace"}) { <span class="empty-icon">▦</span><h2>Your workspace is ready</h2><p class="muted">Create a project to organize your first agent-powered build.</p>@button.Button(button.Props{Class:"btn primary",Attributes:templ.Attributes{"data-open":"project-dialog","data-on:click":"$projectOpen = true"}}) { Create your first project }
+ }
  }
  for _,p:=range projects {
- <section class="project"><div class="column-head"><div><h2>{ p.Name }</h2><p class="muted">{ p.Provider } · { p.Repo } · { p.BaseBranch }</p></div>@button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-open":"card-"+p.ID}}) { ＋ Add card }</div>
- <jawa-board csrf={ csrf } project-id={ p.ID }>
- <div class="board">
+ <section class="project" id={ "project-"+p.ID } data-project-id={ p.ID } data-project-name={ p.Name }><div class="column-head project-head"><div><h2>{ p.Name }</h2><p class="muted repo">{ p.Provider+" / "+p.Repo+" · "+p.BaseBranch }</p></div>@button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-open":"card-dialog","data-project":p.ID,"data-on:click":"$cardOpen = true"}}) { ＋ Add card }</div>
+ <jawa-board id={ "board-"+p.ID } project-id={ p.ID }><div class="board">
  for _,status:=range []string{"Todo","Building","Done"} {
- <section class="column"><div class="column-head"><h3>{ status }</h3><span class="count">{ strconv.Itoa(cardCount(cards,p.ID,status)) }</span></div><div class="task-list" data-status={ status }>
+ <section class="column"><div class="column-head"><h3><span class={ "dot "+status }></span>{ status }</h3>@badge.Badge(badge.Props{Variant:badge.VariantSecondary}) { { strconv.Itoa(cardCount(cards,p.ID,status)) }
+ }</div><div class="task-list" data-status={ status }>
  for _,c:=range cards {
  if c.ProjectID==p.ID&&c.Status==status {
- <article class="task-card" data-card-id={ c.ID } data-title={ c.Title } data-status={ c.Status } data-show={ strconv.Quote(c.Title+" "+c.Description)+".toLowerCase().includes($filter.toLowerCase())" }>
- <div class="card-top"><h4 class="task-title">{ c.Title }</h4><button type="button" class="drag-handle" aria-label="Drag card">⠿</button></div>
+ @card.Card(card.Props{ID:"card-"+c.ID,Class:"task-card",Attributes:templ.Attributes{"data-card-id":c.ID,"data-title":c.Title,"data-status":c.Status,"data-show":strconv.Quote(c.Title+" "+c.Description)+".toLowerCase().includes($filter.toLowerCase())"}}) {
+ <div class={ "card-status status-"+c.Status }>@badge.Badge(badge.Props{Variant:badge.VariantOutline}) { { c.Status } }</div><div class="card-top"><h4 class="task-title">{ c.Title }</h4><button type="button" class="drag-handle" aria-label="Drag card">⠿</button></div>
  if c.Description!="" {
  <p class="card-desc">{ c.Description }</p>
  }
  <div class="card-foot">
- if c.IssueURL!="" {
- <a class="issue-link" href={ c.IssueURL } target="_blank" rel="noopener noreferrer">↗ Issue</a>
+ if safeActivityURL(c.IssueURL)!="" {
+ <a class="issue-link" href={ templ.SafeURL(safeActivityURL(c.IssueURL)) } target="_blank" rel="noopener noreferrer">↗ Issue</a>
  }
- <label class="muted">Move <select class="move-select" aria-label={ "Move "+c.Title } data-move-card={ c.ID }><option value="">to…</option><option>Todo</option><option>Building</option><option>Done</option></select></label>
- </div></article>
+ <label class="muted">Move <select class="move-select" aria-label={ "Move "+c.Title } data-move-card={ c.ID }><option value="">to…</option><option>Todo</option><option>Building</option><option>Done</option></select></label></div>
+ <div data-card-attempts>@cardAttempts(c.ID,attempts)</div><div class="card-actions">
+ if canAction(c,attempts,"start") {
+ @cardAction(csrf,c.ID,"/cards/retry","Start work",false)
  }
+ if canAction(c,attempts,"retry") {
+ @cardAction(csrf,c.ID,"/cards/retry","Retry terminal attempt",false)
+ }
+ @guardedCardAction(csrf,c,attempts,"reset","/cards/reset","Reset to Todo")
+ @guardedCardAction(csrf,c,attempts,"delete","/cards/delete","Delete")
+ </div>
+ }
+ }
+ }
+ if cardCount(cards,p.ID,status)==0 {
+ <p class="lane-empty">{ laneHint(status) }</p>
  }
  </div></section>
  }
- </div></jawa-board>
- <dialog id={ "card-"+p.ID }><form method="post" action="/cards"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="project_id" value={ p.ID }/><h2>New card</h2><label class="field">Title<input name="title" required/></label><label class="field">Description<textarea name="description"></textarea></label><label class="field">Issue URL<input name="issue_url" type="url"/></label><div class="dialog-actions"><button type="button" class="btn" data-close>Cancel</button>@submit("Create card")</div></form></dialog>
- </section>
+ </div></jawa-board></section>
  }
- <details class="settings"><summary>Worker connection settings</summary><p class="muted">Embedded NATS: { nats.URL }. Set credentials before connecting agents. Rotation disconnects clients using old credentials. Remote connections require a TLS proxy; the default listener is loopback.</p><form method="post" action="/settings/nats"><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="url" value={ nats.URL }/><label class="field">NATS username<input name="username" value={ nats.Username } required/></label><label class="field">New NATS password<input name="password" type="password" minlength="12" required autocomplete="new-password"/></label>@submit("Rotate credentials")</form></details>
- <dialog id="project-dialog"><form method="post" action="/projects"><input type="hidden" name="_csrf" value={ csrf }/><h2>Create project</h2><label class="field">Name<input name="name" required/></label><label class="field">Provider<select name="provider"><option value="github">GitHub</option><option value="forgejo">Forgejo</option></select></label><label class="field">Repository URL<input name="repo" placeholder="https://github.com/owner/repo.git" required/></label><label class="field">Base branch<input name="base_branch" value="main" required/></label><div class="dialog-actions"><button type="button" class="btn" data-close>Cancel</button>@submit("Create project")</div></form></dialog>
- </main></body></html>
+ </div>
+}
+
+templ cardAction(csrf,id,route,title string,confirm bool) {
+ <form method="post" action={ route } data-on:submit__prevent={ postAction(route,confirm) }><input type="hidden" name="_csrf" value={ csrf }/><input type="hidden" name="card_id" value={ id }/>@button.Button(button.Props{Type:button.TypeSubmit,Class:"btn small"}) { { title }
+ }</form>
+}
+
+templ activityPanel(workers []presence.Record,attempts []Attempt,msg string) {
+ <section id="activity-panel" data-activity><div class="column-head"><h2>Agents and activity</h2>@badge.Badge(badge.Props{Variant:badge.VariantOutline,ID:"activity-counts"}) { { activityCounts(workers,attempts) }
+ }</div><p id="activity-status" class="muted">{ msg }</p><div id="activity-workers">
+ for _,worker:=range workers {
+ <details id={ "worker-"+worker.Identity.Worker } data-worker-id={ worker.Identity.Worker } data-preserve-attr="open"><summary>{ worker.Identity.Worker+" · "+workerAvailability(worker) }</summary><p>{ "Updated: "+worker.UpdatedAt.String()+" · Run: "+workerRun(worker,attempts) }</p><pre>{ inspectRecord(worker) }</pre></details>
+ }
+ if len(workers)==0 {
+ <p class="muted">No live agents reported.</p>
+ }
+ </div></section>
 }
 
 templ auth(csrf,kind,msg string) {
- <!doctype html><html lang="en">@head("Jawa · "+kind)<body><main class="auth-wrap"><section class="auth-card"><div class="brand"><span class="brand-mark">J</span>Jawa</div>
+ <!doctype html><html lang="en">@head("Jawa · "+kind)<body class="style-nova"><main class="auth-wrap">@card.Card(card.Props{Class:"auth-card"}) { <div class="brand"><span class="brand-mark">J</span>Jawa</div>
  if kind=="setup" {
  <h1>Set up your workspace</h1><p class="muted">Create your administrator account. Use a password of at least 12 characters.</p>
  } else {
- <h1>Welcome back</h1>
+ <h1>Welcome back</h1><p class="muted">Sign in to your engineering workspace.</p>
  }
  if msg!="" {
- <p class="notice" role="alert">{ msg }</p>
- }
- <form method="post" action={ "/"+kind }><input type="hidden" name="_csrf" value={ csrf }/><label class="field">Username<input name="username" required autocomplete="username"/></label><label class="field">Password<input type="password" name="password" required autocomplete="current-password"/></label>
+ @alert.Alert(alert.Props{Class:"notice"}) { { msg }
+ } }
+ <form method="post" action={ "/"+kind }><input type="hidden" name="_csrf" value={ csrf }/><div class="field">@label.Label(label.Props{For:"auth-user"}) { Username } @input.Input(input.Props{ID:"auth-user",Name:"username",Required:true,Attributes:templ.Attributes{"autocomplete":"username"}})</div><div class="field">@label.Label(label.Props{For:"auth-password"}) { Password } @input.Input(input.Props{ID:"auth-password",Name:"password",Type:"password",Required:true,Attributes:templ.Attributes{"autocomplete":passwordAutocomplete(kind),"minlength":passwordMinLength(kind)}})</div>
  if kind=="setup" {
  @submit("Create administrator")
  } else {
  @submit("Sign in")
  }
- </form></section></main></body></html>
+ </form>
+ }</main></body></html>
+}
+
+templ cardAttempts(cardID string,attempts []Attempt) {
+ for _,a:=range latestAttempt(cardID,attempts) {
+ @badge.Badge(badge.Props{Variant:badge.VariantOutline,Attributes:templ.Attributes{"data-attempt-badge":""}}) { { "Attempt "+strconv.Itoa(a.Number)+" · "+a.State }
+ }
+ if a.Error!="" {
+ <p class="notice">{ a.Error }</p>
+ }
+ if safeActivityURL(a.PRURL)!="" {
+ <a href={ templ.SafeURL(safeActivityURL(a.PRURL)) } target="_blank" rel="noopener noreferrer">↗ Pull request</a>
+ }
+ }
+ if len(latestAttempt(cardID,attempts))>0 {
+ <details id={ "history-"+cardID } data-attempt-history data-preserve-attr="open"><summary>Attempt history</summary>
+ for _,a:=range attempts {
+ if a.CardID==cardID {
+ <details id={ "attempt-"+a.ID } data-attempt-id={ a.ID } data-preserve-attr="open"><summary>{ "Attempt "+strconv.Itoa(a.Number)+" · "+a.State }</summary>@attemptInfo(a)</details>
+ }
+ }
+ </details>
+ }
+}
+
+templ attemptInfo(a Attempt) {
+ <p>{ "Worker: "+displayValue(a.WorkerID)+" · Run: "+displayValue(a.RunID)+" · Run state: "+displayValue(a.RunState) }</p><p>{ "Branch: "+attemptBranch(a) }</p>
+ if safeActivityURL(a.PRURL)!="" {
+ <a href={ templ.SafeURL(safeActivityURL(a.PRURL)) } target="_blank" rel="noopener noreferrer">↗ Pull request</a>
+ }
+ if a.Error!="" {
+ <p class="notice">{ a.Error }</p>
+ }
+}
+
+// notification is an independent patch root; errors never discard a draft.
+templ notification(message string) {
+ @alert.Alert(alert.Props{ID:"notice",Class:"notice",Attributes:templ.Attributes{"role":"alert","aria-live":"polite","hidden":message==""}}) { { message } }
+}
+
+templ guardedCardAction(csrf string,c Card,attempts []Attempt,action,route,title string) {
+ if canAction(c,attempts,action) {
+  if action=="delete" {
+   @button.Button(button.Props{Class:"btn small danger",Attributes:templ.Attributes{"data-on:click":"$deleteCard = "+strconv.Quote(c.ID)+"; $deleteOpen = true"}}) { { title } }
+  } else {
+   @cardAction(csrf,c.ID,route,title,false)
+  }
+ } else {
+  @button.Button(button.Props{Class:"btn small",Disabled:true,Attributes:templ.Attributes{"title":actionReason(c,attempts,action)}}) { { title } }
+  <span class="action-reason">{ actionReason(c,attempts,action) }</span>
+ }
 }

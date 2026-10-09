@@ -9,7 +9,7 @@ requests. Lightpanda MCP provides browser tools.
 The image includes Go, Git, GitHub CLI, Go linters, Python, and common development
 utilities.
 
-## Orchestrator (foundation preview)
+## Orchestrator
 
 The same binary can serve a local control plane with SQLite and an embedded,
 authenticated, persistent NATS JetStream server:
@@ -26,11 +26,40 @@ board supports drag-and-drop and keyboard moves, persistent ordering, and option
 issue links. Open **Worker connection settings** to set NATS credentials before
 connecting workers; initial random credentials deliberately cannot be used.
 
-**This is not yet the automated factory:** moving a card to Building currently only
-changes its stored state. Durable agent dispatch, execution history, Git-provider
-API integration, and PR/CI/review verification are next. Done is currently manual.
+Moving a Todo card to **Building** atomically creates a durable execution attempt
+and outbox task. The orchestrator publishes it to `bonnie.tasks`, consumes BONNIE
+events/results, and shows worker assignment, PR links, blockers, and attempt history.
+Agents appear live through the BONNIE presence API; enable presence on each worker:
 
-The UI uses templ, shadcn-templ buttons, Datastar, and locally bundled SortableJS.
+```sh
+export JAWA_NATS_PRESENCE=true
+export JAWA_NATS_WORKER_ID=jawa-1
+export NATS_URL=nats://127.0.0.1:4222
+export NATS_USERNAME=worker
+# Set NATS_PASSWORD to the credential configured in the admin UI.
+./bin/jawa
+```
+
+The orchestrator independently verifies PR identity, assigned branch, current-head
+CI and review feedback before moving a card to **Done**. Done means ready for human
+review/merge, not merged or automatically approved. Give the orchestrator
+`JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) and/or `JAWA_FORGEJO_TOKEN` with verification
+read access; workers need their own push/PR credentials. See [PROVIDERS.md](PROVIDERS.md)
+for supported API policy and required permissions. Missing credentials or incomplete
+evidence leaves the card blocked in Building rather than falsely completing it.
+
+Retry creates another numbered branch/attempt after a terminal failed/blocked
+outcome. Legacy Building cards without attempts offer Start work. Reset to Todo
+preserves history; Delete requires confirmation. Active attempts cannot be reset/deleted. Active attempts cannot be manually moved out of Building: cancellation,
+execution leases, automatic reassignment, and enforced runtime/cost budgets are not
+yet implemented. The worker prompt bounds CI/review repair to 30 minutes, but this
+is guidance, not a scheduler-enforced timeout. Review comments arriving after Done
+do not automatically reopen work. Use one orchestrator per database and NATS scope;
+its stable durable consumers are not multi-orchestrator isolated.
+
+The UI uses templ, prebuilt shadcn-templ components with Tailwind/Nova styling,
+Datastar SSE element/signal patches, and locally bundled SortableJS. Board actions
+do not reload the page; live patches preserve drafts and expanded history.
 Datastar Pro Rocket requires a licensed distribution not present here; the drag
 wrapper currently uses a standard custom element instead. See
 [`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for UI
@@ -183,7 +212,11 @@ into new run working directories.
 ```sh
 go test ./...
 go vet ./...
+go test -race ./...
+golangci-lint run ./...
 docker build -t jawa:local .
+# Requires local Chromium and frontend npm dependencies:
+go run ./cmd/factory-smoke
 ```
 
 Pushes publish images to GHCR with branch and commit tags; `master` updates
