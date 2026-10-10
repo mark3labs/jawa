@@ -117,12 +117,12 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Act as a worker on the actual task subject, not a constructed TaskJSON.
+	// Act as a agent on the actual task subject, not a constructed TaskJSON.
 	js, err := nc.JetStream()
 	if err != nil {
 		t.Fatal(err)
 	}
-	sub, err := js.PullSubscribe("bonnie.tasks", "factory-worker")
+	sub, err := js.PullSubscribe("bonnie.tasks", "factory-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 	if strings.Count(task.Text, "\nBranch: ") != 1 || !strings.HasSuffix(task.Text, "\nBranch: "+branch) {
 		t.Fatalf("task lacks matching deterministic branch: %q", task.Text)
 	}
-	target := client.Target{TaskID: task.TaskID, WorkerID: "worker", RunID: "run", AttemptID: "remote"}
+	target := client.Target{TaskID: task.TaskID, AgentID: "agent", RunID: "run", AttemptID: "remote"}
 	event := client.StatusEvent{Version: 1, Target: target, EventID: "accepted", Type: "task_accepted", Seq: 0, State: runtime.RunRunning}
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -166,9 +166,9 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return a.State == "running" && a.WorkerID == target.WorkerID && a.RunID == target.RunID && a.RemoteAttemptID == target.AttemptID
+		return a.State == "running" && a.AgentID == target.AgentID && a.RunID == target.RunID && a.RemoteAttemptID == target.AttemptID
 	})
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: task.TaskID, WorkerID: target.WorkerID, RunID: target.RunID, AttemptID: target.AttemptID, State: runtime.RunCompleted, Response: `{"pr_number":7}`})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: task.TaskID, AgentID: target.AgentID, RunID: target.RunID, AttemptID: target.AttemptID, State: runtime.RunCompleted, Response: `{"pr_number":7}`})
 	waitWorkflow(t, func() bool {
 		a, err := w.CardResult(card.ID)
 		if err != nil {
@@ -198,7 +198,7 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 	}
 	assertState(false, "blocked", "Building")
 	if err := w.MoveCard(card.ID, "Done", 0); err == nil {
-		t.Fatal("unverified worker result allowed manual Done")
+		t.Fatal("unverified agent result allowed manual Done")
 	}
 
 	// Drive retries directly after result consumption, without the 10s ticker.

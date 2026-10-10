@@ -54,7 +54,13 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 	// Expected action failures are finite 200 responses, not retryable mutations.
 	// Escape explicitly: neither markup nor SSE fields may come from an error.
 	notice := `<div id="notice" class="notice" role="alert" aria-live="polite">` + html.EscapeString(message) + `</div>`
-	_ = newSSEWriter(w).write(elementsFrame(notice))
+	stream := newSSEWriter(w)
+	if err := stream.write(elementsFrame(notice)); err != nil {
+		return
+	}
+	if r.URL.Path == "/cards/cancel" {
+		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"cancelOpen\":false,\"cancelCard\":\"\"}\n\n")
+	}
 }
 
 // Unsolicited snapshots never include the last (notice) fragment, so a failed
@@ -106,6 +112,9 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 		signals["projectOpen"] = "false"
 	case "/cards":
 		signals["cardOpen"] = "false"
+	case "/cards/cancel":
+		signals["cancelOpen"] = "false"
+		signals["cancelCard"] = `""`
 	case "/cards/delete":
 		signals["deleteOpen"] = "false"
 		signals["deleteCard"] = `""`

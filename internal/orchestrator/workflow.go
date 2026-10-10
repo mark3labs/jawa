@@ -16,11 +16,11 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// Attempt is a durable board execution, distinct from a worker's remote attempt.
+// Attempt is a durable board execution, distinct from a agent's remote attempt.
 type Attempt struct {
 	ID, CardID                                         string
 	Number                                             int
-	TaskID, TaskJSON, WorkerID, RunID, RemoteAttemptID string
+	TaskID, TaskJSON, AgentID, RunID, RemoteAttemptID  string
 	State, RunState, Result, OutcomeJSON, Error, PRURL string
 	Published, Ready                                   bool
 	EventSeq                                           int
@@ -50,11 +50,14 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 	if err := migrateWorkflow(s); err != nil {
 		return nil, err
 	}
+	if err := migrateAgentStream(ctx, conn); err != nil {
+		return nil, err
+	}
 	c, err := client.New(conn, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true, EventConsumer: "jawa-workflow-events", ResultConsumer: "jawa-workflow-results"})
 	if err != nil {
 		return nil, err
 	}
-	p, err := presencenats.New(ctx, conn, presencenats.Config{Bucket: "jawa_workers", TTL: 30 * time.Second, Create: true})
+	p, err := presencenats.New(ctx, conn, presencenats.Config{Bucket: "jawa_agents", TTL: 30 * time.Second, Create: true})
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +76,7 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for {
+			w.resyncRuns(conn)
 			w.verifyPending()
 			select {
 			case <-w.ctx.Done():
@@ -97,16 +101,16 @@ func (w *Workflow) loop(f func() error) {
 }
 func (w *Workflow) Close() error           { w.cancel(); w.wg.Wait(); return nil }
 func (w *Workflow) SetVerifier(v Verifier) { w.mu.Lock(); w.verifier = v; w.mu.Unlock() }
-func (w *Workflow) Workers(ctx context.Context) ([]presence.Record, error) {
+func (w *Workflow) Agents(ctx context.Context) ([]presence.Record, error) {
 	return w.presence.Discover(ctx, presence.Filter{})
 }
 
-const attemptColumns = `id,card_id,number,task_id,task_json,worker_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at`
+const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var created, updated int64
-	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.WorkerID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated)
+	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	a.UpdatedAt = time.UnixMilli(updated).UTC()
 	return a, err
@@ -165,7 +169,7 @@ func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 		return errors.New("done requires verified PR readiness")
 	}
 	if source == "Building" && status != "Building" && (status != "Todo" || !noAttempt) {
-		return errors.New("cannot leave Building: cancellation is not implemented")
+		return errors.New("use Cancel work, wait for confirmed stop, then Reset to Todo")
 	}
 	if retry {
 		if source != "Building" || (!noAttempt && !terminalFailure(latest)) {
@@ -214,31 +218,34 @@ func workflowCardError(err error) error {
 }
 
 func terminalFailure(a Attempt) bool {
-	return a.OutcomeJSON != "" && (a.State == "failed" || a.State == "blocked") && a.RunState != "waiting"
+	return (a.OutcomeJSON != "" || a.RunState == "cancelled" || a.RunState == "failed") && (a.State == "failed" || a.State == "blocked") && a.RunState != "waiting" && a.RunState != "interrupted"
 }
 
 // Check all history, not just the latest attempt: these actions never cancel work.
 func noActiveAttempts(tx *sql.Tx, id string) error {
 	var active bool
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_attempts WHERE card_id=? AND
-		(state IN ('queued','submitted','running','waiting') OR run_state IN ('queued','submitted','running','waiting')))`, id).Scan(&active); err != nil {
+		(state IN ('queued','submitted','running','waiting') OR run_state IN ('queued','submitted','running','waiting','interrupted')))`, id).Scan(&active); err != nil {
 		return err
 	}
 	if active {
-		return errors.New("card has an active attempt; cancellation is not implemented")
+		return errors.New("card has an active attempt; cancel it and wait for confirmed stop before resetting or deleting")
 	}
 	return nil
 }
 
 // ResetCard returns failed or blocked work to Todo, retaining every attempt.
 // Legacy cards with no execution history may also be reset.
-func (w *Workflow) ResetCard(id string) error { return w.cardAction(id, false) }
+func (w *Workflow) ResetCard(id string) error { return w.cardAction(id, false, false) }
 
 // DeleteCard removes inactive cards and cascades their execution history.
 // Published queued work is still active and must not be deleted.
-func (w *Workflow) DeleteCard(id string) error { return w.cardAction(id, true) }
+func (w *Workflow) DeleteCard(id string) error { return w.cardAction(id, true, false) }
 
-func (w *Workflow) cardAction(id string, deleteCard bool) error {
+// DeleteUnreconciledCard explicitly abandons local tracking, not remote work.
+func (w *Workflow) DeleteUnreconciledCard(id string) error { return w.cardAction(id, true, true) }
+
+func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -252,7 +259,16 @@ func (w *Workflow) cardAction(id string, deleteCard bool) error {
 		return workflowCardError(err)
 	}
 	if err = noActiveAttempts(tx, id); err != nil {
-		return err
+		if !deleteCard || !acknowledgeOrphan {
+			return err
+		}
+		latest, readErr := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
+		if readErr != nil {
+			return readErr
+		}
+		if latest.Ready || latest.Error != executionConflictNotice {
+			return errors.New("only a run needing reconciliation can be deleted with orphan acknowledgment")
+		}
 	}
 	if deleteCard {
 		if _, err = tx.Exec(`DELETE FROM cards WHERE id=?`, id); err != nil {
@@ -304,8 +320,8 @@ func (w *Workflow) dispatch() {
 	}
 }
 
-func matches(a Attempt, worker, run, remote string) bool {
-	return (a.WorkerID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.WorkerID == worker && a.RunID == run && a.RemoteAttemptID == remote)
+func matches(a Attempt, agent, run, remote string) bool {
+	return (a.AgentID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.AgentID == agent && a.RunID == run && a.RemoteAttemptID == remote)
 }
 func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	tx, err := w.s.writeTx()
@@ -324,13 +340,35 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`INSERT OR IGNORE INTO workflow_execution_events(task_id,event_id,worker_id,run_id,remote_attempt_id,event_type,event_json,received_at) VALUES(?,?,?,?,?,?,?,?)`, ev.TaskID, ev.EventID, ev.WorkerID, ev.RunID, ev.AttemptID, ev.Type, string(data), time.Now().UnixMilli()); err != nil {
+	if _, err = tx.Exec(`INSERT OR IGNORE INTO workflow_execution_events(task_id,event_id,agent_id,run_id,remote_attempt_id,event_type,event_json,received_at) VALUES(?,?,?,?,?,?,?,?)`, ev.TaskID, ev.EventID, ev.AgentID, ev.RunID, ev.AttemptID, ev.Type, string(data), time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	if a.OutcomeJSON != "" || !matches(a, ev.WorkerID, ev.RunID, ev.AttemptID) || (a.WorkerID != "" && ev.Seq <= a.EventSeq) {
+	if a.Ready || (a.OutcomeJSON != "" && !resumableOutcome(a)) || !matches(a, ev.AgentID, ev.RunID, ev.AttemptID) || (a.AgentID != "" && ev.Seq <= a.EventSeq) {
 		return tx.Commit()
 	}
-	_, err = tx.Exec(`UPDATE workflow_attempts SET worker_id=?,run_id=?,remote_attempt_id=?,state='running',run_state=?,event_seq=?,updated_at=? WHERE id=?`, ev.WorkerID, ev.RunID, ev.AttemptID, string(ev.State), ev.Seq, time.Now().UnixMilli(), a.ID)
+	// A restarted agent may continue the same run, but must not revive a
+	// superseded attempt or a card that was explicitly reset.
+	var current bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+		return err
+	}
+	if !current {
+		return tx.Commit()
+	}
+	state, reason := "running", ""
+	switch string(ev.State) {
+	case "cancelled":
+		state, reason = "failed", "agent run cancelled"
+	case "failed":
+		state, reason = "failed", "agent run failed"
+	case "interrupted":
+		state, reason = "blocked", "agent run interrupted; awaiting agent recovery"
+	case "waiting":
+		state, reason = "blocked", "agent run waiting for input"
+	case "completed":
+		state, reason = "blocked", "awaiting agent outcome"
+	}
+	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,error=?,event_seq=?,updated_at=? WHERE id=?`, ev.AgentID, ev.RunID, ev.AttemptID, state, string(ev.State), reason, ev.Seq, time.Now().UnixMilli(), a.ID)
 	if err != nil {
 		return err
 	}
@@ -350,19 +388,47 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return err
 	}
 	// Retain every mismatched delivery, even for ready or superseded attempts.
-	if !matches(a, out.WorkerID, out.RunID, out.AttemptID) {
+	if !matches(a, out.AgentID, out.RunID, out.AttemptID) {
 		if err = retainConflict(tx, out); err != nil {
 			return err
 		}
+		// Keep the pinned identity and run state, but surface unusable terminal
+		// reports. Never infer a missing AgentID or readiness from a conflict.
+		if !a.Ready && (string(out.State) == "failed" || string(out.State) == "completed" || string(out.State) == "cancelled") {
+			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status='Building') AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>?`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
+				return err
+			}
+		}
 		return tx.Commit()
 	}
-	if a.Ready || (a.OutcomeJSON != "" && a.RunState != "waiting") {
+	data, err := json.Marshal(out)
+	if err != nil {
+		return err
+	}
+	if a.Ready || (a.OutcomeJSON != "" && (!resumableOutcome(a) || a.OutcomeJSON == string(data))) {
 		return nil
+	}
+	if resumableOutcome(a) {
+		var current bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
 	}
 	if err = applyOutcome(tx, a, out); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// Waiting and cancellation close a turn, not necessarily the durable run.
+// Keep the old report while following newer status events so replayed outcomes
+// do not undo a restart. Completed/failed reports remain final.
+func resumableOutcome(a Attempt) bool {
+	var out client.Outcome
+	return json.Unmarshal([]byte(a.OutcomeJSON), &out) == nil && (string(out.State) == "waiting" || string(out.State) == "cancelled" || string(out.State) == "interrupted")
 }
 
 // applyOutcome is shared by guarded delivery and explicit reconciliation. The
@@ -373,7 +439,7 @@ func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
 		state = "failed"
 	} else if string(out.State) == "completed" {
 		reportedPR := reportPR(out.Response)
-		if reportedPR > 0 && out.WorkerID != "" && out.RunID != "" && out.AttemptID != "" {
+		if reportedPR > 0 && out.AgentID != "" && out.RunID != "" && out.AttemptID != "" {
 			var provider, repo string
 			if err := tx.QueryRow(`SELECT p.provider,p.repo FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo); err != nil {
 				return err
@@ -389,13 +455,13 @@ func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
 			reason = "invalid PR report or execution identity"
 		}
 	} else {
-		reason = "worker outcome requires intervention"
+		reason = "agent outcome requires intervention"
 	}
 	data, err := json.Marshal(out)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`UPDATE workflow_attempts SET worker_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.WorkerID, out.RunID, out.AttemptID, state, string(out.State), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
+	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, state, string(out.State), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
 	return err
 }
 func (w *Workflow) verifyPending() {

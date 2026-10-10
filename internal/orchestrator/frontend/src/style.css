@@ -364,7 +364,7 @@ a.chip:hover { border-color: var(--robe); color: var(--text); }
 .run-key { color: var(--text-3); font: 500 11.5px var(--mono); letter-spacing: 0; flex: none; }
 .run-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .run-state { font-size: 12.5px; }
-.run-attempt, .run-worker { color: var(--text-2); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-attempt, .run-agent { color: var(--text-2); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-time { color: var(--text-3); font-size: 12px; }
 .run-body { padding: 14px 16px 18px 44px; background: var(--bg-sidebar); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; margin: 0; }
@@ -477,7 +477,7 @@ dialog [data-slot="dialog-description"] { margin: 4px 0 16px; color: var(--text-
 @media (max-width: 1100px) {
   .lanes { grid-template-columns: repeat(3, minmax(250px, 1fr)); overflow-x: auto; padding-bottom: 8px; }
   .run-head, .run-row { grid-template-columns: 16px minmax(0, 1fr) 110px 54px 80px; }
-  .run-head span:nth-child(5), .run-head span:nth-child(6), .run-worker, .run-pr { display: none; }
+  .run-head span:nth-child(5), .run-head span:nth-child(6), .run-agent, .run-pr { display: none; }
 }
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }

@@ -197,7 +197,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{filter:'',projectOpen:false,cardOpen:false,deleteOpen:false,deleteCard:'',goto:''}"
+	return "{filter:'',projectOpen:false,cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -283,7 +283,7 @@ templ sidebarNav(d pageData) {
 			<a class="nav-item" href="/agents" aria-current={ isCurrent(d.v.View == viewAgents) }>
 				@icon("agents")
 				<span>Agents</span>
-				<span class={ "nav-count", templ.KV("online", readyWorkers(d.workers) > 0) }>{ strconv.Itoa(readyWorkers(d.workers)) }</span>
+				<span class={ "nav-count", templ.KV("online", readyAgents(d.agents) > 0) }>{ strconv.Itoa(readyAgents(d.agents)) }</span>
 			</a>
 			<a class="nav-item" href="/settings" aria-current={ isCurrent(d.v.View == viewSettings) }>
 				@icon("settings")
@@ -367,11 +367,11 @@ templ topbar(d pageData) {
 
 // agentStatus is a live patch root present on every screen.
 templ agentStatus(d pageData) {
-	<a id="agent-status" class={ "agent-chip", templ.KV("online", readyWorkers(d.workers) > 0), templ.KV("degraded", !d.presence) } href="/agents" title="Open agents">
+	<a id="agent-status" class={ "agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence) } href="/agents" title="Open agents">
 		<span class="pulse-dot"></span>
 		if !d.presence {
 			<span>Presence unavailable</span>
-		} else if n := readyWorkers(d.workers); n == 0 {
+		} else if n := readyAgents(d.agents); n == 0 {
 			<span>No agents online</span>
 		} else if n == 1 {
 			<span>1 agent online</span>
@@ -462,17 +462,43 @@ templ dialogs(d pageData) {
 		}
 		@dialog.Description() {
 			This permanently removes the card and its attempt history. This cannot be undone.
+			<span data-show="$deleteOrphan">This run needs reconciliation. Deleting does not stop the agent: it may orphan a run that continues working, committing, or opening pull requests.</span>
 		}
 		<form method="post" action="/cards/delete" data-on:submit__prevent="@post('/cards/delete', {contentType:'form'})">
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:delete-card/>
+			<label data-show="$deleteOrphan">
+				<input type="checkbox" name="acknowledge_orphan" value="yes" data-bind:delete-acknowledged data-attr:required="$deleteOrphan"/>
+				I understand that deleting may orphan a still-running agent.
+			</label>
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$deleteOpen = false"}}) {
 					Keep card
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
 					Delete permanently
+				}
+			}
+		</form>
+	</dialog>
+	<dialog id="cancel-dialog" aria-labelledby="cancel-dialog-title" data-effect="if ($cancelOpen && !el.open) el.showModal(); else if (!$cancelOpen && el.open) el.close()" data-on:close="$cancelOpen = false" data-on:cancel="$cancelOpen = false">
+		@dialog.Title(dialog.TitleProps{ID: "cancel-dialog-title"}) {
+			Request cancellation?
+		}
+		@dialog.Description() {
+			This asks the agent to stop its current run; cancellation may not be confirmed. It cannot undo external actions already taken, such as commits or pull requests.
+		}
+		<form method="post" action="/cards/cancel" data-on:submit__prevent="@post('/cards/cancel', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" data-bind:cancel-card/>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cancelOpen = false"}}) {
+					Keep running
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+					Request cancellation
 				}
 			}
 		</form>

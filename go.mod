@@ -3,10 +3,11 @@ module jawa
 go 1.27.0
 
 require (
+	charm.land/fantasy v0.45.2
 	github.com/a-h/templ v0.3.1070
 	github.com/axadrn/shadcn-templ/v2 v2.0.0-beta.13
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/bonnie v0.20.0
+	github.com/mark3labs/bonnie v0.21.0
 	github.com/mark3labs/kit v0.120.0
 	github.com/nats-io/nats-server/v2 v2.15.1
 	github.com/nats-io/nats.go v1.53.1
@@ -20,7 +21,6 @@ require (
 require (
 	charm.land/bubbles/v2 v2.2.1 // indirect
 	charm.land/bubbletea/v2 v2.0.10 // indirect
-	charm.land/fantasy v0.45.2 // indirect
 	charm.land/lipgloss/v2 v2.0.6 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.24.0 // indirect

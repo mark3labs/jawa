@@ -48,8 +48,8 @@ func run() error {
 	id := flag.String("id", "", "Task ID (reuse only for the same task)")
 	text := flag.String("text", "", "Task instructions")
 	root := flag.String("root", defaultRoot, "NATS root subject")
-	worker := flag.String("worker", "", "Target worker ID; empty uses the shared queue")
-	timeout := flag.Duration("timeout", 30*time.Minute, "Maximum time to wait; does not cancel the worker")
+	agent := flag.String("agent", "", "Target agent ID; empty uses the shared queue")
+	timeout := flag.Duration("timeout", 30*time.Minute, "Maximum time to wait; does not cancel the agent")
 	flag.Parse()
 	if *text == "" {
 		return errors.New("-text is required")
@@ -108,7 +108,7 @@ func run() error {
 			}
 			seen[e.EventID] = true
 			if e.Type == "task_accepted" {
-				log.Printf("picked up: task=%s worker=%s run=%s attempt=%s", e.TaskID, e.WorkerID, e.RunID, e.AttemptID)
+				log.Printf("picked up: task=%s agent=%s run=%s attempt=%s", e.TaskID, e.AgentID, e.RunID, e.AttemptID)
 			} else {
 				log.Printf("status: task=%s run=%s state=%s seq=%d", e.TaskID, e.RunID, e.State, e.Seq)
 			}
@@ -130,15 +130,15 @@ func run() error {
 	}()
 	defer func() { cancel(); wg.Wait() }()
 	task := bonnienats.Task{TaskID: *id, Text: *text}
-	if *worker == "" {
+	if *agent == "" {
 		_, err = client.Submit(ctx, task)
 	} else {
-		_, err = client.SubmitTo(ctx, *worker, task)
+		_, err = client.SubmitTo(ctx, *agent, task)
 	}
 	if err != nil {
 		return fmt.Errorf("submit %s: %w", *id, err)
 	}
-	log.Printf("stored by broker: task=%s target_worker=%q (empty means shared queue)", *id, *worker)
+	log.Printf("stored by broker: task=%s target_agent=%q (empty means shared queue)", *id, *agent)
 	log.Printf("temporary consumers: %s (result and event streams)", reader)
 	select {
 	case o := <-outcomes:

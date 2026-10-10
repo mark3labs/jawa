@@ -124,7 +124,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/settings/nats":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/settings/nats":
 	default:
 		http.NotFound(w, r)
 		return
@@ -184,17 +184,28 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("workflow unavailable")
 		} else if r.URL.Path == "/cards/reset" {
 			err = a.workflow.ResetCard(r.FormValue("card_id"))
+		} else if r.FormValue("acknowledge_orphan") == "yes" {
+			err = a.workflow.DeleteUnreconciledCard(r.FormValue("card_id"))
 		} else {
 			err = a.workflow.DeleteCard(r.FormValue("card_id"))
+		}
+	case "/cards/cancel":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.CancelCard(r.Context(), r.FormValue("card_id"))
+			if err == nil {
+				fx.flash = "Cancellation was requested; it is not confirmed until the agent reports cancellation. External actions already taken cannot be undone."
+			}
 		}
 	case "/settings/nats":
 		err = a.rotateNATS(r.FormValue("url"), r.FormValue("username"), r.FormValue("password"))
 		if err == nil {
-			fx.flash = "Worker credentials rotated. Agents using the old password were disconnected."
+			fx.flash = "Agent credentials rotated. Agents using the old password were disconnected."
 		}
 	}
 	if err != nil {
-		a.responseError(w, r, "Unable to apply request: "+err.Error()+". Refresh the board and try again.", http.StatusBadRequest)
+		a.responseError(w, r, "Unable to apply request: "+strings.TrimRight(err.Error(), ". \t\n")+". Refresh the board and try again.", http.StatusBadRequest)
 		return
 	}
 	if datastarRequest(r) {
@@ -519,7 +530,7 @@ func Command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		// Internal credentials are process-local and independent of worker rotation.
+		// Internal credentials are process-local and independent of agent rotation.
 		systemPassword := newID()
 		systemHash, err := bcrypt.GenerateFromPassword([]byte(systemPassword), bcrypt.DefaultCost)
 		if err != nil {
@@ -579,19 +590,19 @@ func Command() *cobra.Command {
 }
 
 func (a *app) activity(w http.ResponseWriter, r *http.Request) {
-	workers := []presence.Record{}
+	agents := []presence.Record{}
 	attempts := []Attempt{}
 	var err error
 	if a.workflow != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		workers, err = a.workflow.Workers(ctx)
+		agents, err = a.workflow.Agents(ctx)
 		cancel()
 		if err != nil {
 			http.Error(w, "presence unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		if workers == nil {
-			workers = []presence.Record{}
+		if agents == nil {
+			agents = []presence.Record{}
 		}
 		attempts, err = a.workflow.Attempts()
 		if err != nil {
@@ -606,8 +617,8 @@ func (a *app) activity(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(struct {
-		Workers  []presence.Record `json:"workers"`
+		Agents   []presence.Record `json:"agents"`
 		Attempts []Attempt         `json:"attempts"`
 		Cards    []Card            `json:"cards"`
-	}{workers, attempts, cards})
+	}{agents, attempts, cards})
 }

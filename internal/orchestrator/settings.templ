@@ -19,10 +19,10 @@ templ settingsContent(d pageData) {
 		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
 			@card.Header() {
 				@card.Title() {
-					Worker connection
+					Agent connection
 				}
 				@card.Description() {
-					Agents connect to the embedded NATS server with these credentials. Rotating them disconnects workers using the old password. Remote access needs TLS in front of NATS.
+					Agents connect to the embedded NATS server with these credentials. Rotating them disconnects agents using the old password. Remote access needs TLS in front of NATS.
 				}
 			}
 			@card.Content() {
@@ -65,7 +65,7 @@ templ settingsContent(d pageData) {
 					Connect an agent
 				}
 				@card.Description() {
-					Run this on any machine that can reach the server. Use the worker password you set above.
+					Run this on any machine that can reach the server. Use the agent password you set above.
 				}
 			}
 			@card.Content() {

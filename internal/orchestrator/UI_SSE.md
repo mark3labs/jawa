@@ -4,7 +4,7 @@
 - `board.templ`: selected-project kanban, compact cards and Rocket action popovers.
 - `runs.templ`: newest-first attempt list, state/card filters, expandable details.
 - `agents.templ`: presence cards, endpoint table, inspection and connect empty state.
-- `settings.templ`: worker credential rotation, connect instructions, provider status.
+- `settings.templ`: agent credential rotation, connect instructions, provider status.
 - `view.go`: validated routes/filters, presentation helpers; no secret values exposed.
 
 Datastar owns requests and DOM patches; templ owns server-rendered markup. Rocket's

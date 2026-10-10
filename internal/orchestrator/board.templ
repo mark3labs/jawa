@@ -113,10 +113,10 @@ templ cardChips(d pageData, c Card) {
 				<span>PR</span>
 			</a>
 		}
-		if la[0].WorkerID != "" && attemptActive(la[0]) {
+		if la[0].AgentID != "" && attemptActive(la[0]) {
 			<span class="chip plain" title="Assigned agent">
 				@icon("agents")
-				<span>{ la[0].WorkerID }</span>
+				<span>{ la[0].AgentID }</span>
 			</span>
 		}
 	} else if c.Status == "Building" {
@@ -166,6 +166,16 @@ templ cardMenu(d pageData, c Card) {
 					@menuDisabled("Reset to Todo", "reset", actionReason(c, d.attempts, "reset"))
 				}
 			}
+			if c.Status == "Building" {
+				if canAction(c, d.attempts, "cancel") {
+					<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$cancelCard = " + strconv.Quote(c.ID) + "; $cancelOpen = true" }>
+						@icon("reset")
+						<span>Cancel run…</span>
+					</button>
+				} else {
+					@menuDisabled("Cancel run", "reset", "Cancellation requires an active run with a confirmed agent and remote target.")
+				}
+			}
 			if len(latestAttempt(c.ID, d.attempts)) > 0 {
 				<a class="menu-item" role="menuitem" href={ templ.SafeURL(runsForCardPath(c.ID)) }>
 					@icon("runs")
@@ -180,7 +190,7 @@ templ cardMenu(d pageData, c Card) {
 			}
 			<div class="menu-sep" role="separator"></div>
 			if canAction(c, d.attempts, "delete") {
-				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOpen = true" }>
+				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true" }>
 					@icon("trash")
 					<span>Delete…</span>
 				</button>

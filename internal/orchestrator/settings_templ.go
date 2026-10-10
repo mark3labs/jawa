@@ -77,7 +77,7 @@ func settingsContent(d pageData) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "Worker connection")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "Agent connection")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -99,7 +99,7 @@ func settingsContent(d pageData) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Agents connect to the embedded NATS server with these credentials. Rotating them disconnects workers using the old password. Remote access needs TLS in front of NATS.")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Agents connect to the embedded NATS server with these credentials. Rotating them disconnects agents using the old password. Remote access needs TLS in front of NATS.")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -336,7 +336,7 @@ func settingsContent(d pageData) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "Run this on any machine that can reach the server. Use the worker password you set above.")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "Run this on any machine that can reach the server. Use the agent password you set above.")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

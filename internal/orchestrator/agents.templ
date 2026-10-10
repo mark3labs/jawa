@@ -16,17 +16,17 @@ templ agentsContent(d pageData) {
 		<div class="view-head">
 			<div>
 				<h1>Agents</h1>
-				<p class="meta">Workers announce themselves over NATS presence. Availability is advisory, not a scheduling guarantee.</p>
+				<p class="meta">Agents announce themselves over NATS presence. Availability is advisory, not a scheduling guarantee.</p>
 			</div>
 			<div class="view-stats">
-				<span class="stat"><strong>{ strconv.Itoa(readyWorkers(d.workers)) }</strong> available</span>
-				<span class="stat"><strong>{ strconv.Itoa(len(d.workers)) }</strong> connected</span>
+				<span class="stat"><strong>{ strconv.Itoa(readyAgents(d.agents)) }</strong> available</span>
+				<span class="stat"><strong>{ strconv.Itoa(len(d.agents)) }</strong> connected</span>
 			</div>
 		</div>
 		if !d.presence {
 			<p class="card-note tone-blocked">Presence discovery is unavailable right now. This page will recover on its own.</p>
 		}
-		if len(d.workers) == 0 {
+		if len(d.agents) == 0 {
 			@empty.Empty(empty.Props{Class: "page-empty"}) {
 				@empty.Header() {
 					@empty.Media(empty.MediaProps{Variant: empty.MediaVariantIcon}) {
@@ -45,7 +45,7 @@ templ agentsContent(d pageData) {
 			}
 		} else {
 			<div class="agent-grid">
-				for _, w := range d.workers {
+				for _, w := range d.agents {
 					@agentCard(d, w)
 				}
 			</div>
@@ -66,18 +66,18 @@ templ connectBlock(d pageData) {
 }
 
 templ agentCard(d pageData, w presence.Record) {
-	@card.Card(card.Props{ID: "agent-" + w.Identity.Worker, Class: "agent-card"}) {
+	@card.Card(card.Props{ID: "agent-" + w.Identity.Agent, Class: "agent-card"}) {
 		<div class="agent-head">
 			@avatar.Avatar(avatar.Props{Size: avatar.SizeLg}) {
 				@avatar.Fallback() {
-					{ initial(w.Identity.Worker) }
+					{ initial(w.Identity.Agent) }
 				}
 			}
 			<div class="agent-id">
-				<h3>{ w.Identity.Worker }</h3>
+				<h3>{ w.Identity.Agent }</h3>
 				<p class="mono muted">{ shortID(w.Identity.Instance) }</p>
 			</div>
-			if workerReady(w) {
+			if agentReady(w) {
 				@badge.Badge(badge.Props{Class: "badge-ok"}) {
 					Available
 				}
@@ -88,7 +88,7 @@ templ agentCard(d pageData, w presence.Record) {
 			}
 		</div>
 		<div class="agent-run">
-			if a, ok := workerCurrentRun(w, d.attempts); ok {
+			if a, ok := agentCurrentRun(w, d.attempts); ok {
 				if c, found := cardByID(d.cards, a.CardID); found {
 					@toneIcon(runTone(a))
 					<a href={ templ.SafeURL(runsForCardPath(c.ID)) }>
@@ -136,7 +136,7 @@ templ agentCard(d pageData, w presence.Record) {
 				}
 			}
 		}
-		<details id={ "inspect-" + w.Identity.Worker } data-preserve-attr="open">
+		<details id={ "inspect-" + w.Identity.Agent } data-preserve-attr="open">
 			<summary>Inspect record</summary>
 			<pre class="result">{ inspectRecord(w) }</pre>
 		</details>

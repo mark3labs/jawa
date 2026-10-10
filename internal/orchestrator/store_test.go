@@ -81,7 +81,7 @@ func TestStorePersistence(t *testing.T) {
 	if err = s.setPassword("admin-hash"); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.saveNATS("nats://localhost:4222", "worker", "secret"); err != nil {
+	if err = s.saveNATS("nats://localhost:4222", "agent", "secret"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {
@@ -117,7 +117,7 @@ func TestStorePersistence(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT username,password_hash FROM admin`).Scan(&user, &hash); err != nil || user != "admin" {
 		t.Fatalf("admin username: %q %v", user, err)
 	}
-	if got := s.NATSConfig(); got != (NATSConfig{URL: "nats://localhost:4222", Username: "worker"}) {
+	if got := s.NATSConfig(); got != (NATSConfig{URL: "nats://localhost:4222", Username: "agent"}) {
 		t.Fatalf("config: %+v", got)
 	}
 	if err := s.db.QueryRow(`SELECT value FROM settings WHERE key='nats_password'`).Scan(&hash); err != nil {
@@ -129,7 +129,7 @@ func TestStorePersistence(t *testing.T) {
 	if err := s.saveNATS("changed", "changed", strings.Repeat("x", 73)); err == nil {
 		t.Fatal("expected bcrypt length error")
 	}
-	if s.NATSConfig().Username != "worker" {
+	if s.NATSConfig().Username != "agent" {
 		t.Fatal("failed settings update was not atomic")
 	}
 }

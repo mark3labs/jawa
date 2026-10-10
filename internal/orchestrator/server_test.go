@@ -240,18 +240,18 @@ func TestNATSAuthenticationAndRotation(t *testing.T) {
 		t.Helper()
 		status(t, request(a, "POST", "/settings/nats", url.Values{"_csrf": {csrf.Value}, "url": {ns.ClientURL()}, "username": {user}, "password": {pass}}, session, csrf), 303)
 	}
-	rotate("worker", "first-long-secret")
-	nc, e := connect("worker", "first-long-secret")
+	rotate("agent", "first-long-secret")
+	nc, e := connect("agent", "first-long-secret")
 	if e != nil {
 		t.Fatal(e)
 	}
 	nc.Close()
-	rotate("worker2", "second-long-secret")
-	if nc, e = connect("worker", "first-long-secret"); e == nil {
+	rotate("agent2", "second-long-secret")
+	if nc, e = connect("agent", "first-long-secret"); e == nil {
 		nc.Close()
 		t.Fatal("old credentials accepted")
 	}
-	nc, e = connect("worker2", "second-long-secret")
+	nc, e = connect("agent2", "second-long-secret")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -266,7 +266,7 @@ func TestNATSAuthenticationAndRotation(t *testing.T) {
 		nc.Close()
 		t.Fatal("anonymous accepted after rotation")
 	}
-	// The internal workflow connection must still publish after worker rotation.
+	// The internal workflow connection must still publish after agent rotation.
 	p, e := a.s.CreateProjectDetails("rotation", "github", "https://github.com/example/repo", "main")
 	if e != nil {
 		t.Fatal(e)

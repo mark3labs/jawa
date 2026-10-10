@@ -26,7 +26,7 @@ func reportPR(response string) int {
 	return report.PRNumber
 }
 
-// projectPRURL derives the link from project configuration, never worker input.
+// projectPRURL derives the link from project configuration, never agent input.
 func projectPRURL(provider, repo string, number int) (string, error) {
 	host, owner, name, err := providerRepository(repo)
 	if err != nil {

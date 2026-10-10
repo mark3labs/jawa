@@ -58,7 +58,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			old := client.Outcome{TaskID: a.TaskID, WorkerID: "A", RunID: "A", AttemptID: "A", State: runtime.RunFailed}
+			old := client.Outcome{TaskID: a.TaskID, AgentID: "A", RunID: "A", AttemptID: "A", State: runtime.RunFailed}
 			if err = w.result(t.Context(), old); err != nil {
 				t.Fatal(err)
 			}
@@ -78,7 +78,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 			if _, err = js.AddConsumer(stream, &nats.ConsumerConfig{Durable: "operator-test", AckPolicy: nats.AckExplicitPolicy}); err != nil {
 				t.Fatal(err)
 			}
-			out := client.Outcome{TaskID: a.TaskID, WorkerID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: "```json\n{\"pr_number\":2}\n```"}
+			out := client.Outcome{TaskID: a.TaskID, AgentID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: "```json\n{\"pr_number\":2}\n```"}
 			publishOutcome(t, nc, out)
 			before, err := js.ConsumerInfo(stream, "operator-test")
 			if err != nil {
@@ -115,11 +115,11 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			if superseded {
-				if got.WorkerID != "A" || audits != 0 {
+				if got.AgentID != "A" || audits != 0 {
 					t.Fatalf("guard mutated attempt: %+v audits=%d", got, audits)
 				}
 			} else {
-				if got.WorkerID != "B" || got.PRURL != "https://github.com/example/repo/pull/2" || got.State != "blocked" || got.Ready || audits != 1 {
+				if got.AgentID != "B" || got.PRURL != "https://github.com/example/repo/pull/2" || got.State != "blocked" || got.Ready || audits != 1 {
 					t.Fatalf("selected: %+v audits=%d", got, audits)
 				}
 				var previous, selected string

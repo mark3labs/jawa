@@ -69,7 +69,7 @@ func ReconcileCommand() *cobra.Command {
 					}
 				} else {
 					// Verification failure (including missing credentials) is expected.
-					// Do not print provider errors or the untrusted worker report.
+					// Do not print provider errors or the untrusted agent report.
 					_, err = fmt.Fprintln(cmd.OutOrStdout(), "Reconciled: blocked; provider readiness not verified.")
 					return err
 				}

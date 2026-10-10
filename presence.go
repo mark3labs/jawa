@@ -15,9 +15,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// JAWA_NATS_PRESENCE=true opts into JetStream KV worker discovery. All workers
+// JAWA_NATS_PRESENCE=true opts into JetStream KV agent discovery. All agents
 // in a discovery scope must use the same JAWA_NATS_PRESENCE_BUCKET (default
-// jawa_workers). The bucket has a 30s TTL, refreshed by BONNIE every 10s.
+// jawa_agents). The bucket has a 30s TTL, refreshed by BONNIE every 10s.
 // JAWA_NATS_CREATE_STREAM also permits bucket creation; otherwise provision it
 // ahead of time with a matching TTL. Registration/conflict/refresh errors stop
 // serving rather than silently running without presence.
@@ -66,7 +66,7 @@ func natsAuthConfig(c natschannel.Config) natschannel.Config {
 func openNATSPresence(ctx context.Context, cfg natschannel.Config) (natschannel.Config, bonnie.PresenceConfig, func(), error) {
 	c := natsAuthConfig(cfg)
 	// Reuse BONNIE's validation before dialing (including conflicting auth,
-	// URL credentials, worker ID and subject validation). New does not connect.
+	// URL credentials, agent ID and subject validation). New does not connect.
 	if _, err := natschannel.New(&runtime.Runner{}, c); err != nil {
 		return cfg, bonnie.PresenceConfig{}, nil, err
 	}
@@ -115,12 +115,12 @@ func openNATSPresence(ctx context.Context, cfg natschannel.Config) (natschannel.
 		c.URL, c.NKeySeed, c.Token, c.Username, c.Password = "", "", "", "", ""
 	}
 	store, err := presencenats.New(ctx, c.Conn, presencenats.Config{
-		Bucket: envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_workers"),
+		Bucket: envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents"),
 		TTL:    30 * time.Second, Create: c.CreateStream,
 	})
 	if err != nil {
 		closeConn()
 		return cfg, bonnie.PresenceConfig{}, nil, errors.New("jawa: could not open NATS presence bucket; check JetStream, permissions and 30s TTL")
 	}
-	return c, bonnie.PresenceConfig{Registry: store, WorkerID: c.WorkerID}, closeConn, nil
+	return c, bonnie.PresenceConfig{Registry: store, AgentID: c.AgentID}, closeConn, nil
 }

@@ -189,7 +189,7 @@ func initial(name string) string {
 func attemptActive(a Attempt) bool {
 	for _, state := range []string{a.State, a.RunState} {
 		switch state {
-		case "queued", "submitted", "running", "waiting":
+		case "queued", "submitted", "running", "waiting", "interrupted":
 			return true
 		}
 	}
@@ -197,8 +197,12 @@ func attemptActive(a Attempt) bool {
 }
 
 // runTone maps an attempt to the one visual state shown on lists and cards.
+const executionConflictNotice = "Terminal agent report could not be applied: execution identity is missing or conflicts with the pinned run. Reconciliation required."
+
 func runTone(a Attempt) string {
 	switch {
+	case !a.Ready && a.Error == executionConflictNotice:
+		return "blocked"
 	case a.Ready || a.State == "ready":
 		return "ready"
 	case a.State == "failed":
@@ -212,6 +216,15 @@ func runTone(a Attempt) string {
 }
 
 func runLabel(a Attempt) string {
+	if !a.Ready && a.Error == executionConflictNotice {
+		return "Needs reconciliation"
+	}
+	if a.State == "blocked" && (a.RunState == "running" || a.RunState == "interrupted") {
+		return "Interrupted"
+	}
+	if a.RunState == "cancelled" && !a.Ready {
+		return "Cancelled"
+	}
 	switch runTone(a) {
 	case "ready":
 		return "Ready for review"
@@ -325,17 +338,17 @@ func relativeTime(t, now time.Time) string {
 
 func timeAttr(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// workerCurrentRun returns the active attempt a worker is executing, if any.
-func workerCurrentRun(r presence.Record, attempts []Attempt) (Attempt, bool) {
+// agentCurrentRun returns the active attempt a agent is executing, if any.
+func agentCurrentRun(r presence.Record, attempts []Attempt) (Attempt, bool) {
 	for _, a := range slices.Backward(attempts) {
-		if a.WorkerID == r.Identity.Worker && attemptActive(a) {
+		if a.AgentID == r.Identity.Agent && attemptActive(a) {
 			return a, true
 		}
 	}
 	return Attempt{}, false
 }
 
-func workerReady(r presence.Record) bool {
+func agentReady(r presence.Record) bool {
 	for _, e := range r.Endpoints {
 		if r.State == presence.Ready && e.Input && e.Ready {
 			return true
@@ -344,10 +357,10 @@ func workerReady(r presence.Record) bool {
 	return false
 }
 
-func readyWorkers(workers []presence.Record) int {
+func readyAgents(agents []presence.Record) int {
 	n := 0
-	for _, w := range workers {
-		if workerReady(w) {
+	for _, w := range agents {
+		if agentReady(w) {
 			n++
 		}
 	}
@@ -380,9 +393,9 @@ func connectSnippet(natsURL, username string) string {
 		natsURL = "nats://127.0.0.1:4222"
 	}
 	if username == "" {
-		username = "worker"
+		username = "agent"
 	}
-	return "NATS_URL=" + natsURL + "\nNATS_USERNAME=" + username + "\nNATS_PASSWORD=<worker password>\nJAWA_NATS_PRESENCE=true\nJAWA_NATS_WORKER_ID=jawa-1\n./bin/jawa"
+	return "NATS_URL=" + natsURL + "\nNATS_USERNAME=" + username + "\nNATS_PASSWORD=<agent password>\nJAWA_NATS_PRESENCE=true\nJAWA_NATS_AGENT_ID=jawa-1\n./bin/jawa"
 }
 
 func providerLabel(p string) string {

@@ -21,11 +21,11 @@ import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 // Run via go run ./cmd/factory-smoke: its private loopback bridge owns a real
-// BONNIE/Kit worker. No protocol outcomes or presence records are faked here.
+// BONNIE/Kit agent. No protocol outcomes or presence records are faked here.
 const base = process.env.JAWA_SMOKE_URL || 'http://127.0.0.1:18080';
 const control = process.env.JAWA_SMOKE_CONTROL;
-assert.ok(control, 'Run go run ./cmd/factory-smoke to supply the offline BONNIE worker');
-const worker = 'factory-smoke-worker';
+assert.ok(control, 'Run go run ./cmd/factory-smoke to supply the offline BONNIE agent');
+const agent = 'factory-smoke-agent';
 const pr = 'https://github.com/example/smoke/pull/1';
 const browser = await chromium.launch({
  executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
@@ -71,7 +71,7 @@ const card = title => page.locator('.task-card').filter({hasText: title});
 const laneCard = (lane, title) => page.locator(`.task-list[data-status="${lane}"] .task-card`).filter({hasText: title});
 const bridge = async path => {
  const response = await page.request.post(control + path, {headers: {Authorization: `Bearer ${process.env.JAWA_SMOKE_CONTROL_TOKEN}`}});
- assert.equal(response.status(), 204, `worker control ${path} failed`);
+ assert.equal(response.status(), 204, `agent control ${path} failed`);
 };
 const activity = async () => {
  const response = await page.request.get(base + '/activity');
@@ -167,8 +167,8 @@ try {
  await page.locator('#board-content').waitFor();
  await screen('/settings', 'settings');
  const settingsStable = await stableDocument();
- await page.getByLabel('Username', {exact: true}).fill(process.env.JAWA_SMOKE_WORKER_USER);
- await page.getByLabel('New password').fill(process.env.JAWA_SMOKE_WORKER_PASSWORD);
+ await page.getByLabel('Username', {exact: true}).fill(process.env.JAWA_SMOKE_AGENT_USER);
+ await page.getByLabel('New password').fill(process.env.JAWA_SMOKE_AGENT_PASSWORD);
  await page.getByRole('button', {name: 'Rotate credentials'}).click();
  await page.locator('#notice').filter({hasText: 'rotat'}).waitFor({state: 'visible'});
  await settingsStable();
@@ -183,12 +183,12 @@ try {
  await screen('/agents', 'agents');
  const agentsStable = await stableDocument();
  await bridge('/start'); started = true;
- await waitActivity(d => d.workers.some(w => w.identity.worker === worker && w.state === 'ready' && w.endpoints.some(e => e.input && e.ready)), 'real BONNIE presence');
- const agent = page.locator('#agent-' + worker);
+ await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready' && w.endpoints.some(e => e.input && e.ready)), 'real BONNIE presence');
+ const agent = page.locator('#agent-' + agent);
  await agent.getByText('Available', {exact: true}).waitFor();
  await agent.getByText('Inspect record', {exact: true}).click();
  const record = JSON.parse(await agent.locator('details pre').textContent());
- assert.equal(record.identity.worker, worker);
+ assert.equal(record.identity.agent, agent);
  assert.ok(record.endpoints.some(e => e.input && e.ready));
  await agentsStable();
  await screen(boardPath, 'board');
@@ -213,7 +213,7 @@ try {
  const secondID = await card('Second smoke card').getAttribute('data-card-id');
  await action('First smoke card', 'Start work');
  await laneCard('Building', 'First smoke card').waitFor();
- await waitActivity(d => d.attempts.some(a => a.CardID === firstID && a.State === 'running' && a.WorkerID === worker && a.RunID), 'worker pickup/running');
+ await waitActivity(d => d.attempts.some(a => a.CardID === firstID && a.State === 'running' && a.AgentID === agent && a.RunID), 'agent pickup/running');
  await card('First smoke card').getByRole('link', {name: 'Running', exact: true}).waitFor();
  await guards('First smoke card');
  await drag('Second smoke card', 'Building');
@@ -233,7 +233,7 @@ try {
  await sameDocument();
  for (const attempt of data.attempts) {
   assert.equal(attempt.Published, true);
-  assert.equal(attempt.WorkerID, worker);
+  assert.equal(attempt.AgentID, agent);
   assert.ok(attempt.RunID && attempt.RemoteAttemptID && attempt.OutcomeJSON);
   assert.equal(attempt.RunState, 'completed');
   assert.equal(attempt.PRURL, pr);
@@ -259,7 +259,7 @@ try {
  await page.getByLabel('Filter cards').fill('First');
  await expect(page.locator('.task-card:visible')).toHaveCount(1);
  await bridge('/stop'); started = false;
- await waitActivity(d => d.workers.length === 0, 'presence removal after shutdown');
+ await waitActivity(d => d.agents.length === 0, 'presence removal after shutdown');
  await page.locator('#agent-status').getByText('No agents online').waitFor();
  await expect(page.getByLabel('Filter cards')).toHaveValue('First');
  await expect(page.locator('.task-card:visible')).toHaveCount(1);
@@ -269,7 +269,7 @@ try {
  await page.getByLabel('Name', {exact: true}).fill('Project draft survives SSE');
  await page.getByLabel('Repository URL').fill('https://github.com/example/draft.git');
  await bridge('/start'); started = true;
- await waitActivity(d => d.workers.some(w => w.identity.worker === worker && w.state === 'ready'), 'restarted worker');
+ await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'restarted agent');
  await page.locator('#agent-status').getByText('1 agent online').waitFor();
  await expect(page.locator('#project-dialog')).toBeVisible();
  await expect(page.getByLabel('Name', {exact: true})).toHaveValue('Project draft survives SSE');
@@ -296,7 +296,7 @@ try {
  await run.evaluate(el => el.smokeIdentity = 'stable-history');
  const runsStable = await stableDocument();
  await bridge('/stop'); started = false;
- await waitActivity(d => d.workers.length === 0, 'history patch worker removal');
+ await waitActivity(d => d.agents.length === 0, 'history patch agent removal');
  await page.locator('#agent-status').getByText('No agents online').waitFor();
  assert.deepEqual(await page.locator('#' + runID).evaluate(el => ({open: el.open, stable: el.smokeIdentity})), {open: true, stable: 'stable-history'});
  await runsStable();
@@ -310,7 +310,7 @@ try {
  // Retry creates a new immutable attempt with a new branch; no paid calls.
  await screen(boardPath, 'board');
  await bridge('/start'); started = true;
- await waitActivity(d => d.workers.some(w => w.identity.worker === worker && w.state === 'ready'), 'retry worker restart');
+ await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'retry agent restart');
  const original = (await activity()).attempts.filter(a => a.CardID === secondID);
  await action('Second smoke card', 'Retry attempt');
  await waitActivity(d => d.attempts.some(a => a.CardID === secondID && a.Number === 2 && a.State === 'running'), 'retry running');
@@ -349,7 +349,7 @@ try {
  await expect(page.locator('.task-card')).toHaveCount(2);
  const filteredStable = await stableDocument();
  await bridge('/stop'); started = false;
- await waitActivity(d => d.workers.length === 0, 'filtered project outage');
+ await waitActivity(d => d.agents.length === 0, 'filtered project outage');
  await page.locator('#agent-status').getByText('No agents online').waitFor();
  await expect(card('Other project card')).toHaveCount(0);
  const frames = await page.evaluate(() => window.smokeSSE.frames);
@@ -383,7 +383,7 @@ try {
  await mkdir(dirname(screenshot), {recursive: true});
  const screenshots = [];
  await bridge('/start'); started = true;
- await waitActivity(d => d.workers.some(w => w.identity.worker === worker && w.state === 'ready'), 'screenshot worker presence');
+ await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'screenshot agent presence');
  for (const [view, path] of [['board', boardPath], ['runs', '/runs'], ['agents', '/agents'], ['settings', '/settings']]) {
   await screen(path, view);
   if (view === 'runs') await page.locator('details.run').first().locator('summary').click();
@@ -400,9 +400,9 @@ try {
  console.log('Screenshots:', screenshots.join(', '));
  await screen('/agents', 'agents');
  await bridge('/stop'); started = false;
- await waitActivity(d => d.workers.length === 0, 'final graceful outage');
+ await waitActivity(d => d.agents.length === 0, 'final graceful outage');
  await page.locator('#agents-content').getByText('No agents online', {exact: true}).waitFor();
- assert.equal((await activity()).attempts.length, 3, 'history survives worker outage');
+ assert.equal((await activity()).attempts.length, 3, 'history survives agent outage');
  await page.getByRole('button', {name: 'Sign out'}).click();
  assert.equal((await page.request.get(base + '/activity', {maxRedirects: 0})).status(), 303);
  await page.getByLabel('Username', {exact: true}).fill('smoke-admin');

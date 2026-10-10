@@ -20,11 +20,11 @@ func retainConflict(tx *sql.Tx, out client.Outcome) error {
 	}
 	// The caller holds SQLite's write lock. Keep the first receipt of each
 	// exact outcome; replaying broker history must not create new evidence.
-	_, err = tx.Exec(`INSERT INTO workflow_conflicts(task_id,worker_id,run_id,remote_attempt_id,outcome_json,received_at,reason)
+	_, err = tx.Exec(`INSERT INTO workflow_conflicts(task_id,agent_id,run_id,remote_attempt_id,outcome_json,received_at,reason)
  SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (
- SELECT 1 FROM workflow_conflicts WHERE task_id=? AND worker_id=? AND run_id=? AND remote_attempt_id=? AND outcome_json=?)`,
-		out.TaskID, out.WorkerID, out.RunID, out.AttemptID, string(data), time.Now().UnixMilli(), "execution identity differs from pinned attempt",
-		out.TaskID, out.WorkerID, out.RunID, out.AttemptID, string(data))
+ SELECT 1 FROM workflow_conflicts WHERE task_id=? AND agent_id=? AND run_id=? AND remote_attempt_id=? AND outcome_json=?)`,
+		out.TaskID, out.AgentID, out.RunID, out.AttemptID, string(data), time.Now().UnixMilli(), "execution identity differs from pinned attempt",
+		out.TaskID, out.AgentID, out.RunID, out.AttemptID, string(data))
 	return err
 }
 
@@ -59,7 +59,7 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 		return errors.New("reconcile: requires latest unready attempt on a Building card")
 	}
 	// Select the most recently received terminal report for this execution. A
-	// waiting report does not hide its later completion. Worker ambiguity is
+	// waiting report does not hide its later completion. Agent ambiguity is
 	// rejected because the public selector cannot distinguish those executions.
 	rows, err := tx.Query(`SELECT id,outcome_json FROM workflow_conflicts WHERE task_id=? AND run_id=? AND remote_attempt_id=? ORDER BY id`, taskID, runID, remoteAttemptID)
 	if err != nil {
@@ -67,7 +67,7 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 	}
 	var conflictID int64
 	var selected string
-	var selectedWorker string
+	var selectedAgent string
 	for rows.Next() {
 		var id int64
 		var raw string
@@ -81,11 +81,11 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 		if string(candidate.State) != "completed" && string(candidate.State) != "failed" {
 			continue
 		}
-		if selected != "" && selectedWorker != candidate.WorkerID {
-			err = errors.New("reconcile: ambiguous retained workers")
+		if selected != "" && selectedAgent != candidate.AgentID {
+			err = errors.New("reconcile: ambiguous retained agents")
 			break
 		}
-		conflictID, selected, selectedWorker = id, raw, candidate.WorkerID
+		conflictID, selected, selectedAgent = id, raw, candidate.AgentID
 	}
 	if err == nil {
 		err = rows.Err()
@@ -104,20 +104,20 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 	if err = json.Unmarshal([]byte(selected), &out); err != nil {
 		return err
 	}
-	if out.TaskID != taskID || out.RunID != runID || out.AttemptID != remoteAttemptID || out.WorkerID == "" || (string(out.State) != "completed" && string(out.State) != "failed") {
+	if out.TaskID != taskID || out.RunID != runID || out.AttemptID != remoteAttemptID || out.AgentID == "" || (string(out.State) != "completed" && string(out.State) != "failed") {
 		return errors.New("reconcile: retained outcome must be completed or failed with matching nonempty identities")
 	}
-	if matches(a, out.WorkerID, out.RunID, out.AttemptID) {
+	if matches(a, out.AgentID, out.RunID, out.AttemptID) {
 		return errors.New("reconcile: selected execution is already pinned")
 	}
 	now := time.Now().UnixMilli()
-	if _, err = tx.Exec(`UPDATE workflow_attempts SET worker_id=?,run_id=?,remote_attempt_id=?,outcome_json='',run_state='',event_seq=-1,result='',error='',pr_url='' WHERE id=?`, out.WorkerID, out.RunID, out.AttemptID, a.ID); err != nil {
+	if _, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,outcome_json='',run_state='',event_seq=-1,result='',error='',pr_url='' WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, a.ID); err != nil {
 		return err
 	}
 	if err = applyOutcome(tx, a, out); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`INSERT INTO workflow_reconciliations(task_id,previous_worker_id,previous_run_id,previous_remote_attempt_id,selected_worker_id,selected_run_id,selected_remote_attempt_id,conflict_id,reconciled_at) VALUES(?,?,?,?,?,?,?,?,?)`, taskID, a.WorkerID, a.RunID, a.RemoteAttemptID, out.WorkerID, out.RunID, out.AttemptID, conflictID, now); err != nil {
+	if _, err = tx.Exec(`INSERT INTO workflow_reconciliations(task_id,previous_agent_id,previous_run_id,previous_remote_attempt_id,selected_agent_id,selected_run_id,selected_remote_attempt_id,conflict_id,reconciled_at) VALUES(?,?,?,?,?,?,?,?,?)`, taskID, a.AgentID, a.RunID, a.RemoteAttemptID, out.AgentID, out.RunID, out.AttemptID, conflictID, now); err != nil {
 		return err
 	}
 	return tx.Commit()

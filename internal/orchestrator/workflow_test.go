@@ -112,7 +112,7 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	sub, e := js.PullSubscribe("bonnie.tasks", "fixture-worker")
+	sub, e := js.PullSubscribe("bonnie.tasks", "fixture-agent")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -135,7 +135,7 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 	if task.TaskID != a.TaskID || task.Version != 1 || task.Text == "" {
 		t.Fatalf("bad task %+v", task)
 	}
-	target := client.Target{TaskID: a.TaskID, WorkerID: "worker", RunID: "run", AttemptID: "remote"}
+	target := client.Target{TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "remote"}
 	ev := client.StatusEvent{Version: 1, Target: target, EventID: "accepted", Type: "task_accepted", Seq: 0, State: runtime.RunRunning}
 	data, e := json.Marshal(ev)
 	if e != nil {
@@ -149,9 +149,9 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		return a.WorkerID == "worker"
+		return a.AgentID == "agent"
 	})
-	out := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "worker", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1}`}
+	out := client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1}`}
 	publishOutcome(t, nc, out)
 	waitWorkflow(t, func() bool {
 		a, e := w.CardResult(c.ID)
@@ -177,9 +177,9 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 	if cards[0].Status != "Building" {
 		t.Fatal("completed without verification")
 	}
-	// A competing worker, duplicates and delayed statuses must not replace the report.
+	// A competing agent, duplicates and delayed statuses must not replace the report.
 	bad := out
-	bad.WorkerID = "other"
+	bad.AgentID = "other"
 	bad.Response = `{"pr_number":2}`
 	publishOutcome(t, nc, bad)
 	publishOutcome(t, nc, out)
@@ -275,24 +275,24 @@ func TestWorkflowOutboxRestartAndOfflinePresence(t *testing.T) {
 	if b.TaskID != a.TaskID || b.TaskJSON != a.TaskJSON {
 		t.Fatal("retry changed task")
 	}
-	workers, e := restarted.Workers(t.Context())
-	if e != nil || len(workers) != 0 {
-		t.Fatalf("offline presence %v %v", workers, e)
+	agents, e := restarted.Agents(t.Context())
+	if e != nil || len(agents) != 0 {
+		t.Fatalf("offline presence %v %v", agents, e)
 	}
-	rec := presence.Record{Identity: presence.Identity{Worker: "fixture", Instance: "one"}, State: presence.Ready}
+	rec := presence.Record{Identity: presence.Identity{Agent: "fixture", Instance: "one"}, State: presence.Ready}
 	if e = restarted.presence.Register(t.Context(), rec); e != nil {
 		t.Fatal(e)
 	}
-	workers, e = restarted.Workers(t.Context())
-	if e != nil || len(workers) != 1 {
-		t.Fatalf("live presence %v %v", workers, e)
+	agents, e = restarted.Agents(t.Context())
+	if e != nil || len(agents) != 1 {
+		t.Fatalf("live presence %v %v", agents, e)
 	}
 	if e = restarted.presence.Unregister(t.Context(), rec.Identity); e != nil {
 		t.Fatal(e)
 	}
-	workers, e = restarted.Workers(t.Context())
-	if e != nil || len(workers) != 0 {
-		t.Fatalf("offline presence %v %v", workers, e)
+	agents, e = restarted.Agents(t.Context())
+	if e != nil || len(agents) != 0 {
+		t.Fatalf("offline presence %v %v", agents, e)
 	}
 	// Re-submit an ambiguous publish with exactly the same identity and payload.
 	var task client.Task
@@ -345,7 +345,7 @@ func TestWorkflowAtomicRollbackAndBlockedResults(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "w", RunID: "r", AttemptID: "a", State: runtime.RunCompleted, Response: "I finished everything"})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "w", RunID: "r", AttemptID: "a", State: runtime.RunCompleted, Response: "I finished everything"})
 	waitWorkflow(t, func() bool {
 		a, e := w.CardResult(c.ID)
 		if e != nil {
@@ -386,7 +386,7 @@ func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, WorkerID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunFailed, Error: "failed"})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, AgentID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunFailed, Error: "failed"})
 	waitWorkflow(t, func() bool { a, e := w.CardResult(c.ID); return e == nil && a.OutcomeJSON != "" })
 	if err = w.Retry(c.ID); err != nil {
 		t.Fatal(err)
@@ -399,7 +399,7 @@ func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
 		t.Fatalf("retry did not create isolated attempt: first=%+v second=%+v", first, second)
 	}
 	// A delayed successful result for the prior task must not complete the new attempt.
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, WorkerID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1`})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, AgentID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1`})
 	time.Sleep(350 * time.Millisecond)
 	latest, err := w.CardResult(c.ID)
 	if err != nil {
@@ -434,7 +434,7 @@ func TestWorkflowFailureAndWaitingRemainBuilding(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			out := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "w", RunID: "r", AttemptID: "a", State: state}
+			out := client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "w", RunID: "r", AttemptID: "a", State: state}
 			if state == runtime.RunFailed {
 				out.Error = "build failed"
 			}

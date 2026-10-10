@@ -227,11 +227,11 @@ func TestWorkflowConcurrentRetry(t *testing.T) {
 			results := make(chan error, 12)
 			var wg sync.WaitGroup
 			for i := range 12 {
-				worker := w
+				agent := w
 				if i%2 == 1 {
-					worker = w2
+					agent = w2
 				}
-				wg.Go(func() { <-start; results <- worker.Retry(c.ID) })
+				wg.Go(func() { <-start; results <- agent.Retry(c.ID) })
 			}
 			close(start)
 			wg.Wait()

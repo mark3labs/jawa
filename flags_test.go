@@ -9,24 +9,24 @@ import (
 
 func TestServingFlags(t *testing.T) {
 	for _, tc := range []struct {
-		name, envName, envWorker string
-		args                     []string
-		wantName, wantWorker     string
+		name, envName, envAgent string
+		args                    []string
+		wantName, wantAgent     string
 	}{
 		{name: "defaults", wantName: "jawa"},
-		{name: "environment", envName: "custom", envWorker: "worker-env", wantName: "custom", wantWorker: "worker-env"},
-		{name: "flags override environment", envName: "custom", envWorker: "worker-env", args: []string{"--name", "flag-agent", "--nats-worker-id", "worker-flag"}, wantName: "flag-agent", wantWorker: "worker-flag"},
+		{name: "environment", envName: "custom", envAgent: "agent-env", wantName: "custom", wantAgent: "agent-env"},
+		{name: "flags override environment", envName: "custom", envAgent: "agent-env", args: []string{"--name", "flag-agent", "--nats-agent-id", "agent-flag"}, wantName: "flag-agent", wantAgent: "agent-flag"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clearConfigEnv(t)
 			t.Setenv("JAWA_NAME", tc.envName)
-			t.Setenv("JAWA_NATS_WORKER_ID", tc.envWorker)
+			t.Setenv("JAWA_NATS_AGENT_ID", tc.envAgent)
 			calls := 0
 			root := &cobra.Command{Use: "jawa", RunE: func(*cobra.Command, []string) error { return nil }}
 			servingFlags(root, func(name string, cfg natschannel.Config) {
 				calls++
-				if name != tc.wantName || cfg.WorkerID != tc.wantWorker {
-					t.Fatalf("got name %q worker %q", name, cfg.WorkerID)
+				if name != tc.wantName || cfg.AgentID != tc.wantAgent {
+					t.Fatalf("got name %q agent %q", name, cfg.AgentID)
 				}
 				if !cfg.TargetedTasks || cfg.RootSubject != "bonnie" {
 					t.Fatal("NATS configuration lost")

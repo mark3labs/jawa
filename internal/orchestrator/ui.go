@@ -21,7 +21,7 @@ var uiAssets embed.FS
 type uiSnapshot struct {
 	projects []Project
 	cards    []Card
-	workers  []presence.Record
+	agents   []presence.Record
 	attempts []Attempt
 	nats     NATSConfig
 	presence bool // false when presence discovery failed
@@ -46,7 +46,7 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	}
 	if wf != nil {
 		presenceCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		snap.workers, err = wf.Workers(presenceCtx)
+		snap.agents, err = wf.Agents(presenceCtx)
 		cancel()
 		snap.presence = err == nil
 		if snap.attempts, err = wf.Attempts(); err != nil {
@@ -148,6 +148,11 @@ func safeActivityURL(raw string) string {
 	return u.String()
 }
 
+func cardNeedsReconciliation(c Card, attempts []Attempt) bool {
+	latest := latestAttempt(c.ID, attempts)
+	return len(latest) > 0 && !latest[0].Ready && latest[0].Error == executionConflictNotice
+}
+
 // Match workflow guards for presentation; the server remains authoritative.
 func canAction(c Card, attempts []Attempt, action string) bool {
 	active := false
@@ -156,7 +161,7 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 			continue
 		}
 		for _, state := range []string{a.State, a.RunState} {
-			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" {
+			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" || state == "interrupted" {
 				active = true
 			}
 		}
@@ -172,7 +177,13 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	case "reset":
 		return c.Status != "Todo" && !active && (legacy || terminal)
 	case "delete":
-		return !active
+		return !active || (!legacy && !latest[0].Ready && latest[0].Error == executionConflictNotice)
+	case "cancel":
+		if c.Status != "Building" || len(latest) == 0 {
+			return false
+		}
+		a := latest[0]
+		return a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.State == "running" || a.State == "waiting" || a.State == "interrupted")
 	}
 	return false
 }
@@ -196,7 +207,7 @@ func actionReason(c Card, attempts []Attempt, action string) string {
 			continue
 		}
 		for _, state := range []string{a.State, a.RunState} {
-			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" {
+			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" || state == "interrupted" {
 				return "Active attempt — wait for work to finish."
 			}
 		}

@@ -28,7 +28,7 @@ func TestSandboxImageOverride(t *testing.T) {
 
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"NATS_URL", "JAWA_NATS_ROOT_SUBJECT", "JAWA_NATS_WORKER_ID", "JAWA_NATS_CONSUMER", "JAWA_NATS_CREATE_STREAM"} {
+	for _, key := range []string{"NATS_URL", "JAWA_NATS_ROOT_SUBJECT", "JAWA_NATS_AGENT_ID", "JAWA_NATS_CONSUMER", "JAWA_NATS_CREATE_STREAM"} {
 		t.Setenv(key, "")
 	}
 }
@@ -52,11 +52,11 @@ func TestNATSOverrides(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("NATS_URL", "nats://localhost:4223")
 	t.Setenv("JAWA_NATS_ROOT_SUBJECT", "test.agent")
-	t.Setenv("JAWA_NATS_WORKER_ID", "jawa-1")
-	t.Setenv("JAWA_NATS_CONSUMER", "jawa-workers")
+	t.Setenv("JAWA_NATS_AGENT_ID", "jawa-1")
+	t.Setenv("JAWA_NATS_CONSUMER", "jawa-agents")
 	t.Setenv("JAWA_NATS_CREATE_STREAM", "true")
 	cfg := natsConfig()
-	if cfg.URL != "nats://localhost:4223" || cfg.RootSubject != "test.agent" || cfg.WorkerID != "jawa-1" || cfg.Consumer != "jawa-workers" || !cfg.CreateStream {
+	if cfg.URL != "nats://localhost:4223" || cfg.RootSubject != "test.agent" || cfg.AgentID != "jawa-1" || cfg.Consumer != "jawa-agents" || !cfg.CreateStream {
 		t.Fatalf("environment overrides not applied: %+v", cfg)
 	}
 }

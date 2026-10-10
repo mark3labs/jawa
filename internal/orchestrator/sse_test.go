@@ -142,6 +142,21 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 		}
 		status(t, request(a, "POST", path, form, session, csrf), http.StatusBadRequest)
 	}
+	// Cancellation errors must dismiss the confirmation dialog so the notice
+	// is visible, while not claiming the remote run was stopped.
+	body = assertSSE(t, sseRequest(a, "POST", "/cards/cancel", form, session, csrf))
+	if !strings.Contains(body, `id="notice"`) || !strings.Contains(body, `"cancelOpen":false`) || !strings.Contains(body, `"cancelCard":""`) {
+		t.Fatal(body)
+	}
+	// Successful mutation snapshots must dismiss it as well.
+	cancelResponse := httptest.NewRecorder()
+	cancelRequest := httptest.NewRequest("POST", "/cards/cancel", nil)
+	cancelRequest.Header.Set("Datastar-Request", "true")
+	a.snapshot(cancelResponse, cancelRequest, true, mutationEffects{flash: "Cancellation requested; awaiting confirmation."})
+	body = assertSSE(t, cancelResponse)
+	if !strings.Contains(body, `"cancelOpen":false`) || !strings.Contains(body, `"cancelCard":""`) || !strings.Contains(body, "awaiting confirmation") {
+		t.Fatal(body)
+	}
 	body = assertSSE(t, sseRequest(a, "POST", "/cards", nil, session, csrf))
 	if !strings.Contains(body, "CSRF") {
 		t.Fatal(body)

@@ -78,7 +78,7 @@ templ runRow(d pageData, a Attempt) {
 			</span>
 			<span class={ "run-state", "tone-" + runTone(a) }>{ runLabel(a) }</span>
 			<span class="run-attempt">#{ strconv.Itoa(a.Number) }</span>
-			<span class="run-worker">{ displayDash(a.WorkerID) }</span>
+			<span class="run-agent">{ displayDash(a.AgentID) }</span>
 			<span class="run-pr">
 				if pr := safeActivityURL(a.PRURL); pr != "" {
 					<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer">

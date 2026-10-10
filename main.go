@@ -92,7 +92,7 @@ func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) e
 	cfg := natsConfig()
 	name := envOr("JAWA_NAME", "jawa")
 	root.Flags().StringVar(&name, "name", name, "agent display name")
-	root.Flags().StringVar(&cfg.WorkerID, "nats-worker-id", cfg.WorkerID, "unique, stable NATS worker ID (required)")
+	root.Flags().StringVar(&cfg.AgentID, "nats-agent-id", cfg.AgentID, "unique, stable NATS agent ID (required)")
 	previous := root.PreRunE
 	root.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if previous != nil {
@@ -130,7 +130,7 @@ func natsConfig() natschannel.Config {
 	return natschannel.Config{
 		URL:           envOr("NATS_URL", "nats://127.0.0.1:4222"),
 		RootSubject:   envOr("JAWA_NATS_ROOT_SUBJECT", "bonnie"),
-		WorkerID:      os.Getenv("JAWA_NATS_WORKER_ID"),
+		AgentID:       os.Getenv("JAWA_NATS_AGENT_ID"),
 		Consumer:      os.Getenv("JAWA_NATS_CONSUMER"),
 		CreateStream:  envOr("JAWA_NATS_CREATE_STREAM", "true") == "true",
 		TargetedTasks: true,

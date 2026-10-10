@@ -17,9 +17,9 @@ func TestNATSPresenceConnectionAndRegistry(t *testing.T) {
 	for _, key := range []string{"NATS_TOKEN", "NATS_NKEY_SEED", "JAWA_NATS_PRESENCE_BUCKET"} {
 		t.Setenv(key, "")
 	}
-	t.Setenv("NATS_USERNAME", "worker")
+	t.Setenv("NATS_USERNAME", "agent")
 	t.Setenv("NATS_PASSWORD", "secret")
-	s, err := server.NewServer(&server.Options{Port: -1, JetStream: true, StoreDir: t.TempDir(), Username: "worker", Password: "secret"})
+	s, err := server.NewServer(&server.Options{Port: -1, JetStream: true, StoreDir: t.TempDir(), Username: "agent", Password: "secret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,17 +29,17 @@ func TestNATSPresenceConnectionAndRegistry(t *testing.T) {
 	}
 	t.Cleanup(s.Shutdown)
 	cfg := natsConfig()
-	cfg.URL, cfg.WorkerID = s.ClientURL(), "worker-1"
+	cfg.URL, cfg.AgentID = s.ClientURL(), "agent-1"
 	shared, pc, cleanup, err := openNATSPresence(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	if shared.Conn == nil || shared.URL != "" || shared.Username != "" || shared.Password != "" || pc.WorkerID != cfg.WorkerID {
+	if shared.Conn == nil || shared.URL != "" || shared.Username != "" || shared.Password != "" || pc.AgentID != cfg.AgentID {
 		t.Fatal("shared connection configuration incorrect")
 	}
 	ctx := context.Background()
-	rec := presence.Record{Identity: presence.Identity{Worker: pc.WorkerID, Instance: "one"}, State: presence.Ready}
+	rec := presence.Record{Identity: presence.Identity{Agent: pc.AgentID, Instance: "one"}, State: presence.Ready}
 	if err := pc.Registry.Register(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestPresenceValidationDoesNotExposeCredentials(t *testing.T) {
 	t.Setenv("NATS_USERNAME", "secret-user")
 	t.Setenv("NATS_PASSWORD", "secret-password")
 	cfg := natsConfig()
-	cfg.WorkerID = "worker-1"
+	cfg.AgentID = "agent-1"
 	_, _, _, err := openNATSPresence(context.Background(), cfg)
 	if err == nil || strings.Contains(err.Error(), "secret-") {
 		t.Fatalf("unsafe or missing validation error: %v", err)

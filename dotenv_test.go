@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadEnvFile(t *testing.T) {
-	const key = "JAWA_NATS_WORKER_ID"
+	const key = "JAWA_NATS_AGENT_ID"
 	t.Setenv(key, "")
 	if err := os.Unsetenv(key); err != nil {
 		t.Fatal(err)
@@ -20,14 +20,14 @@ func TestLoadEnvFile(t *testing.T) {
 	if err := loadEnvFile(path); err != nil {
 		t.Fatal(err)
 	}
-	if natsConfig().WorkerID != "jawa-dotenv" {
-		t.Fatal("worker ID not loaded from dotenv")
+	if natsConfig().AgentID != "jawa-dotenv" {
+		t.Fatal("agent ID not loaded from dotenv")
 	}
 	t.Setenv(key, "jawa-shell")
 	if err := loadEnvFile(path); err != nil {
 		t.Fatal(err)
 	}
-	if natsConfig().WorkerID != "jawa-shell" {
+	if natsConfig().AgentID != "jawa-shell" {
 		t.Fatal("existing environment overwritten")
 	}
 }

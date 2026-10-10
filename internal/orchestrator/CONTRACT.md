@@ -2,9 +2,9 @@
 
 SQLite stores projects, ordered cards, sessions and durable execution attempts.
 `jawa orchestrator` starts authenticated persistent JetStream and connects its
-workflow using separate process-local internal credentials, unaffected by worker
+workflow using separate process-local internal credentials, unaffected by agent
 credential rotation. Todo -> Building atomically records an attempt/outbox;
-shared BONNIE tasks, events and results connect the board to workers.
+shared BONNIE tasks, events and results connect the board to agents.
 
 See WORKFLOW.md for delivery semantics and PROVIDERS.md at repository root for
 independent PR readiness policy. GET /events pushes authenticated Datastar SSE element patches; GET /snapshot
@@ -45,7 +45,7 @@ real BONNIE host/NATS channel/presence registry with an offline deterministic Ki
 model. Browser-created cards actually publish to bonnie.tasks, enter running,
 produce results, and remain blocked without provider credentials. The smoke checks
 live presence/history, rejection of manual Done, pointer drag, keyboard moves,
-filtering, persistence, credentials/login, and worker shutdown/unregistration.
+filtering, persistence, credentials/login, and agent shutdown/unregistration.
 It makes no paid model calls, pushes no branches, and creates no real PRs.
 
 Provider fixtures and TestWorkflowProviderVerifierToDone cover independent readiness:
@@ -57,9 +57,9 @@ not validated by these offline tests.
 
 Single orchestrator per database/NATS scope. Shared queue rather than capacity-aware
 assignment. Presence is advisory, not an execution lease. No cancellation or automatic
-worker failover. Retry after a terminal worker outcome; legacy Building cards without an attempt
+agent failover. Retry after a terminal agent outcome; legacy Building cards without an attempt
 can Start work. Reset/Delete are guarded against active executions; deletion
 requires confirmation and Reset preserves attempt history. Time/cost bounds are prompt
 guidance rather than scheduler enforcement. Done is PR-ready, not merged, and later
 review changes do not automatically reopen the card. Remote HTTP/NATS require external
-TLS/network controls; do not share the orchestrator's data or credentials with workers.
+TLS/network controls; do not share the orchestrator's data or credentials with agents.

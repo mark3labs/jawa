@@ -31,7 +31,7 @@ import (
 	"jawa/internal/orchestrator"
 )
 
-const workerID = "factory-smoke-worker"
+const agentID = "factory-smoke-agent"
 const fixturePR = `{"pr_number":1}`
 
 // This is a real Kit provider, not a replacement runtime.Agent or a protocol
@@ -158,26 +158,26 @@ func run() (runErr error) {
 		return errors.New("orchestrator HTTP not ready")
 	}
 
-	// Loopback-only authenticated control bridge lets the browser rotate worker
-	// credentials FIRST, then start/stop the real worker without backend hooks.
-	user, pass, controlToken := "smoke-worker", secret(), secret()
+	// Loopback-only authenticated control bridge lets the browser rotate agent
+	// credentials FIRST, then start/stop the real agent without backend hooks.
+	user, pass, controlToken := "smoke-agent", secret(), secret()
 	var mu sync.Mutex
-	var stopWorker context.CancelFunc
-	var workerDone chan error
+	var stopAgent context.CancelFunc
+	var agentDone chan error
 	stop := func() error {
-		if stopWorker == nil {
+		if stopAgent == nil {
 			return nil
 		}
-		stopWorker()
-		e := <-workerDone
-		stopWorker = nil
+		stopAgent()
+		e := <-agentDone
+		stopAgent = nil
 		return e
 	}
 	defer func() {
 		mu.Lock()
 		defer mu.Unlock()
 		if err := stop(); err != nil {
-			log.Printf("worker shutdown: %v", err)
+			log.Printf("agent shutdown: %v", err)
 		}
 	}()
 	control, err := net.Listen("tcp", "127.0.0.1:0")
@@ -222,24 +222,24 @@ func run() (runErr error) {
 		}
 		if r.URL.Path == "/stop" {
 			if e := stop(); e != nil {
-				http.Error(w, "worker shutdown failed", http.StatusInternalServerError)
+				http.Error(w, "agent shutdown failed", http.StatusInternalServerError)
 				return
 			}
-			log.Print("BONNIE worker stopped; presence unregistered")
+			log.Print("BONNIE agent stopped; presence unregistered")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/start" || stopWorker != nil {
+		if r.URL.Path != "/start" || stopAgent != nil {
 			http.Error(w, "invalid control", http.StatusBadRequest)
 			return
 		}
 		nc, e := nats.Connect("nats://"+natsAddr, nats.UserInfo(user, pass), nats.Timeout(time.Second))
 		if e != nil {
-			http.Error(w, "worker authentication failed", http.StatusInternalServerError)
+			http.Error(w, "agent authentication failed", http.StatusInternalServerError)
 			return
 		}
 		wc, wcancel := context.WithCancel(ctx)
-		registry, e := presencenats.New(wc, nc, presencenats.Config{Bucket: "jawa_workers", TTL: 30 * time.Second, Create: true})
+		registry, e := presencenats.New(wc, nc, presencenats.Config{Bucket: "jawa_agents", TTL: 30 * time.Second, Create: true})
 		if e != nil {
 			wcancel()
 			nc.Close()
@@ -259,8 +259,8 @@ func run() (runErr error) {
 			return
 		}
 		agent := bonnie.New(
-			bonnie.WithName(workerID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
-			bonnie.WithJournal(filepath.Join(dir, "worker")), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""),
+			bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
+			bonnie.WithJournal(filepath.Join(dir, "agent")), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""),
 			bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(filepath.Join(dir, "workspaces")))), bonnie.WithoutHumanInput(),
 			bonnie.WithKit(func(o *kit.Options) {
 				o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
@@ -270,13 +270,13 @@ func run() (runErr error) {
 				kit.WithModel("smoke/final")(o)
 			}),
 			bonnie.WithChannel(func(runner *runtime.Runner) (bonnie.Channel, error) {
-				return natschannel.New(runner, natschannel.Config{Conn: nc, RootSubject: "bonnie", WorkerID: workerID, TargetedTasks: true, CreateStream: true})
+				return natschannel.New(runner, natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true})
 			}),
-			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, WorkerID: workerID}),
+			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}),
 		)
-		stopWorker = wcancel
-		workerDone = make(chan error, 1)
-		go func() { e := agent.Run(wc); nc.Close(); workerDone <- e }()
+		stopAgent = wcancel
+		agentDone = make(chan error, 1)
+		go func() { e := agent.Run(wc); nc.Close(); agentDone <- e }()
 		log.Print("BONNIE host starting with production NATS channel and presence")
 		w.WriteHeader(http.StatusNoContent)
 	})}
@@ -290,10 +290,10 @@ func run() (runErr error) {
 	}()
 
 	// Playwright owns assertions. Propagate its exit code, and always tear down
-	// the worker before Command closes its workflow, broker and private store.
+	// the agent before Command closes its workflow, broker and private store.
 	node := exec.CommandContext(ctx, "node", "smoke.mjs")
 	node.Dir = filepath.Join(root, "internal", "orchestrator", "frontend")
-	node.Env = append(os.Environ(), "JAWA_SMOKE_URL="+base, "JAWA_SMOKE_CONTROL=http://"+control.Addr().String(), "JAWA_SMOKE_CONTROL_TOKEN="+controlToken, "JAWA_SMOKE_WORKER_USER="+user, "JAWA_SMOKE_WORKER_PASSWORD="+pass, "JAWA_SMOKE_SCREENSHOT="+filepath.Join(root, "node_modules", ".factory-smoke", "desktop.png"))
+	node.Env = append(os.Environ(), "JAWA_SMOKE_URL="+base, "JAWA_SMOKE_CONTROL=http://"+control.Addr().String(), "JAWA_SMOKE_CONTROL_TOKEN="+controlToken, "JAWA_SMOKE_AGENT_USER="+user, "JAWA_SMOKE_AGENT_PASSWORD="+pass, "JAWA_SMOKE_SCREENSHOT="+filepath.Join(root, "node_modules", ".factory-smoke", "desktop.png"))
 	node.Stdout, node.Stderr = os.Stdout, os.Stderr
 	if err := node.Run(); err != nil {
 		return fmt.Errorf("browser smoke: %w", err)
