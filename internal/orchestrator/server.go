@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"github.com/mark3labs/bonnie/presence"
 	"github.com/nats-io/nats.go"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
@@ -503,7 +503,13 @@ func (a *app) rotateNATS(url, user, pass string) error {
 }
 func Command() *cobra.Command {
 	var dir, listen, natsListen string
+	var debug bool
 	cmd := &cobra.Command{Use: "orchestrator", Short: "Run the local orchestrator", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		logger := log.NewWithOptions(cmd.ErrOrStderr(), log.Options{ReportTimestamp: true, Prefix: "orchestrator"})
+		if debug {
+			logger.SetLevel(log.DebugLevel)
+		}
+		logger.Info("Starting orchestrator")
 		if _, _, err := net.SplitHostPort(listen); err != nil {
 			return err
 		}
@@ -517,13 +523,14 @@ func Command() *cobra.Command {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
 		}
+		logger.Info("Opening store", "data_dir", dir)
 		s, err := OpenStore(filepath.Join(dir, "orchestrator.db"))
 		if err != nil {
 			return err
 		}
 		defer func() {
 			if closeErr := s.Close(); closeErr != nil {
-				log.Printf("close orchestrator store: %v", closeErr)
+				logger.Error("Failed to close store", "err", closeErr)
 			}
 		}()
 		opts, err := natsOptions(s, natsListen, dir)
@@ -547,24 +554,46 @@ func Command() *cobra.Command {
 		if !ns.ReadyForConnections(10 * time.Second) {
 			return fmt.Errorf("NATS server failed to start")
 		}
+		logger.Info("NATS server ready", "address", ns.ClientURL())
 		opts = opts.Clone()
 		opts.Port = ns.Addr().(*net.TCPAddr).Port
-		conn, err := nats.Connect(ns.ClientURL(), nats.InProcessServer(ns), nats.UserInfo("jawa-internal", systemPassword))
+		conn, err := nats.Connect(ns.ClientURL(), nats.InProcessServer(ns), nats.UserInfo("jawa-internal", systemPassword),
+			nats.DisconnectErrHandler(func(_ *nats.Conn, _ error) { logger.Warn("Workflow NATS connection disconnected") }),
+			nats.ReconnectHandler(func(_ *nats.Conn) { logger.Info("Workflow NATS connection reconnected") }),
+			nats.ClosedHandler(func(_ *nats.Conn) { logger.Info("Workflow NATS connection closed") }),
+			nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, _ error) { logger.Error("Workflow NATS asynchronous error") }))
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
-		workflow, err := NewWorkflow(cmd.Context(), s, conn)
+		logger.Info("Starting workflow")
+		workflow, err := newWorkflow(cmd.Context(), s, conn, logger)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = workflow.Close() }()
+		defer func() {
+			if closeErr := workflow.Close(); closeErr != nil {
+				logger.Error("Failed to close workflow", "err", closeErr)
+			}
+		}()
 		workflow.SetVerifier(ProviderVerifier(s, nil))
+		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		srv := &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Addr: listen, Handler: &app{s: s, ns: ns, options: opts, workflow: workflow}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+		listener, err := net.Listen("tcp", listen)
+		if err != nil {
+			logger.Error("Failed to listen for HTTP", "address", listen, "err", err)
+			return err
+		}
+		defer func() {
+			if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+				logger.Error("Failed to close HTTP listener", "err", closeErr)
+			}
+		}()
 		done := make(chan error, 1)
-		go func() { done <- srv.ListenAndServe() }()
+		go func() { done <- srv.Serve(listener) }()
+		logger.Info("Orchestrator ready", "http_address", listener.Addr().String())
 		select {
 		case err = <-done:
 			if errors.Is(err, http.ErrServerClosed) {
@@ -572,6 +601,7 @@ func Command() *cobra.Command {
 			}
 			return err
 		case <-ctx.Done():
+			logger.Info("Shutting down orchestrator")
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err = srv.Shutdown(shutdownCtx)
@@ -579,9 +609,15 @@ func Command() *cobra.Command {
 				_ = srv.Close()
 			}
 			<-done
+			if err != nil {
+				logger.Error("HTTP shutdown failed", "err", err)
+			} else {
+				logger.Info("HTTP server stopped")
+			}
 			return err
 		}
 	}}
+	cmd.Flags().BoolVar(&debug, "debug", false, "Include debug logs for polling and ignored deliveries")
 	cmd.Flags().StringVar(&dir, "data-dir", "", "Persistent data directory")
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", "127.0.0.1:4222", "Authenticated embedded NATS listen address")

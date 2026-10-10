@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/presence"
@@ -30,6 +31,7 @@ type Attempt struct {
 type Verifier func(context.Context, Attempt) (bool, error)
 
 type Workflow struct {
+	logger   *log.Logger
 	s        *Store
 	client   *client.Client
 	presence *presencenats.Store
@@ -41,6 +43,10 @@ type Workflow struct {
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
+	return newWorkflow(ctx, s, conn, nil)
+}
+
+func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Logger) (*Workflow, error) {
 	if ctx == nil || s == nil || conn == nil {
 		return nil, errors.New("workflow: context, store and connection required")
 	}
@@ -59,7 +65,7 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel}
+	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
 	if err := w.RecoverResults(ctx, conn); err != nil {
 		cancel()
 		return nil, err
@@ -88,7 +94,9 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 func (w *Workflow) loop(f func() error) {
 	defer w.wg.Done()
 	for w.ctx.Err() == nil {
-		_ = f() // Durable consumers and outbox retry after transient failures.
+		if err := f(); err != nil && w.ctx.Err() == nil {
+			w.log().Warn("Workflow consumer failed; retrying")
+		}
 		select {
 		case <-w.ctx.Done():
 			return
@@ -203,7 +211,14 @@ func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 	if err = moveWorkflowCard(tx, id, project, source, status, pos); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	w.log().Info("Card moved", "card_id", id, "from", source, "to", status, "retry", retry)
+	if (source != status || retry) && status == "Building" {
+		w.log().Info("Task queued", "card_id", id)
+	}
+	return nil
 }
 
 // workflowCardError translates missing cards without changing CardResult's API.
@@ -290,7 +305,11 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	w.log().Info("Card action completed", "card_id", id, "deleted", deleteCard, "orphan_acknowledged", acknowledgeOrphan)
+	return nil
 }
 
 func (w *Workflow) dispatch() {
@@ -304,16 +323,25 @@ func (w *Workflow) dispatch() {
 		}
 		var task client.Task
 		if json.Unmarshal([]byte(a.TaskJSON), &task) != nil {
+			w.logAttempt(log.ErrorLevel, "Invalid outbox task", a)
 			continue
 		}
 		ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
 		_, err := w.client.Submit(ctx, task)
 		cancel()
 		if err != nil {
+			if w.ctx.Err() == nil {
+				w.logAttempt(log.WarnLevel, "Task submission failed; will retry", a)
+			}
 			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND published=0 AND state='queued'`, err.Error(), time.Now().UnixMilli(), a.ID)
 			continue
 		}
-		_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET published=1,state=CASE WHEN state='queued' THEN 'submitted' ELSE state END,error=CASE WHEN state='queued' THEN '' ELSE error END,updated_at=? WHERE id=?`, time.Now().UnixMilli(), a.ID)
+		if _, err = w.s.db.Exec(`UPDATE workflow_attempts SET published=1,state=CASE WHEN state='queued' THEN 'submitted' ELSE state END,error=CASE WHEN state='queued' THEN '' ELSE error END,updated_at=? WHERE id=?`, time.Now().UnixMilli(), a.ID); err != nil {
+			w.logAttempt(log.ErrorLevel, "Task published but outbox update failed", a)
+			continue
+		}
+		a.State = "submitted"
+		w.logAttempt(log.InfoLevel, "Task dispatched", a)
 	}
 }
 
@@ -341,6 +369,7 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 		return err
 	}
 	if a.Ready || (a.OutcomeJSON != "" && !resumableOutcome(a)) || !matches(a, ev.AgentID, ev.RunID, ev.AttemptID) || (a.AgentID != "" && ev.Seq <= a.EventSeq) {
+		w.logAttempt(log.DebugLevel, "Ignoring stale or mismatched status event", a)
 		return tx.Commit()
 	}
 	// A restarted agent may continue the same run, but must not revive a
@@ -369,7 +398,13 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	a.AgentID, a.RunID, a.RemoteAttemptID = ev.AgentID, ev.RunID, ev.AttemptID
+	a.State, a.RunState = state, string(ev.State)
+	w.logAttempt(log.InfoLevel, "Execution status updated", a)
+	return nil
 }
 func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 	tx, err := w.s.writeTx()
@@ -396,13 +431,18 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 				return err
 			}
 		}
-		return tx.Commit()
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		w.logAttempt(log.WarnLevel, "Execution result conflict retained; reconciliation required", a)
+		return nil
 	}
 	data, err := json.Marshal(out)
 	if err != nil {
 		return err
 	}
 	if a.Ready || (a.OutcomeJSON != "" && (!resumableOutcome(a) || a.OutcomeJSON == string(data))) {
+		w.logAttempt(log.DebugLevel, "Ignoring duplicate or finalized result", a)
 		return nil
 	}
 	if resumableOutcome(a) {
@@ -417,7 +457,13 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 	if err = applyOutcome(tx, a, out); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	a.AgentID, a.RunID, a.RemoteAttemptID = out.AgentID, out.RunID, out.AttemptID
+	a.RunState = string(out.State)
+	w.logAttempt(log.InfoLevel, "Execution result received", a)
+	return nil
 }
 
 // Waiting and cancellation close a turn, not necessarily the durable run.
@@ -486,10 +532,20 @@ func (w *Workflow) verifyPending() {
 			ok = false
 		}
 		if !ok {
+			level := log.DebugLevel
+			if reason != a.Error {
+				level = log.InfoLevel
+				if e != nil {
+					level = log.WarnLevel
+				}
+			}
+			w.logAttempt(level, "PR verification blocked", a)
 			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND ready=0 AND outcome_json=?`, reason, time.Now().UnixMilli(), a.ID, a.OutcomeJSON)
 			continue
 		}
-		_ = w.markReady(a)
+		if err = w.markReady(a); err != nil {
+			w.logAttempt(log.ErrorLevel, "Failed to record verified readiness", a)
+		}
 	}
 }
 func (w *Workflow) markReady(a Attempt) error {
@@ -522,5 +578,10 @@ func (w *Workflow) markReady(a Attempt) error {
 	if _, err = tx.Exec(`UPDATE workflow_attempts SET ready=1,state='ready',error='',updated_at=? WHERE id=?`, time.Now().UnixMilli(), a.ID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	a.State = "ready"
+	w.logAttempt(log.InfoLevel, "PR verified; card moved to Done", a)
+	return nil
 }

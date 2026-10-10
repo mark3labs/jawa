@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/charmbracelet/log"
 	client "github.com/mark3labs/bonnie/client/nats"
 )
 
@@ -18,7 +19,13 @@ func migrateCancellation(s *Store) error {
 }
 
 // CancelCard requests cancellation only for the latest attempt after observing its exact active turn.
-func (w *Workflow) CancelCard(ctx context.Context, cardID string) error {
+func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error) {
+	w.log().Info("workflow cancellation action requested", "card_id", cardID)
+	defer func() {
+		if retErr != nil {
+			w.log().Warn("workflow cancellation action failed or unconfirmed", "card_id", cardID)
+		}
+	}()
 	if ctx == nil {
 		ctx = w.ctx
 	}
@@ -41,6 +48,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) error {
 	if a.AgentID == "" || a.RunID == "" || a.RemoteAttemptID == "" {
 		return errors.New("cancellation target unavailable")
 	}
+	w.logAttempt(log.InfoLevel, "workflow cancellation target selected", a)
 	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
 	queryCtx, stop := context.WithTimeout(ctx, 5*time.Second)
 	observed, err := w.client.Status(queryCtx, target)
@@ -49,6 +57,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) error {
 		return w.cancelRecordFailure(a, "uncertain", cancelErrorText)
 	}
 	if observed.State == "cancelled" || observed.State == "failed" || observed.State == "completed" {
+		w.logAttempt(log.InfoLevel, "workflow cancellation target already terminal", a)
 		return w.applyStatus(a, observed)
 	}
 	// Waiting/interrupted turns can be durably cancelled even when no local
@@ -96,9 +105,17 @@ func (w *Workflow) checkCancelLatest(a Attempt) error {
 }
 func (w *Workflow) cancelAudit(a Attempt, turnID, status, msg string) error {
 	_, err := w.s.db.Exec(`INSERT INTO workflow_cancel_requests(task_id,agent_id,run_id,remote_attempt_id,turn_id,status,error,created_at) VALUES(?,?,?,?,?,?,?,?)`, a.TaskID, a.AgentID, a.RunID, a.RemoteAttemptID, turnID, status, msg, time.Now().UnixMilli())
+	if err != nil {
+		w.logAttempt(log.WarnLevel, "workflow cancellation audit failed", a)
+	} else {
+		w.log().Info("workflow cancellation recorded", "attempt_id", a.ID, "card_id", a.CardID,
+			"task_id", a.TaskID, "agent_id", a.AgentID, "run_id", a.RunID,
+			"remote_attempt_id", a.RemoteAttemptID, "cancel_state", status)
+	}
 	return err
 }
 func (w *Workflow) cancelRecordFailure(a Attempt, status, msg string) error {
+	w.logAttempt(log.WarnLevel, "workflow cancellation could not be confirmed", a)
 	if err := w.recordCancelNotice(a, "", status, msg); err != nil {
 		return err
 	}

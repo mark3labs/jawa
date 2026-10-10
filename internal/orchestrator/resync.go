@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/charmbracelet/log"
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/nats-io/nats.go"
 )
@@ -14,11 +15,14 @@ import (
 func (w *Workflow) resyncRuns(conn *nats.Conn) {
 	// Recover final reports before slow/unreachable status owners can exhaust
 	// the sweep budget. Result recovery has its own bounded deadline.
-	_ = w.RecoverResults(w.ctx, conn)
+	if err := w.RecoverResults(w.ctx, conn); err != nil {
+		w.log().Warn("workflow resync result recovery failed", "category", "recovery")
+	}
 	ctx, cancel := context.WithTimeout(w.ctx, 5*time.Second)
 	defer cancel()
 	rows, err := w.s.db.QueryContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts a WHERE a.card_id IN (SELECT id FROM cards WHERE status='Building') AND a.ready=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
 	if err != nil {
+		w.log().Warn("workflow resync attempt query failed", "category", "storage")
 		return
 	}
 	var attempts []Attempt
@@ -26,6 +30,7 @@ func (w *Workflow) resyncRuns(conn *nats.Conn) {
 		a, err := scanAttempt(rows)
 		if err != nil {
 			_ = rows.Close()
+			w.log().Warn("workflow resync attempt scan failed", "category", "storage")
 			return
 		}
 		attempts = append(attempts, a)
@@ -33,10 +38,12 @@ func (w *Workflow) resyncRuns(conn *nats.Conn) {
 	err = rows.Err()
 	_ = rows.Close()
 	if err != nil {
+		w.log().Warn("workflow resync attempt iteration failed", "category", "storage")
 		return
 	}
 	for _, a := range attempts {
 		if ctx.Err() != nil {
+			w.log().Debug("workflow resync sweep stopped", "category", "context", "attempts", len(attempts))
 			return
 		}
 		if a.AgentID == "" || a.RunID == "" || a.RemoteAttemptID == "" || (a.OutcomeJSON != "" && !resumableOutcome(a)) {
@@ -46,10 +53,17 @@ func (w *Workflow) resyncRuns(conn *nats.Conn) {
 		queryCtx, stop := context.WithTimeout(ctx, time.Second)
 		status, err := w.client.Status(queryCtx, target)
 		stop()
-		if err != nil || status.Error != "" || status.Target != target {
+		if err != nil {
+			w.logAttempt(log.DebugLevel, "workflow resync owner unavailable; will retry", a)
 			continue
 		}
-		_ = w.applyStatus(a, status)
+		if status.Error != "" || status.Target != target {
+			w.logAttempt(log.WarnLevel, "workflow resync status rejected", a)
+			continue
+		}
+		if err := w.applyStatus(a, status); err != nil {
+			w.logAttempt(log.WarnLevel, "workflow resync status application failed", a)
+		}
 	}
 }
 
@@ -104,5 +118,12 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	w.log().Info("workflow status transition", "attempt_id", a.ID, "card_id", a.CardID,
+		"task_id", a.TaskID, "agent_id", a.AgentID, "run_id", a.RunID,
+		"remote_attempt_id", a.RemoteAttemptID, "previous_state", a.State,
+		"state", state, "previous_run_state", a.RunState, "run_state", string(status.State))
+	return nil
 }
