@@ -43,7 +43,10 @@ rocket('jawa-board', {
             // Undo the optimistic move, then let the server decide.
             from.insertBefore(item, cardsIn(from)[oldIndex] ?? null);
             board()?.removeAttribute('data-ignore-morph');
-            if (from !== to || oldIndex !== newIndex) move(item.dataset.cardId, to.dataset.status, newIndex);
+            if (from.dataset.status === 'Planning' && to.dataset.status === 'Building') {
+              // Approval requires an explicit revision and fresh backend checks.
+              window.location.assign(`/planning?card=${encodeURIComponent(item.dataset.cardId)}#approve-plan`);
+            } else if (from !== to || oldIndex !== newIndex) move(item.dataset.cardId, to.dataset.status, newIndex);
             else host.dispatchEvent(new CustomEvent('board-refresh', {bubbles: true}));
           },
         }));

@@ -3,8 +3,10 @@ package orchestrator
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/a-h/templ"
 	"net/http"
@@ -22,6 +24,7 @@ type uiSnapshot struct {
 	projects []Project
 	cards    []Card
 	agents   []presence.Record
+	planning map[string]PlanningDetail
 	attempts []Attempt
 	nats     NATSConfig
 	presence bool // false when presence discovery failed
@@ -43,6 +46,15 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	}
 	if snap.cards, err = s.Cards(""); err != nil {
 		return snap, fmt.Errorf("load cards: %w", err)
+	}
+	snap.planning = make(map[string]PlanningDetail)
+	for _, c := range snap.cards {
+		detail, planningErr := s.PlanningDetail(c.ID)
+		if planningErr == nil {
+			snap.planning[c.ID] = detail
+		} else if !errors.Is(planningErr, sql.ErrNoRows) {
+			return snap, fmt.Errorf("load planning detail: %w", planningErr)
+		}
 	}
 	if wf != nil {
 		presenceCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -79,6 +91,8 @@ func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v
 	}
 	var out []templ.Component
 	switch v.View {
+	case viewPlanning:
+		out = append(out, planningContent(d))
 	case viewBoard:
 		out = append(out, boardContent(d))
 	case viewRuns:
@@ -216,4 +230,54 @@ func actionReason(c Card, attempts []Attempt, action string) string {
 		return "Already in Todo."
 	}
 	return "Reset requires a failed or blocked attempt."
+}
+
+func planningState(d pageData, cardID string) string {
+	if detail, ok := d.planning[cardID]; ok {
+		return detail.Session.State
+	}
+	return "queued"
+}
+func planningLabel(state string) string {
+	switch state {
+	case "running", "submitted":
+		return "Investigating"
+	case "questions":
+		return "Needs input"
+	case "ready":
+		return "Ready"
+	case "failed":
+		return "Failed"
+	case "approved":
+		return "Approved"
+	case "cancelled":
+		return "Cancelled"
+	default:
+		return "Queued"
+	}
+}
+func planningTone(state string) string {
+	switch state {
+	case "running", "submitted":
+		return "running"
+	case "questions":
+		return "blocked"
+	case "ready", "approved":
+		return "ready"
+	case "failed":
+		return "failed"
+	default:
+		return "queued"
+	}
+}
+func selectedCard(cards []Card, id string) (Card, bool) {
+	for _, c := range cards {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return Card{}, false
+}
+func planningCanReply(detail PlanningDetail) bool {
+	return detail.Session.State == "questions" || detail.Session.State == "ready" || detail.Session.State == "failed"
 }

@@ -361,6 +361,26 @@ try {
  await screen(`/board?project=${otherID}`, 'board');
  await expect(page.locator('.task-card')).toHaveCount(1);
  await expect(card('First smoke card')).toHaveCount(0);
+ // Planning drag starts a durable queued session even with the agent offline.
+ await createCard('Planning smoke card');
+ const planningID = await card('Planning smoke card').getAttribute('data-card-id');
+ await drag('Planning smoke card', 'Planning');
+ await expect(card('Planning smoke card').getByText('Queued', {exact: true})).toBeVisible();
+ // Dropping into Building opens review instead of starting unapproved work.
+ await drag('Planning smoke card', 'Building', false);
+ await page.locator('#planning-content').waitFor();
+ assert.equal(new URL(page.url()).searchParams.get('card'), planningID);
+ await page.getByRole('heading', {name: 'Original description'}).waitFor();
+ assert.equal(await page.locator('#planning-approve-form').count(), 0, 'queued plans cannot be approved');
+ assert.equal(await page.locator('#board-content').count(), 0);
+ await page.waitForFunction(() => window.smokeSSE.frames.includes('id="planning-content"'));
+ await page.getByRole('button', {name: 'Cancel planning & return to Todo', exact: true}).click();
+ await page.locator('#planning-content').getByText('Cancelled', {exact: true}).waitFor();
+ await page.getByRole('link', {name: 'Back to board', exact: true}).click();
+ await laneCard('Todo', 'Planning smoke card').waitFor();
+ await action('Planning smoke card', 'Delete…');
+ await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
+ await expect(card('Planning smoke card')).toHaveCount(0);
  // Modal positioning is explicit: Tailwind's reset must not put dialogs at (0,0).
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {
@@ -416,7 +436,7 @@ try {
  await expect(page.locator('details.run')).toHaveCount(3);
  assert.deepEqual(browserActivityRequests, [], 'browser must never poll /activity including re-login');
  assert.deepEqual(errors, [], 'no browser errors');
- console.log('PASS: four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
+ console.log('PASS: planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
 } finally {
  if (started) await bridge('/stop').catch(() => {});
  await browser.close();

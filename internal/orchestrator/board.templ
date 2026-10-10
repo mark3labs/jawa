@@ -36,7 +36,7 @@ templ boardContent(d pageData) {
 			</div>
 			<jawa-board project={ p.ID }>
 				<div class="lanes">
-					for _, status := range []string{"Todo", "Building", "Done"} {
+					for _, status := range []string{"Todo", "Planning", "Building", "Done"} {
 						<section class={ "lane", "lane-" + status } aria-label={ laneName(status) }>
 							<header class="lane-head">
 								@laneIcon(status)
@@ -87,7 +87,7 @@ templ boardContent(d pageData) {
 templ taskCard(d pageData, c Card) {
 	@card.Card(card.Props{ID: "card-" + c.ID, Class: "task-card", Attributes: templ.Attributes{"data-card-id": c.ID, "data-title": c.Title, "data-status": c.Status, "data-show": filterExpr(d.projects, c)}}) {
 		<div class="card-top">
-			<span class="card-key">{ cardKey(d.projects, c) }</span>
+			<a class="card-key" href={ templ.SafeURL(planningPath(c.ID)) } title="View card and plan">{ cardKey(d.projects, c) }</a>
 			@cardMenu(d, c)
 		</div>
 		<h3 class="card-title">{ c.Title }</h3>
@@ -102,6 +102,9 @@ templ taskCard(d pageData, c Card) {
 }
 
 templ cardChips(d pageData, c Card) {
+	if c.Status == "Planning" {
+		<span class={ "chip", "planning-badge", "tone-" + planningTone(planningState(d, c.ID)) }>{ planningLabel(planningState(d, c.ID)) }</span>
+	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
 			@toneIcon(runTone(la[0]))
@@ -151,6 +154,7 @@ templ cardMenu(d pageData, c Card) {
 		</button>
 		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
 			if c.Status == "Todo" {
+				@menuPost(d, c, "/cards/plan", "Plan first", "runs", nil)
 				@menuPost(d, c, "/cards/move", "Start work", "play", [][2]string{{"status", "Building"}, {"position", "0"}})
 			}
 			if canAction(c, d.attempts, "start") {
@@ -159,7 +163,10 @@ templ cardMenu(d pageData, c Card) {
 			if canAction(c, d.attempts, "retry") {
 				@menuPost(d, c, "/cards/retry", "Retry attempt", "retry", nil)
 			}
-			if c.Status != "Todo" {
+			if c.Status == "Planning" {
+				@menuPost(d, c, "/cards/planning/cancel", "Cancel planning", "reset", nil)
+			}
+			if c.Status != "Todo" && c.Status != "Planning" {
 				if canAction(c, d.attempts, "reset") {
 					@menuPost(d, c, "/cards/reset", "Reset to Todo", "reset", nil)
 				} else {
@@ -188,6 +195,7 @@ templ cardMenu(d pageData, c Card) {
 					<span>Open issue</span>
 				</a>
 			}
+			<a class="menu-item" role="menuitem" href={ templ.SafeURL(planningPath(c.ID)) }>View card &amp; plan</a>
 			<div class="menu-sep" role="separator"></div>
 			if canAction(c, d.attempts, "delete") {
 				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true" }>

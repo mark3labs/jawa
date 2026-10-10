@@ -1,0 +1,17 @@
+name: Generated SQL
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  sqlc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify generated queries are current
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
+          git diff --exit-code -- internal/orchestrator/db/sqlc

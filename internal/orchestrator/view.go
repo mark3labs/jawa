@@ -19,6 +19,7 @@ type viewKind string
 
 const (
 	viewBoard    viewKind = "board"
+	viewPlanning viewKind = "planning"
 	viewRuns     viewKind = "runs"
 	viewAgents   viewKind = "agents"
 	viewSettings viewKind = "settings"
@@ -43,6 +44,8 @@ func viewFromPath(path string) (viewKind, bool) {
 	switch strings.TrimSuffix(path, "/") {
 	case "/board":
 		return viewBoard, true
+	case "/planning":
+		return viewPlanning, true
 	case "/runs":
 		return viewRuns, true
 	case "/agents":
@@ -68,7 +71,7 @@ func parseViewParams(r *http.Request, kind viewKind) viewParams {
 	if kind == "" {
 		p.View = viewBoard
 		switch v := viewKind(r.FormValue("view")); v {
-		case viewRuns, viewAgents, viewSettings:
+		case viewRuns, viewAgents, viewSettings, viewPlanning:
 			p.View = v
 		}
 	}
@@ -84,7 +87,7 @@ func (v viewParams) Path() string {
 	if v.Project != "" && v.View == viewBoard {
 		q.Set("project", v.Project)
 	}
-	if v.View == viewRuns {
+	if v.View == viewRuns || v.View == viewPlanning {
 		if v.Card != "" {
 			q.Set("card", v.Card)
 		}
@@ -435,6 +438,8 @@ func laneName(status string) string {
 
 func laneHint(status string) string {
 	switch status {
+	case "Planning":
+		return "Investigate ideas and approve a plan before building."
 	case "Building":
 		return "Cards an agent is working on appear here."
 	case "Done":
@@ -488,4 +493,8 @@ func natsDisplayURL(u string) string {
 		return "nats://127.0.0.1:4222"
 	}
 	return u
+}
+
+func planningPath(cardID string) string {
+	return viewParams{View: viewPlanning, Card: cardID}.Path()
 }

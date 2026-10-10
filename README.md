@@ -27,10 +27,29 @@ and ignored stale/duplicate deliveries. Logs contain execution IDs and states,
 not prompts, raw result payloads, credentials, or remote error text.
 
 Open http://127.0.0.1:8080 and create an admin username/password. Add projects tied
-to GitHub or Forgejo repository URLs, then create cards. The Todo / Building / Done
-board supports drag-and-drop and keyboard moves, persistent ordering, and optional
+to GitHub or Forgejo repository URLs, then create cards. The Todo / Planning /
+Building / Done board supports drag-and-drop and keyboard moves, persistent ordering, and optional
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
+
+**Planning is optional:** drag Todo directly to Building for clear tasks, or move
+it to Planning for repository investigation and refinement. Open the planning
+card to read the proposed specification, answer questions, and review versioned
+plans. **Approve & build** freezes the displayed revision and starts implementation;
+dragging Planning to Building opens that review rather than bypassing approval.
+Replies start independent durable agent turns; retry and cancel are available.
+The original request and discussion remain separate from the approved specification.
+
+Planning tasks use the existing BONNIE queue and require a completed JSON report
+with `spec`, `questions`, and a full `repo_commit` SHA. They do not create PRs or
+use build verification. **Read-only planning is instructed, not sandbox-enforced
+by the orchestrator:** BONNIE v0.22 has no per-task tool restrictions. Configure
+agent credentials and tools appropriately; shared build-capable agents are not a
+security boundary. See [Planning contract](internal/orchestrator/PLANNING_HANDOFF.md).
+
+Database upgrades use embedded Goose migrations; back up existing databases before
+upgrading. Generated sqlc queries and regeneration instructions are documented in
+[Database tooling](internal/orchestrator/db/README.md).
 
 Moving a Todo card to **Building** atomically creates a durable execution attempt
 and outbox task. The orchestrator publishes it to `bonnie.tasks`, consumes BONNIE
