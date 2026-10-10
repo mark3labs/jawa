@@ -60,6 +60,24 @@ is guidance, not a scheduler-enforced timeout. Review comments arriving after Do
 do not automatically reopen work. Use one orchestrator per database and NATS scope;
 its stable durable consumers are not multi-orchestrator isolated.
 
+### Recover worker-side re-executions
+
+Results from an execution whose identity differs from the pinned run are retained
+rather than silently discarded. Startup performs a bounded read-only scan of retained
+broker results (last 10,000 sequence positions, five seconds). Operator selection is
+explicit and audited; it never bypasses provider verification or republishes a task:
+
+```sh
+./bin/jawa orchestrator reconcile --data-dir /path/to/jawa-data \
+  --task TASK_ID --run RUN_ID --attempt REMOTE_ATTEMPT_ID \
+  --nats-url nats://127.0.0.1:4222
+```
+
+Credentials come from `NATS_USERNAME`/`NATS_PASSWORD`. Repeated selection can recheck
+an already-pinned result. A completed report may be bare JSON or one JSON code fence.
+Provider-confirmed merged PRs also count as Done, provided repository, branch, base,
+and head identity checks pass. Closed unmerged PRs remain blocked.
+
 The UI separates **Board** (one project at a time), **Runs**, **Agents**, and
 **Settings** into bookmarkable views. It uses templ and prebuilt shadcn-templ
 components, with a dark Jawa-inspired robe-brown/sand/amber palette, compact

@@ -103,7 +103,10 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 			return false, err
 		}
 		sha := pr.Head.SHA
-		if provider == "forgejo" {
+		if pr.Merged {
+			// A provider-confirmed merge is a terminal outcome; open-PR CI/review
+			// gates no longer apply. Identity is still checked and re-read below.
+		} else if provider == "forgejo" {
 			if err = p.forgejoCI(root, base, sha); err != nil {
 				return false, err
 			}
@@ -128,6 +131,9 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		}
 		if latest.Head.SHA != sha {
 			return false, errors.New("provider: PR head changed during verification")
+		}
+		if pr.Merged && !latest.Merged {
+			return false, errors.New("provider: PR merge state changed during verification")
 		}
 		return true, nil
 	}
@@ -176,7 +182,10 @@ type providerPR struct {
 }
 
 func (p providerPR) matches(repo, base, branch string, number int) error {
-	if p.Number != number || p.State != "open" || p.Draft || p.Merged || p.Mergeable == nil || !*p.Mergeable || p.Base.Ref != base || p.Base.Repo.FullName != repo || p.Head.Repo.FullName != repo || p.Head.Ref != branch || !providerSHA.MatchString(p.Head.SHA) {
+	identityOK := p.Number == number && p.Base.Ref == base && p.Base.Repo.FullName == repo && p.Head.Repo.FullName == repo && p.Head.Ref == branch && providerSHA.MatchString(p.Head.SHA)
+	mergedOK := p.Merged && p.State == "closed"
+	openOK := !p.Merged && p.State == "open" && !p.Draft && p.Mergeable != nil && *p.Mergeable
+	if !identityOK || (!mergedOK && !openOK) {
 		return errors.New("provider: PR identity, branch, head or mergeability not ready")
 	}
 	return nil

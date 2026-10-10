@@ -26,7 +26,7 @@ The PR must use exactly that deterministic branch in the configured repository (
 
 **Done means PR-ready for human review/merge, never automatic merge.** This verifier performs no merge, approval, comment-resolution, or provider-policy mutation. Approvals may still be pending, including when branch protection or a `pull_request` ruleset requires approvals. Humans remain responsible for satisfying those merge gates. Pending/unsubmitted reviews and review requests alone are not blockers; outstanding formal changes requests and unresolved inline feedback are.
 
-Both providers require an open, non-draft, unmerged, explicitly mergeable PR with the expected identity and current head SHA. A final PR read catches head changes during verification. Provider state can still change after the last read; verification is not an atomic provider-side snapshot.
+Open PRs must be non-draft and explicitly mergeable, with expected identity and current head SHA. A provider-confirmed closed and merged PR is terminal Done after the same repository/branch/base/head identity checks and final reread; open-PR CI/review gates no longer apply. Closed unmerged PRs fail. A final PR read catches head changes during verification. Provider state can still change after the last read; verification is not an atomic provider-side snapshot.
 
 ### GitHub
 

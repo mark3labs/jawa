@@ -19,7 +19,7 @@ func (f providerTransport) RoundTrip(r *http.Request) (*http.Response, error) { 
 
 func TestProviderVerifier(t *testing.T) {
 	sha := strings.Repeat("a", 40)
-	for _, scenario := range []string{"success", "wrong repo", "wrong branch", "wrong head", "pending", "failed", "missing required", "red thread", "changes requested", "dismissed", "no CI", "allow no CI", "missing token", "bad URL", "legacy task", "graphql error", "changed head", "redirect", "cancelled", "malformed", "missing mergeability", "empty policy", "missing contexts", "missing checks", "empty rules", "rules empty parameters", "rules unavailable", "rules only", "rules missing required", "rules success", "optional failure", "pending review"} {
+	for _, scenario := range []string{"success", "merged", "merged then open", "wrong repo", "wrong branch", "wrong head", "pending", "failed", "missing required", "red thread", "changes requested", "dismissed", "no CI", "allow no CI", "missing token", "bad URL", "legacy task", "graphql error", "changed head", "redirect", "cancelled", "malformed", "missing mergeability", "empty policy", "missing contexts", "missing checks", "empty rules", "rules empty parameters", "rules unavailable", "rules only", "rules missing required", "rules success", "optional failure", "pending review"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Setenv("JAWA_GITHUB_TOKEN", "test-secret")
 			t.Setenv("GITHUB_TOKEN", "")
@@ -98,7 +98,11 @@ func TestProviderVerifier(t *testing.T) {
 					if scenario == "missing mergeability" {
 						mergeable = nil
 					}
-					if err := json.NewEncoder(w).Encode(map[string]any{"number": 7, "state": "open", "mergeable": mergeable, "head": map[string]any{"ref": ref, "sha": head, "repo": map[string]any{"full_name": repo}}, "base": map[string]any{"ref": "main", "repo": map[string]any{"full_name": "acme/repo"}}}); err != nil {
+					state, merged := "open", false
+					if scenario == "merged" || scenario == "merged then open" && prCalls == 1 {
+						state, merged, mergeable = "closed", true, nil
+					}
+					if err := json.NewEncoder(w).Encode(map[string]any{"number": 7, "state": state, "merged": merged, "mergeable": mergeable, "head": map[string]any{"ref": ref, "sha": head, "repo": map[string]any{"full_name": repo}}, "base": map[string]any{"ref": "main", "repo": map[string]any{"full_name": "acme/repo"}}}); err != nil {
 						t.Errorf("encode provider fixture: %v", err)
 					}
 				case r.URL.Path == "/repos/acme/repo/branches/main":
@@ -246,7 +250,10 @@ func TestProviderVerifier(t *testing.T) {
 				cancel()
 			}
 			ok, err := ProviderVerifier(s, c)(ctx, a)
-			want := scenario == "success" || scenario == "dismissed" || scenario == "allow no CI" || scenario == "rules success" || scenario == "optional failure" || scenario == "pending review" || scenario == "rules only"
+			if (scenario == "merged" || scenario == "merged then open") && calls != 2 {
+				t.Fatalf("merged path fetched non-PR evidence: %d calls", calls)
+			}
+			want := scenario == "merged" || scenario == "success" || scenario == "dismissed" || scenario == "allow no CI" || scenario == "rules success" || scenario == "optional failure" || scenario == "pending review" || scenario == "rules only"
 			if ok != want || (want && err != nil) || (!want && err == nil) {
 				t.Fatalf("ok=%v err=%v want=%v", ok, err, want)
 			}
@@ -450,5 +457,23 @@ func TestForgejoVerifier(t *testing.T) {
 				t.Fatal("missing review reads")
 			}
 		})
+	}
+}
+
+func TestMergedPRStillRequiresIdentity(t *testing.T) {
+	var pr providerPR
+	raw := `{"number":177,"state":"closed","merged":true,"mergeable":null,"head":{"ref":"jawa/update-ci-abcdef-a1","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repo":{"full_name":"example/repo"}},"base":{"ref":"main","repo":{"full_name":"example/repo"}}}`
+	if err := json.Unmarshal([]byte(raw), &pr); err != nil {
+		t.Fatal(err)
+	}
+	if err := pr.matches("example/repo", "main", "jawa/update-ci-abcdef-a1", 177); err != nil {
+		t.Fatal(err)
+	}
+	if err := pr.matches("example/repo", "main", "other", 177); err == nil {
+		t.Fatal("wrong branch accepted")
+	}
+	pr.Merged = false
+	if err := pr.matches("example/repo", "main", "jawa/update-ci-abcdef-a1", 177); err == nil {
+		t.Fatal("closed unmerged PR accepted")
 	}
 }

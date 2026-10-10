@@ -61,6 +61,10 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel}
+	if err := w.RecoverResults(ctx, conn); err != nil {
+		cancel()
+		return nil, err
+	}
 	w.wg.Add(4)
 	go w.loop(func() error { return c.Consume(ctx, w.result) })
 	go w.loop(func() error { return c.ConsumeEvents(ctx, w.event) })
@@ -302,7 +306,7 @@ func (w *Workflow) dispatch() {
 }
 
 func matches(a Attempt, worker, run, remote string) bool {
-	return a.WorkerID == "" || (a.WorkerID == worker && a.RunID == run && a.RemoteAttemptID == remote)
+	return (a.WorkerID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.WorkerID == worker && a.RunID == run && a.RemoteAttemptID == remote)
 }
 func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	tx, err := w.s.writeTx()
@@ -317,8 +321,15 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	if err != nil {
 		return err
 	}
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`INSERT OR IGNORE INTO workflow_execution_events(task_id,event_id,worker_id,run_id,remote_attempt_id,event_type,event_json,received_at) VALUES(?,?,?,?,?,?,?,?)`, ev.TaskID, ev.EventID, ev.WorkerID, ev.RunID, ev.AttemptID, ev.Type, string(data), time.Now().UnixMilli()); err != nil {
+		return err
+	}
 	if a.OutcomeJSON != "" || !matches(a, ev.WorkerID, ev.RunID, ev.AttemptID) || (a.WorkerID != "" && ev.Seq <= a.EventSeq) {
-		return nil
+		return tx.Commit()
 	}
 	_, err = tx.Exec(`UPDATE workflow_attempts SET worker_id=?,run_id=?,remote_attempt_id=?,state='running',run_state=?,event_seq=?,updated_at=? WHERE id=?`, ev.WorkerID, ev.RunID, ev.AttemptID, string(ev.State), ev.Seq, time.Now().UnixMilli(), a.ID)
 	if err != nil {
@@ -343,18 +354,32 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 	if err != nil {
 		return err
 	}
-	if a.Ready || (a.OutcomeJSON != "" && a.RunState != "waiting") || !matches(a, out.WorkerID, out.RunID, out.AttemptID) {
+	// Retain every mismatched delivery, even for ready or superseded attempts.
+	if !matches(a, out.WorkerID, out.RunID, out.AttemptID) {
+		if err = retainConflict(tx, out); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if a.Ready || (a.OutcomeJSON != "" && a.RunState != "waiting") {
 		return nil
 	}
+	if err = applyOutcome(tx, a, out); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// applyOutcome is shared by guarded delivery and explicit reconciliation. The
+// caller owns the transaction and must check identity and readiness first.
+func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
 	state, reason, pr := "blocked", out.Error, ""
 	if out.Error != "" || string(out.State) == "failed" || string(out.State) == "cancelled" {
 		state = "failed"
 	} else if string(out.State) == "completed" {
-		var report struct {
-			PRURL string `json:"pr_url"`
-		}
-		if json.Unmarshal([]byte(out.Response), &report) == nil && validPR(report.PRURL) && out.WorkerID != "" && out.RunID != "" && out.AttemptID != "" {
-			pr = report.PRURL
+		reportedPR := reportPR(out.Response)
+		if reportedPR != "" && out.WorkerID != "" && out.RunID != "" && out.AttemptID != "" {
+			pr = reportedPR
 			reason = "awaiting verification"
 		} else {
 			reason = "invalid PR report or execution identity"
@@ -367,10 +392,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return err
 	}
 	_, err = tx.Exec(`UPDATE workflow_attempts SET worker_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.WorkerID, out.RunID, out.AttemptID, state, string(out.State), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return err
 }
 func (w *Workflow) verifyPending() {
 	w.mu.RLock()
@@ -397,7 +419,7 @@ func (w *Workflow) verifyPending() {
 			ok = false
 		}
 		if !ok {
-			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND ready=0`, reason, time.Now().UnixMilli(), a.ID)
+			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND ready=0 AND outcome_json=?`, reason, time.Now().UnixMilli(), a.ID, a.OutcomeJSON)
 			continue
 		}
 		_ = w.markReady(a)

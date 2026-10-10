@@ -574,6 +574,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "data-dir", "", "Persistent data directory")
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", "127.0.0.1:4222", "Authenticated embedded NATS listen address")
+	cmd.AddCommand(ReconcileCommand())
 	return cmd
 }
 
