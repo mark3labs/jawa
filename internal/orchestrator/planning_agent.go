@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -23,32 +22,9 @@ type planningReport struct {
 }
 
 func parsePlanningReport(text string) (planningReport, error) {
-	var r planningReport
-	if len(text) > 256000 {
-		return r, errors.New("planning output exceeds 256000 bytes")
-	}
-	// Accept presentation-only Markdown wrapping, but never extract JSON from
-	// arbitrary prose or multiple blocks: the entire response remains one report.
-	text = strings.TrimSpace(text)
-	if strings.HasPrefix(text, "```") {
-		header, body, ok := strings.Cut(text, "\n")
-		if !ok || (strings.TrimSpace(header) != "```" && !strings.EqualFold(strings.TrimSpace(header), "```json")) {
-			return r, errors.New("planning report fence must be unlabelled or json")
-		}
-		body = strings.TrimSpace(body)
-		closing := strings.LastIndex(body, "\n")
-		if closing < 0 || strings.TrimSpace(body[closing+1:]) != "```" {
-			return r, errors.New("planning report requires a closing fence with no trailing content")
-		}
-		text = strings.TrimSpace(body[:closing])
-	}
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r); err != nil {
-		return r, errors.New("planner must return the specified JSON object")
-	}
-	if dec.Decode(new(any)) != io.EOF {
-		return r, errors.New("unexpected content after planning report")
+	r, err := decodePlanningOutput(text)
+	if err != nil {
+		return r, err
 	}
 	r.Spec = strings.TrimSpace(r.Spec)
 	r.RepoCommit = strings.ToLower(strings.TrimSpace(r.RepoCommit))
@@ -63,9 +39,6 @@ func parsePlanningReport(text string) (planningReport, error) {
 		if r.Questions[i] == "" || len(v) > 4000 {
 			return r, errors.New("invalid planning question")
 		}
-	}
-	if r.Questions == nil {
-		r.Questions = []string{}
 	}
 	return r, nil
 }

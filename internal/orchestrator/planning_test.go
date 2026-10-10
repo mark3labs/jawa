@@ -36,6 +36,9 @@ func planningDetails(t *testing.T, w *Workflow, id string) PlanningDetail {
 func planningOutcome(t *testing.T, w *Workflow, id, spec string, questions ...string) client.Outcome {
 	t.Helper()
 	d := planningDetails(t, w, id)
+	if questions == nil {
+		questions = []string{}
+	}
 	body, e := json.Marshal(planningReport{Spec: spec, Questions: questions, RepoCommit: strings.Repeat("a", 40)})
 	if e != nil {
 		t.Fatal(e)
@@ -324,6 +327,8 @@ func TestPlanningBackendOutputParserMarkdown(t *testing.T) {
 		"  \n```json\n" + report + "\n```\n ",
 		"```\n" + report + "\n```",
 		"```JSON\r\n" + report + "\r\n```\r\n",
+		"```json\n" + report + "\n```\nExtra prose",
+		"Here is the plan:\n```json\n" + report + "\n```",
 	} {
 		parsed, err := parsePlanningReport(text)
 		if err != nil || parsed.Spec != "Plan with literal ```json in its text" {
@@ -332,8 +337,6 @@ func TestPlanningBackendOutputParserMarkdown(t *testing.T) {
 	}
 	for _, text := range []string{
 		"```json\n" + report,
-		"```json\n" + report + "\n```\nExtra prose",
-		"Here is the plan:\n```json\n" + report + "\n```",
 		"```javascript\n" + report + "\n```",
 		"```json\n" + report + "\n```\n```json\n" + report + "\n```",
 		"```json\n{broken}\n```",
@@ -346,7 +349,7 @@ func TestPlanningBackendOutputParserMarkdown(t *testing.T) {
 }
 
 func TestPlanningBackendOutputParser(t *testing.T) {
-	for _, text := range []string{`null`, `{"spec":"x","repo_commit":"abc"}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[]} extra`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[""]}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","unexpected":true}`} {
+	for _, text := range []string{`null`, `{"spec":"x","repo_commit":"abc"}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[""]}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","unexpected":true}`} {
 		if _, e := parsePlanningReport(text); e == nil {
 			t.Fatalf("accepted %s", text)
 		}

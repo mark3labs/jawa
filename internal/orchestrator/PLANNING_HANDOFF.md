@@ -25,3 +25,39 @@ Cancellation returns the card to Todo immediately and invalidates queued/running
 Read-only scope is prompt-level in this integration because BONNIE v0.22 Task exposes only Text/Context and no tool allowlist. Enforce real isolation in the planner agent's credentials/tool configuration; do not mistake the prompt for a security sandbox. Result repo_commit is reported by agent, not independently attested. Sessions pin the first valid full SHA, and subsequent outputs must match it. Retained-stream recovery is bounded to the latest 10,000 messages/5 seconds (same operational limit as existing build workflow); broker retention must cover outages.
 
 Final backend verification: `go test ./...`, `go vet ./internal/orchestrator/...`, `go test -race ./internal/orchestrator -run TestPlanning -count=1`, and `git diff --check` pass. Additional smoke tests cover raw wire task identity/text, retained-stream outcome replay idempotence, exact observed-turn cancellation commands, revision CAS across cancelled/restarted sessions, history FK cascades and lane compaction. Tests use real embedded NATS JetStream and typed BONNIE clients with simulated agent reports; they do not run a live LLM/repository investigation. No commits made. Backend did not edit server/templates/frontend/UI/view files owned by UI agent.
+
+## Planning output parsing
+
+The production pure-Go parser (`planning_output.go`) is shared by outcome
+validation and the Markdown report renderer. It accepts bare JSON, a single
+unlabelled or case-insensitive `json` backtick fence, and Markdown headings/prose
+before or after one unambiguous object. CRLF and a leading UTF-8 BOM are supported.
+Fence lines must stand alone; unsupported, unclosed, empty, or multiple fences
+are rejected. Structural braces/brackets outside the report are conservative
+ambiguity errors, not ignored examples. Quoted prose cannot supply a candidate.
+
+Only narrow syntax repairs are performed: trailing object/array commas, bare
+**top-level** `spec`/`questions`/`repo_commit` keys, and JSON-style line/block
+comments outside strings. Original string tokens are preserved; malformed escapes,
+unescaped quotes/newlines, invalid UTF-8, lone UTF-16 surrogate escapes, truncation,
+and speculative string repairs are rejected. Valid Unicode surrogate pairs decode
+normally, without replacement characters.
+Every object is scanned for duplicate decoded keys (including escaped aliases and
+nested objects) before schema decoding. Unknown/case-aliased keys are rejected.
+`spec` and `repo_commit` must be strings; `questions` is explicitly required and
+must be an array of strings (`[]` is valid, missing/null/scalar/null elements are
+not). No numeric, boolean, or scalar coercion is performed.
+
+The entire response is bounded to 256000 bytes before processing, with a maximum
+JSON value nesting depth of 32. Existing normalization remains: trim the spec and
+questions, trim/lowercase the full 40/64-hex commit SHA, require nonempty spec and
+questions, at most 30 questions and at most 4000 original bytes per question.
+SHA syntax is not proof the agent inspected that commit; pinned-session checks
+remain unchanged. Errors do not include private response content.
+
+Regression coverage includes adversarial code/fake report fields inside spec,
+ambiguity, duplicates, source types, every-byte truncation and fuzz round trips.
+`TestPlanningOutputSavedResponse` is opt-in via `JAWA_PLANNING_SAVED_RESPONSE`:
+it independently decodes the stored single fence, verifies exact extraction, then
+checks the existing normalization. Do not store private responses in fixtures;
+read the source database with SQLite `mode=ro` and `PRAGMA query_only=ON`.
