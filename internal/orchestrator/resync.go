@@ -14,6 +14,7 @@ import (
 func (w *Workflow) resyncRuns(conn *nats.Conn) {
 	// Recover final reports before slow/unreachable status owners can exhaust
 	// the sweep budget. Result recovery has its own bounded deadline.
+	_ = w.RecoverEvents(w.ctx, conn)
 	_ = w.RecoverResults(w.ctx, conn)
 	ctx, cancel := context.WithTimeout(w.ctx, 5*time.Second)
 	defer cancel()

@@ -238,6 +238,9 @@ func runLabel(a Attempt) string {
 	if a.State == "queued" {
 		return "Queued"
 	}
+	if a.State == "submitted" {
+		return "Awaiting agent"
+	}
 	return "Waiting"
 }
 
