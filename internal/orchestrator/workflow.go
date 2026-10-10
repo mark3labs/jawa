@@ -50,9 +50,6 @@ func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, err
 	if err := migrateWorkflow(s); err != nil {
 		return nil, err
 	}
-	if err := migrateAgentStream(ctx, conn); err != nil {
-		return nil, err
-	}
 	c, err := client.New(conn, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true, EventConsumer: "jawa-workflow-events", ResultConsumer: "jawa-workflow-results"})
 	if err != nil {
 		return nil, err

@@ -184,10 +184,10 @@ try {
  const agentsStable = await stableDocument();
  await bridge('/start'); started = true;
  await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready' && w.endpoints.some(e => e.input && e.ready)), 'real BONNIE presence');
- const agent = page.locator('#agent-' + agent);
- await agent.getByText('Available', {exact: true}).waitFor();
- await agent.getByText('Inspect record', {exact: true}).click();
- const record = JSON.parse(await agent.locator('details pre').textContent());
+ const agentCard = page.locator('#agent-' + agent);
+ await agentCard.getByText('Available', {exact: true}).waitFor();
+ await agentCard.getByText('Inspect record', {exact: true}).click();
+ const record = JSON.parse(await agentCard.locator('details pre').textContent());
  assert.equal(record.identity.agent, agent);
  assert.ok(record.endpoints.some(e => e.input && e.ready));
  await agentsStable();
@@ -248,11 +248,12 @@ try {
   assert.equal(await card(title).getByTitle('Open pull request').getAttribute('href'), pr);
  }
  // Done must be exercised with an actual pointer drag (there is no move select).
- const rejected = page.waitForResponse(r => new URL(r.url()).pathname === '/cards/move' && r.request().method() === 'POST').then(async response => ({status: response.status(), text: await response.text()}));
+ const rejected = page.waitForResponse(r => new URL(r.url()).pathname === '/cards/move' && r.request().method() === 'POST');
  await drag('Second smoke card', 'Done', false);
  const rejection = await rejected;
- assert.equal(rejection.status, 200, 'Datastar errors are finite SSE banner responses');
- assert.match(rejection.text, /event: datastar-patch-elements/);
+ assert.equal(rejection.status(), 200, 'Datastar errors are finite SSE banner responses');
+ // Assert the applied SSE notice below, rather than retrieving a response body
+ // that Chromium may discard for the drag request.
  await page.locator('#notice').filter({hasText: 'done requires verified PR readiness'}).waitFor({state: 'visible'});
  assert.equal(await laneCard('Building', 'Second smoke card').count(), 1);
  assert.equal(await page.locator('.task-list[data-status="Done"] .task-card').count(), 0);

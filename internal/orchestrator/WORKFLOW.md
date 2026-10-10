@@ -1,6 +1,6 @@
 # Workflow integration contract
 
-`NewWorkflow(ctx, store, conn) (*Workflow, error)` migrates workflow tables and starts durable BONNIE v0.20 event/result readers and an outbox dispatcher. Caller owns Store and NATS connection: use the embedded server's trusted in-process connection, not public credentials. Close workflow before closing either dependency. Close cancels and joins its goroutines and does not delete consumers.
+`NewWorkflow(ctx, store, conn) (*Workflow, error)` migrates workflow tables and starts durable BONNIE v0.22 event/result readers and an outbox dispatcher. Caller owns Store and NATS connection: use the embedded server's trusted in-process connection, not public credentials. Close workflow before closing either dependency. Close cancels and joins its goroutines and does not delete consumers.
 
 Route board mutations through `Workflow.MoveCard(id, status, position)` instead of Store.MoveCard. Todo -> Building atomically snapshots the task, inserts a queued attempt, and reorders lanes in one SQLite write transaction. Reordering Building does not create another attempt. Leaving Building is refused; `CancelCard(ctx, id)` requests cancellation only after confirming the latest attempt's exact agent/run/remote-attempt identity and active turn. A request is not confirmation: only an agent-confirmed cancellation is applied as cancelled, and cancellation cannot undo external actions already taken. Manual Done is forbidden. Store's legacy API is unchanged and must not be used to bypass these rules.
 

@@ -34,16 +34,21 @@ func TestCancelCardRequiresRemoteClient(t *testing.T) {
 
 func TestCancelCardNATSRequestReply(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		mode    string
-		state   string
-		wantErr bool
+		name     string
+		mode     string
+		state    string
+		wantErr  bool
+		inactive bool
 	}{
 		{name: "requested waits for event"},
 		{name: "stale command reply", mode: "stale", wantErr: true},
 		{name: "no query responder", mode: "no-query", wantErr: true},
 		{name: "missing target", mode: "missing", wantErr: true},
-		{name: "parked waiting", state: "waiting"},
+		{name: "parked waiting", state: "waiting", inactive: true},
+		{name: "inactive interrupted", state: "interrupted", inactive: true},
+		{name: "inactive saved running", inactive: true},
+		{name: "semantic stale", mode: "stale-status", wantErr: true},
+		{name: "not active", mode: "not_active", wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, nc := workflowFixture(t)
@@ -63,26 +68,26 @@ func TestCancelCardNATSRequestReply(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			target := client.Target{TaskID: a.TaskID, AgentID: "cancel-worker", RunID: "cancel-run", AttemptID: "cancel-attempt"}
+			target := client.Target{TaskID: a.TaskID, AgentID: "cancel-agent", RunID: "cancel-run", AttemptID: "cancel-attempt"}
 			state := runtime.RunRunning
-			if tc.state == "waiting" {
-				state = runtime.RunWaiting
+			if tc.state != "" {
+				state = runtime.RunState(tc.state)
 			}
 			ev := client.StatusEvent{Version: 1, Target: target, Type: "run_state", EventID: "running-target", Seq: 1, State: state}
 			if err := w.event(t.Context(), ev); err != nil {
 				t.Fatal(err)
 			}
 			if tc.mode != "no-query" {
-				queryStatus := client.Status{Version: 1, Target: target, State: state, Active: true, TurnID: "turn-exact"}
+				queryStatus := client.Status{Version: 1, Target: target, State: state, Active: !tc.inactive, TurnID: "turn-exact"}
 				if tc.mode == "missing" {
 					queryStatus.RunID = "other-run"
 				}
-				if err := replyJSON(nc, "bonnie.queries.cancel-worker", queryStatus); err != nil {
+				if err := replyJSON(nc, "bonnie.queries.cancel-agent", queryStatus); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if tc.mode != "no-query" && tc.mode != "missing" {
-				_, err := nc.Subscribe("bonnie.commands.cancel-worker", func(m *nats.Msg) {
+				_, err := nc.Subscribe("bonnie.commands.cancel-agent", func(m *nats.Msg) {
 					var req struct {
 						Version int `json:"version"`
 						client.Target
@@ -97,6 +102,12 @@ func TestCancelCardNATSRequestReply(t *testing.T) {
 					reply := client.Status{Version: 1, Target: target, State: state, TurnID: req.TurnID, CancelStatus: "requested"}
 					if tc.mode == "stale" {
 						reply.TurnID = "old-turn"
+					}
+					if tc.mode == "stale-status" {
+						reply.CancelStatus = "stale"
+					}
+					if tc.mode == "not_active" {
+						reply.CancelStatus = "not_active"
 					}
 					data, _ := json.Marshal(reply)
 					_ = m.Respond(data)

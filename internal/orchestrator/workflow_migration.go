@@ -27,28 +27,7 @@ func migrateWorkflow(s *Store) error {
  selected_agent_id TEXT NOT NULL, selected_run_id TEXT NOT NULL, selected_remote_attempt_id TEXT NOT NULL,
  conflict_id INTEGER NOT NULL REFERENCES workflow_conflicts(id) ON DELETE CASCADE,
  reconciled_at INTEGER NOT NULL);`)
-	if err != nil {
-		return err
-	}
-	// Rename persisted v0.20 columns once; all runtime queries use Agent naming.
-	for _, column := range []struct{ table, old, name string }{
-		{"workflow_attempts", "worker_id", "agent_id"},
-		{"workflow_conflicts", "worker_id", "agent_id"},
-		{"workflow_execution_events", "worker_id", "agent_id"},
-		{"workflow_reconciliations", "previous_worker_id", "previous_agent_id"},
-		{"workflow_reconciliations", "selected_worker_id", "selected_agent_id"},
-	} {
-		var exists bool
-		if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info(?) WHERE name=?)`, column.table, column.old).Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			if _, err := s.db.Exec(`ALTER TABLE ` + column.table + ` RENAME COLUMN ` + column.old + ` TO ` + column.name); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return err
 }
 
 // Keep the Store's stable lane ordering while using the caller's transaction.

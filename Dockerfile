@@ -4,7 +4,7 @@ FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.20.0
+RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.22.0
 COPY . .
 RUN bonnie build --output /out/jawa
 RUN GOBIN=/out go install golang.org/x/tools/gopls@v0.23.0 \

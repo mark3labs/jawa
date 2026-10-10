@@ -45,8 +45,7 @@ func TestLifecycleSmoke(t *testing.T) {
 	}
 	journal := filepath.Join(dir, "journal")
 	work := filepath.Join(dir, "work")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	start := func() (context.CancelFunc, <-chan error) {
 		agentCtx, stop := context.WithCancel(ctx)
 		registry, e := presencenats.New(agentCtx, nc, presencenats.Config{Bucket: "jawa_agents", TTL: 30 * time.Second, Create: true})
@@ -103,16 +102,49 @@ func TestLifecycleSmoke(t *testing.T) {
 	secondStop, secondDone := start()
 	defer secondStop()
 	second := waitNewRunning(t, events, "lifecycle-task", first.EventID)
-	cancel()
+	completed := waitState(t, events, "lifecycle-task", runtime.RunCompleted)
+	secondStop()
 	if err := <-secondDone; err != nil {
 		t.Fatalf("second agent shutdown: %v", err)
 	}
-	t.Logf("first run ID=%s state=%s; resumed run ID=%s state=%s", first.RunID, first.State, second.RunID, second.State)
-	if first.RunID == "" || second.RunID != first.RunID || second.AttemptID != first.AttemptID || second.State != runtime.RunRunning {
-		t.Fatalf("expected resumed same running execution and attempt; first=%+v second=%+v", first, second)
+	t.Logf("first run ID=%s state=%s; resumed run ID=%s state=%s; completed=%+v", first.RunID, first.State, second.RunID, second.State, completed)
+	if first.RunID == "" || second.RunID != first.RunID || second.AttemptID != first.AttemptID || second.State != runtime.RunRunning || completed.State != runtime.RunCompleted {
+		t.Fatalf("expected resumed same running execution and completed turn; first=%+v second=%+v completed=%+v", first, second, completed)
 	}
 	if hasState(events, "lifecycle-task", runtime.RunCancelled) {
 		t.Fatal("graceful agent shutdown must not checkpoint the execution as cancelled")
+	}
+	// Reopen the on-disk journal after the host has closed it, then inspect the
+	// durable conversation tree for exactly one original user prompt and no blanks.
+	j, err := runtime.OpenSQLiteJournal(journal)
+	if err != nil {
+		t.Fatalf("open resumed journal: %v", err)
+	}
+	records, err := j.Replay(context.Background(), second.RunID)
+	if err != nil {
+		_ = j.Close()
+		t.Fatalf("replay resumed journal: %v", err)
+	}
+	if err := j.Close(); err != nil {
+		t.Fatalf("close resumed journal: %v", err)
+	}
+	userCount := 0
+	for _, record := range records {
+		if record.Kind != runtime.RecordMessage || record.Role != "user" {
+			continue
+		}
+		if len(record.Payload) == 0 {
+			t.Fatalf("user message has no payload: %+v", record)
+		}
+		if record.Text == "" {
+			t.Fatalf("empty user message in journal record: %+v", record)
+		}
+		if record.Text == "offline lifecycle fixture" {
+			userCount++
+		}
+	}
+	if userCount != 1 {
+		t.Fatalf("original task prompt should appear exactly once; got %d", userCount)
 	}
 }
 
@@ -217,6 +249,23 @@ func TestLifecycleReconnectSmoke(t *testing.T) {
 	}
 	if hasState(events, taskID, runtime.RunCancelled) {
 		t.Fatal("broker disconnect/reconnect must not checkpoint execution as cancelled")
+	}
+}
+
+func waitState(t *testing.T, events <-chan client.StatusEvent, taskID string, state runtime.RunState) client.StatusEvent {
+	t.Helper()
+	timer := time.NewTimer(75 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case e := <-events:
+			if e.TaskID == taskID && e.State == state {
+				return e
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s state", state)
+			return client.StatusEvent{}
+		}
 	}
 }
 
