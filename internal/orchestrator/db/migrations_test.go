@@ -20,7 +20,11 @@ func openTestDB(t *testing.T, path string) *sql.DB {
 	}
 	database.SetMaxOpenConns(1)
 	database.SetMaxIdleConns(1)
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return database
 }
 

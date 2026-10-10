@@ -113,7 +113,7 @@ func addPlanningStatus(ctx context.Context, tx *sql.Tx) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		return fmt.Errorf("foreign key violation after cards rebuild")
 	}

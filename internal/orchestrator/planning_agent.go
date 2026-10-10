@@ -209,12 +209,12 @@ func (w *Workflow) dispatchPlanning() {
 		}
 		latest, err := sqlc.New(tx).GetPlanningTurn(w.ctx, t.ID)
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			continue
 		}
 		current, err := planningTurnCurrent(tx, latest)
 		if err != nil || !current || latest.Published != 0 || latest.State != "queued" {
-			tx.Rollback()
+			_ = tx.Rollback()
 			continue
 		}
 		var task client.Task
@@ -228,7 +228,10 @@ func (w *Workflow) dispatchPlanning() {
 		if err != nil {
 			_, _ = tx.Exec(`UPDATE planning_turns SET error=?,updated_at=? WHERE id=?`, err.Error(), now, t.ID)
 		} else {
-			_, err = tx.Exec(`UPDATE planning_turns SET published=1,state='submitted',error='',updated_at=? WHERE id=?`, now, t.ID)
+			if _, err = tx.Exec(`UPDATE planning_turns SET published=1,state='submitted',error='',updated_at=? WHERE id=?`, now, t.ID); err != nil {
+				_ = tx.Rollback()
+				continue
+			}
 		}
 		// Publish failures are retained and queued work remains retryable.
 		_ = tx.Commit()

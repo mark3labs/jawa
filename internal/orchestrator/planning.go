@@ -52,7 +52,7 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 	if err != nil {
 		return PlanningDetail{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	q := sqlc.New(tx)
 	ctx := context.Background()
 	p, err := q.GetPlanningSession(ctx, id)
@@ -112,7 +112,7 @@ func (w *Workflow) startPlanning(id string, pos int) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	q := sqlc.New(tx)
 	c, err := q.GetCard(w.ctx, id)
 	if err != nil {
@@ -215,7 +215,7 @@ func (w *Workflow) continuePlanning(id, text string, retry bool) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, err := currentPlanning(tx, w.ctx, id)
 	if err != nil {
 		return err
@@ -274,7 +274,7 @@ func (w *Workflow) ApprovePlanning(id string, expectedRevision int) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, err := currentPlanning(tx, w.ctx, id)
 	if err != nil {
 		return err
@@ -357,7 +357,7 @@ func (w *Workflow) CancelPlanning(id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, err := currentPlanning(tx, w.ctx, id)
 	if err != nil {
 		return err

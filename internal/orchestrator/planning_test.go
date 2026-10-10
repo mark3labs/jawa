@@ -21,7 +21,7 @@ func planningLocal(t *testing.T) (*Store, *Workflow, Card) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	w := &Workflow{s: s, ctx: context.Background()}
 	return s, w, workflowCard(t, s)
 }
@@ -232,7 +232,7 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 	msgs, e := sub.Fetch(1, nats.MaxWait(5*time.Second))
 	if e != nil {
 		t.Fatal(e)
@@ -277,7 +277,7 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	waitWorkflow(t, func() bool {
 		d, e := w.PlanningDetail(c.ID)
 		return e == nil && len(d.Turns) == 2 && d.Turns[1].Published
@@ -388,7 +388,7 @@ func TestPlanningBackendActualStoreReopen(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	w = &Workflow{s: s, ctx: context.Background()}
 	d := planningDetails(t, w, c.ID)
 	if d.Session.Spec != "durable spec" || len(d.Messages) != 2 || len(d.Questions) != 1 {
@@ -460,15 +460,17 @@ func TestPlanningBackendCancellationQueueUsesObservedTurn(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer query.Unsubscribe()
+	defer func() { _ = query.Unsubscribe() }()
 	commands := make(chan []byte, 2)
 	replyData, _ := json.Marshal(client.Status{Version: 1, Target: target, State: runtime.RunRunning, Active: true, TurnID: "observed-turn", CancelRequested: true})
 	command, e := nc.Subscribe("bonnie.commands.planner", func(m *nats.Msg) { commands <- m.Data; _ = m.Respond(replyData) })
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer command.Unsubscribe()
-	nc.Flush()
+	defer func() { _ = command.Unsubscribe() }()
+	if err := nc.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	w.dispatchPlanningCancellations()
 	select {
 	case data := <-commands:
@@ -526,10 +528,11 @@ func TestPlanningBackendHistoryCascadesAndLaneCompacts(t *testing.T) {
 		var n int
 		// Other card remains, but deleted card's completed revision/deliveries do not.
 		query := "SELECT count(*) FROM " + table
-		if table == "planning_sessions" {
+		switch table {
+		case "planning_sessions":
 			query += " WHERE card_id='" + c.ID + "'"
-		} else if table == "planning_revisions" || table == "planning_deliveries" {
-		} else {
+		case "planning_revisions", "planning_deliveries":
+		default:
 			continue
 		}
 		if e = s.db.QueryRow(query).Scan(&n); e != nil || n != 0 {

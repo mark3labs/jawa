@@ -30,7 +30,9 @@ func (w *Workflow) recoverPlanningResults(conn *nats.Conn) error {
 	if err == nil {
 		err = rows.Err()
 	}
-	rows.Close()
+	if closeErr := rows.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil || len(tasks) == 0 {
 		return err
 	}
