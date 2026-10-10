@@ -58,16 +58,18 @@ CREATE TABLE planning_deliveries (
 
 -- Independent of card cascades: a lost ACK remains replayable after deletion.
 CREATE TABLE typed_reports (
- task_id TEXT PRIMARY KEY,
- report_id TEXT NOT NULL UNIQUE,
- agent_id TEXT NOT NULL,
- run_id TEXT NOT NULL,
- attempt_id TEXT NOT NULL,
- turn_id TEXT NOT NULL,
- kind TEXT NOT NULL,
- request_json TEXT NOT NULL,
- accepted_at INTEGER NOT NULL
-);
+ report_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, tool_call_id TEXT NOT NULL,
+ agent_id TEXT NOT NULL, run_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
+ turn_id TEXT NOT NULL, kind TEXT NOT NULL, request_json TEXT NOT NULL, accepted_at INTEGER NOT NULL,
+ UNIQUE(task_id,tool_call_id));
+CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+CREATE TABLE planning_interactions (
+ report_id TEXT PRIMARY KEY REFERENCES typed_reports(report_id),
+ task_id TEXT NOT NULL REFERENCES planning_turns(id) ON DELETE CASCADE,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','queued','answered','cancelled')),
+ waiting_json TEXT NOT NULL DEFAULT '', reply TEXT NOT NULL DEFAULT '', approved INTEGER,
+ created_at INTEGER NOT NULL, answered_at INTEGER NOT NULL DEFAULT 0);
+CREATE UNIQUE INDEX planning_pending_interaction ON planning_interactions(task_id) WHERE status IN ('pending','queued');
 CREATE TABLE IF NOT EXISTS workflow_cancel_requests (
  id INTEGER PRIMARY KEY, task_id TEXT, agent_id TEXT, run_id TEXT, remote_attempt_id TEXT, turn_id TEXT,
  status TEXT, error TEXT, created_at INTEGER);

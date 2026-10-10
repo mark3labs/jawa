@@ -19,9 +19,10 @@ templ planningContent(d pageData) {
 			</section>
 			if detail, exists := d.planning[c.ID]; exists {
 				<section class="planning-section" aria-label="Proposed plan">
-					<h2>Proposed plan <span class={ "chip", "tone-" + planningTone(detail.Session.State) }>{ planningLabel(detail.Session.State) }</span></h2>
-					<p class="meta">Revision { strconv.Itoa(detail.Session.Revision) }</p>
+					<h2>Planning <span class={ "chip", "tone-" + planningTone(detail.Session.State) }>{ planningLabel(detail.Session.State) }</span></h2>
+
 					if detail.Session.Spec != "" {
+                        <h3>Proposed plan · Revision { strconv.Itoa(detail.Session.Revision) }</h3>
 						@planningMarkdownText(detail.Session.Spec)
 					} else {
 						<p class="meta">The planner has not proposed a plan yet.</p>
@@ -33,7 +34,7 @@ templ planningContent(d pageData) {
 						<p class="plan-text tone-failed" role="status">{ detail.Session.Error }</p>
 					}
 					if len(detail.Questions) > 0 {
-						<h3>Questions needing your input</h3>
+						<h3>Questions</h3>
 						<ul>
 							for _, question := range detail.Questions {
 								<li>@planningMarkdownText(question)</li>
@@ -60,19 +61,30 @@ templ planningContent(d pageData) {
 						<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
 					}
 					if c.Status == "Planning" && planningCanReply(detail) {
-						<form id="planning-reply-form" method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+						<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
 							@planningFields(d, c)
+                            <input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
 							<div class="field"><label for="planning-reply">Reply or request a revision</label><textarea id="planning-reply" name="reply" required maxlength="65536"></textarea></div>
 							@submit("Send reply")
 						</form>
 					}
 				</section>
+				if len(detail.Interactions) > 0 {
+                    <section class="planning-section" aria-label="Planning reports">
+                        <h2>Planning reports</h2>
+                        <ul>
+                            for _, interaction := range detail.Interactions {
+                                <li><span class="meta">{ interaction.Kind }</span> · { planningInteractionLabel(interaction.Status) }</li>
+                            }
+                        </ul>
+                    </section>
+                }
 				if c.Status == "Planning" {
 					<section id="approve-plan" class="planning-section" aria-label="Approve plan">
 						<h2>Approve &amp; build</h2>
 						<p class="meta">Approval freezes the selected plan and starts implementation. Only the current ready revision can be approved; stale selections are rejected by the server.</p>
 						if detail.CanApprove {
-							<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})" data-ignore-morph>
+							<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})">
 								@planningFields(d, c)
 								<div class="field"><label for="plan-revision">Plan revision to approve</label>
 									<select id="plan-revision" name="expected_revision" required>

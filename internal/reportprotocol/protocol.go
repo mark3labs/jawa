@@ -18,17 +18,19 @@ const Version = 1
 type Kind string
 
 const (
+	Clarify       Kind = "clarify"
 	ProposeSpec   Kind = "propose_spec"
 	CompleteTask  Kind = "complete_task"
 	ReportBlocker Kind = "report_blocker"
 )
 
 type Identity struct {
-	TaskID    string `json:"task_id"`
-	AgentID   string `json:"agent_id"`
-	RunID     string `json:"run_id"`
-	AttemptID string `json:"attempt_id"`
-	TurnID    string `json:"turn_id"`
+	TaskID     string `json:"task_id"`
+	AgentID    string `json:"agent_id"`
+	RunID      string `json:"run_id"`
+	AttemptID  string `json:"attempt_id"`
+	TurnID     string `json:"turn_id"`
+	ToolCallID string `json:"tool_call_id"`
 }
 type Payload struct {
 	Spec       string   `json:"spec,omitempty"`
@@ -65,14 +67,18 @@ func normalize(kind Kind, p Payload) (Payload, error) {
 		p.Questions[i] = strings.TrimSpace(q)
 	}
 	switch kind {
-	case ProposeSpec:
-		if p.Spec == "" || len(p.Spec) > 256*1024 || !commit.MatchString(p.RepoCommit) || len(p.Questions) > 30 || p.PRNumber != 0 || p.Reason != "" {
-			return p, errors.New("proposeSpec requires a specification and full inspected commit SHA, and no build fields")
+	case Clarify:
+		if len(p.Questions) == 0 || len(p.Questions) > 30 || p.Spec != "" || p.RepoCommit != "" || p.PRNumber != 0 || p.Reason != "" {
+			return p, errors.New("clarify requires nonempty questions and no proposal or build fields")
 		}
 		for _, q := range p.Questions {
 			if q == "" || len(q) > 4000 {
-				return p, errors.New("invalid planning question")
+				return p, errors.New("invalid clarification question")
 			}
+		}
+	case ProposeSpec:
+		if p.Spec == "" || len(p.Spec) > 256*1024 || !commit.MatchString(p.RepoCommit) || p.Questions != nil || p.PRNumber != 0 || p.Reason != "" {
+			return p, errors.New("proposeSpec requires a specification and full inspected commit SHA, and no questions or build fields")
 		}
 	case CompleteTask:
 		if p.PRNumber < 1 || p.Spec != "" || len(p.Questions) != 0 || p.RepoCommit != "" || p.Reason != "" {
@@ -88,10 +94,10 @@ func normalize(kind Kind, p Payload) (Payload, error) {
 	return p, nil
 }
 
-// NewRequest hashes the normalized task/report payload, independent of model
-// call IDs and transport retry identity. Receivers must separately enforce owner.
+// NewRequest hashes the normalized task/report payload, scoped to a trusted tool
+// interaction. Transport retries preserve the original request identity. Receivers must separately enforce owner.
 func NewRequest(id Identity, kind Kind, p Payload) (Request, error) {
-	for _, v := range []string{id.TaskID, id.AgentID, id.RunID, id.AttemptID, id.TurnID} {
+	for _, v := range []string{id.TaskID, id.AgentID, id.RunID, id.AttemptID, id.TurnID, id.ToolCallID} {
 		if v == "" || len(v) > 256 || strings.ContainsAny(v, "\x00\r\n") {
 			return Request{}, errors.New("missing or invalid trusted report identity")
 		}
@@ -101,10 +107,11 @@ func NewRequest(id Identity, kind Kind, p Payload) (Request, error) {
 		return Request{}, err
 	}
 	data, err := json.Marshal(struct {
-		TaskID  string  `json:"task_id"`
-		Kind    Kind    `json:"kind"`
-		Payload Payload `json:"payload"`
-	}{id.TaskID, kind, p})
+		TaskID     string  `json:"task_id"`
+		ToolCallID string  `json:"tool_call_id"`
+		Kind       Kind    `json:"kind"`
+		Payload    Payload `json:"payload"`
+	}{id.TaskID, id.ToolCallID, kind, p})
 	if err != nil {
 		return Request{}, err
 	}

@@ -6,8 +6,8 @@ import (
 )
 
 func TestCanonicalStableIdentity(t *testing.T) {
-	id := Identity{TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn"}
-	r, err := NewRequest(id, ProposeSpec, Payload{Spec: "  proposal  ", Questions: []string{" Question "}, RepoCommit: strings.Repeat("A", 40)})
+	id := Identity{TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn", ToolCallID: "call"}
+	r, err := NewRequest(id, ProposeSpec, Payload{Spec: "  proposal  ", RepoCommit: strings.Repeat("A", 40)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestCanonicalStableIdentity(t *testing.T) {
 	if retry.ReportID != r.ReportID {
 		t.Fatal("identity changed payload retry ID")
 	}
-	changed, _ := NewRequest(id, ProposeSpec, Payload{Spec: "different", Questions: r.Payload.Questions, RepoCommit: r.Payload.RepoCommit})
+	changed, _ := NewRequest(id, ProposeSpec, Payload{Spec: "different", RepoCommit: r.Payload.RepoCommit})
 	if changed.ReportID == r.ReportID {
 		t.Fatal("different payload shares hash")
 	}
@@ -33,7 +33,7 @@ func TestCanonicalStableIdentity(t *testing.T) {
 	}
 }
 func TestRejectInvalidReports(t *testing.T) {
-	id := Identity{"task", "agent", "run", "attempt", "turn"}
+	id := Identity{"task", "agent", "run", "attempt", "turn", "call"}
 	for _, tc := range []struct {
 		kind Kind
 		p    Payload
@@ -53,5 +53,37 @@ func TestRejectInvalidReports(t *testing.T) {
 		if _, err := NewRequest(id, CompleteTask, Payload{PRNumber: 1}); err == nil {
 			t.Fatal("accepted missing trusted identity")
 		}
+	}
+}
+
+func TestClarifyAndInteractionIDs(t *testing.T) {
+	id := Identity{TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn", ToolCallID: "call-1"}
+	for _, p := range []Payload{{}, {Questions: []string{}}, {Questions: []string{" "}}, {Questions: []string{"q"}, Spec: "not allowed"}, {Questions: []string{"q"}, RepoCommit: strings.Repeat("a", 40)}} {
+		if _, err := NewRequest(id, Clarify, p); err == nil {
+			t.Fatalf("invalid clarification accepted: %+v", p)
+		}
+	}
+	req, err := NewRequest(id, Clarify, Payload{Questions: []string{" Region? "}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Payload.Questions[0] != "Region?" || req.Validate() != nil {
+		t.Fatalf("not canonical: %+v", req)
+	}
+	id.ToolCallID = "call-2"
+	next, err := NewRequest(id, Clarify, req.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ReportID == req.ReportID {
+		t.Fatal("multiple interactions in same turn share ID")
+	}
+	id.ToolCallID = ""
+	if _, err := NewRequest(id, Clarify, req.Payload); err == nil {
+		t.Fatal("missing tool call ID accepted")
+	}
+	id.ToolCallID = "call-3"
+	if _, err := NewRequest(id, ProposeSpec, Payload{Spec: "proposal", RepoCommit: strings.Repeat("a", 40), Questions: []string{"question"}}); err == nil {
+		t.Fatal("proposal accepted questions")
 	}
 }

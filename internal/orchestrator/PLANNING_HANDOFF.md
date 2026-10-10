@@ -1,45 +1,37 @@
-# Planning backend / UI handoff (API fixed)
+# Resumable planning backend/UI contract (v7)
 
-Workflow methods:
-- `MoveCard(cardID, "Planning", position) error`: Todo starts a durable investigation; same-lane reorder supported. Todo -> Building remains optional.
-- `PlanningDetail(cardID string) (PlanningDetail, error)`; `Store.PlanningDetail` also available for offline display. No session returns sql.ErrNoRows.
-- `ReplyPlanning(cardID, text string) error`: records user message, resolves outstanding questions, queues a new investigation turn. Rejects active/approved/cancelled sessions.
-- `RetryPlanning(cardID string) error`: queues a new turn only after a failed turn.
-- `ApprovePlanning(cardID string, expectedRevision int) error`: revision CAS; rejects active turns, questions, absent spec; atomically freezes approved spec and queues Building implementation.
-- `CancelPlanning(cardID string) error`: invalidates session/turns and moves back to Todo; late deliveries cannot revive it.
+## Workflow and UI
 
-Types (exported fields): `PlanningDetail{Session PlanningSession, Messages []PlanningMessage, Revisions []PlanningRevision, Turns []PlanningTurn}`; Session has ID/CardID/State/Repo/BaseBranch/Provider/RepoCommit/Spec/Error string, Revision/ApprovedRevision int, ApprovedSpec string, CreatedAt/UpdatedAt time.Time. Messages have ID/SessionID/Role/Content string, Sequence int, CreatedAt time.Time. Revisions have SessionID/Spec/RepoCommit string, Number int, Questions []string, CreatedAt time.Time. Turns have ID/SessionID/State/Error/Result string, Number int, Published bool, CreatedAt/UpdatedAt time.Time. Detail has `Questions []string` (latest revision unresolved questions), `CanApprove bool` convenience.
+- `MoveCard(cardID, "Planning", position)` creates one durable task with read-only investigation instructions. Todo → Building remains optional.
+- `PlanningDetail` includes typed `Questions`, `InteractionToken`, interaction statuses, immutable revisions, discussion and execution history. Clarify does not create a spec/revision. Questions and review are separate states.
+- `ReplyPlanning(cardID, text, expectedInteraction)` requires the exact displayed report token. The endpoint reads hidden `expected_interaction`; missing, consumed, cancelled or stale tokens reject. It records the user message and immutable reply outbox before dispatch. It never creates a task/run/attempt.
+- `ApprovePlanning(cardID, expectedRevision)` guards the card-global monotonic revision, pending review and session state. One transaction freezes approved spec/revision, queues an approved Answer, creates a DISTINCT implementation task and moves the card to Building. The planning run resumes explicitly and ends naturally; its completion/failure cannot mutate the approved snapshot or build.
+- `CancelPlanning` revokes local authority, closes pending/queued interactions and moves to Todo atomically. Published investigations retain an exact-owner cancellation queue; remote silence does not prove execution stopped.
+- `RetryPlanning` creates fresh work only after failure, not on a normal reply/revision.
 
-Session states queued/running/ready/questions/failed/approved/cancelled. Turn states queued/submitted/running/completed/failed/cancelled. Poll detail/SSE as with other workflow state. Render all agent content escaped/untrusted. Approval form must submit the displayed Session.Revision; do not fetch latest on submit.
+Reply forms are keyed by interaction identity so SSE cannot retain an old hidden token for a new question. Approval selections refresh with the proposal; server CAS remains authoritative. Discussion content is sanitized Markdown from typed reports, never parsed natural model text. Planning report statuses distinguish pending input, queued delivery, dispatched reply and closed interactions.
 
-Planner protocol: BONNIE v0.22 typed Task/Outcome over existing bonnie JetStream. Each conversation turn is a new deterministic durable task (full immutable repository/card context + conversation + previous spec); terminal typed `proposeSpec(spec, questions, repo_commit)` submission. No PR verification. Native waiting is not used for conversation: planner must submit questions through proposeSpec. User reply queues another independent task, avoiding non-durable remote resume. Read-only investigation is explicitly scoped in prompt; deployment must give planner read-only repository credentials/tool sandbox (BONNIE wire Task has no tool capability restriction). Persistence and delivery guards protect against stale sessions, duplicate results and mismatched remote identity.
+## Protocol, runtime and persistence
 
-## Implementation / verification update
+`clarify(questions)` requires 1–30 nonempty questions, no spec/commit.
+`proposeSpec(spec, repo_commit)` accepts NO questions. It waits for review.
+Accepted planning reports are durable interaction commits, not terminal task reports. Trusted identity includes task/agent/run/attempt/turn/**tool_call_id**. Exact receipt replay checks the entire original identity before runtime checks, including after supersession/deletion. New reports require current authority and BONNIE running-turn observation. Build still requires typed completeTask with a positive PR, followed by existing provider verification.
 
-Backend APIs are implemented and `TestPlanning*` passes, including durable database reopen, actual BONNIE JetStream task publication and typed proposal persistence and workflow restart, conversation questions/reply/revision, CAS approval races, cancellation/new-session late result guards, pinned commit rejection, natural outcomes without reports, atomic rollback, and approved-spec preservation on build retries. `go test ./...` passed after UI integration; planning race tests also pass.
+Migration 7 replaces the task-primary-key receipt table with report-primary-key and `(task_id,tool_call_id)` uniqueness; a partial unique index permits one terminal complete/blocker per task. Planning interactions allow only one pending/queued report per task. Receipts remain independent of card deletion; interaction/outbox rows cascade with planning history. sqlc schema/models/queries are regenerated with v1.30.0.
 
-Important: revision numbers are **card-global monotonic tokens**, not restarted at 1 per session. This prevents an old approval form from a cancelled session approving a new session with the same revision number. Session-local revision lists can therefore begin at e.g. 3; display Number verbatim.
+An interaction ACK can arrive before BONNIE writes RecordSuspend. User input may be queued immediately but cannot publish until an exact matching waiting outcome is persisted: task/agent/run/attempt, suspension TurnID, ToolCallID, version, error-free state and configured agent answer route. Dispatch calls BONNIE `Answer` with that original outcome and response TurnID/Text/Approved. Broker ACK marks dispatch, NOT model consumption. Failed/offline dispatch leaves the immutable outbox queued. BONNIE deduplicates answers by route/run/tool identity. Bridge intent/receipt recovery repairs the accepted-report-before-suspend crash window; runtime SQLite journal retains context and suspension across restart. Startup replays retained waiting outcomes for ready/questions/running and approved sessions. Waiting never becomes planning failure; unexpected natural completion before approval does.
 
-Cancellation returns the card to Todo immediately and invalidates queued/running planner authority. Published tasks receive best-effort exact-turn BONNIE cancellation via a durable local retry queue; timeout/offline agent does not imply remote stop. Late event admissions are pinned solely for cancellation. All raw planning deliveries (including duplicate/conflicting/late results) are retained in planning_deliveries; no late output may change a cancelled/approved/superseded session. Native BONNIE waiting/interrupted outcomes fail this planner contract and are retried as fresh tasks; UI user conversation uses persisted typed proposal questions, not remote ask-user suspension.
+Approval and build can run concurrently after commit: neither completion ordering nor a shared provider script may be assumed. Approved planning finish is bookkeeping only. Planner prompt instructs natural acknowledgement after approval (completeTask requires a PR and is not a zero-PR planning completion API).
 
-Read-only scope is prompt-level in this integration because BONNIE v0.22 Task exposes only Text/Context and no tool allowlist. Enforce real isolation in the planner agent's credentials/tool configuration; do not mistake the prompt for a security sandbox. Typed repo_commit is reported by agent, not independently attested. Sessions pin the first accepted full SHA, and subsequent typed proposals must match it. Natural event/outcome evidence recovery is bounded to the latest 10,000 messages/5 seconds (same operational limit as existing build workflow); broker retention must cover outages.
+## Deployment and limits
 
-## Typed backend authority (current)
+Protocol version remains 1 for coordinated source deployment; old binaries without tool_call_id are incompatible. Stop old agents before upgrading. Migration retains v6 receipts verbatim with synthetic legacy ledger keys. Old ready/questions sessions had terminal remote runs, not suspensions: history/specs remain but sessions become failed with an explicit retry message. Do not invent an Answer for them. Approved/build history is untouched.
 
-The natural text parser and all `planning_output*.go` parser tests have been
-removed. Only typed proposeSpec/reportBlocker submissions mutate planning.
-`proposeSpec` validates canonical spec/questions/full SHA via reportprotocol and
-pins the inspected commit. The proposal, revision, readable Markdown discussion,
-turn/session transition and durable report receipt commit together before ACK.
-Empty questions are persisted as `[]`; unresolved questions prevent approval.
-Reply queues a new independent task; card-global revision CAS still protects
-approval. New reports require exact current task/run/attempt/turn verified by
-BONNIE runtime Status; duplicate replay matches the original stored complete
-identity before active/current checks. Cancelled/superseded reports reject.
-Native outcomes remain audit/status evidence, never proposal authority. Finishing
-without an accepted report fails clearly. Accepted tools halt only after DB ACK,
-so completion cannot race ahead of a committed typed proposal.
+Read-only scope is prompt-level; deploy restricted credentials/tools/sandbox for actual enforcement. Agent repo_commit is reported, not independently attested, and subsequent proposals must match the first accepted SHA. Recovery is bounded to the newest 10,000 retained results/5 seconds; provision broker retention accordingly. The shared authenticated agent credentials are a trust boundary, not hostile-agent isolation.
 
-See WORKFLOW.md and ../../TYPED_REPORT_HANDOFF.md for shared receipt semantics.
-Production offline browser smoke now passes with actual typed completeTask tools
-and durable backend acceptance. No live repository/provider writes are claimed.
+## Verification
+
+- Real KIT testmodel + BONNIE runtime + SQLite journal + Bridge + local JetStream + production backend DB ACK: clarify → restart both owners → answer on same run → propose → reject/revise → propose → approve → natural planning completion plus distinct typed build.
+- Reply-before-suspend race, wrong waiting identities/route, disconnected reply outbox/replay, stale/double replies, cancellation, unexpected completion, exact receipt replay and v6→v7 migration constraints.
+- Full-cycle Playwright factory smoke with real host and backend: Questions without proposal, answer, proposal, revision, approval, separate build; existing desktop/mobile/SSE/presence/verification smoke retained.
+- Full Go suite/race suite, vet, golangci-lint. No paid providers, live repository or database writes; no commits.

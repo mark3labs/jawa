@@ -81,7 +81,7 @@ func TestWorkflowCancelledRunRestarts(t *testing.T) {
 			if action == "resume" {
 				submitBuildReport(t, w, client.Target{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID}, 123)
 			} else {
-				r, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID, TurnID: "turn"}, reportprotocol.CompleteTask, reportprotocol.Payload{PRNumber: 123})
+				r, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID, TurnID: "turn", ToolCallID: "call"}, reportprotocol.CompleteTask, reportprotocol.Payload{PRNumber: 123})
 				if err != nil {
 					t.Fatal(err)
 				}

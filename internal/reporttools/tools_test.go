@@ -10,13 +10,13 @@ import (
 )
 
 func TestModelCannotOverrideTrustedIdentity(t *testing.T) {
-	trusted := reportprotocol.Identity{TaskID: "trusted-task", AgentID: "trusted-agent", RunID: "trusted-run", AttemptID: "trusted-attempt", TurnID: "trusted-turn"}
+	trusted := reportprotocol.Identity{TaskID: "trusted-task", AgentID: "trusted-agent", RunID: "trusted-run", AttemptID: "trusted-attempt", TurnID: "trusted-turn", ToolCallID: "model-call"}
 	var submitted reportprotocol.Request
 	tool := CompleteTask(Binding{Identity: func(context.Context) (reportprotocol.Identity, error) { return trusted, nil }, Submit: func(_ context.Context, r reportprotocol.Request) (reportprotocol.Ack, error) {
 		submitted = r
 		return reportprotocol.Ack{Version: 1, ReportID: r.ReportID, Accepted: true}, nil
 	}})
-	_, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "model-call", Name: "completeTask", Input: `{"pr_number":7,"task_id":"spoof","agent_id":"spoof","run_id":"spoof","attempt_id":"spoof","turn_id":"spoof"}`})
+	_, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "model-call", Name: "completeTask", Input: `{"pr_number":7,"task_id":"spoof","agent_id":"spoof","run_id":"spoof","attempt_id":"spoof","turn_id":"spoof","tool_call_id":"spoof"}`})
 	if err != nil {
 		t.Fatal(err)
 	}

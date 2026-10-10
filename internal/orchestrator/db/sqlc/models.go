@@ -4,6 +4,10 @@
 
 package sqlc
 
+import (
+	"database/sql"
+)
+
 type Admin struct {
 	ID           int64  `json:"id"`
 	Username     string `json:"username"`
@@ -27,6 +31,17 @@ type PlanningDelivery struct {
 	Kind       string `json:"kind"`
 	Payload    string `json:"payload"`
 	ReceivedAt int64  `json:"received_at"`
+}
+
+type PlanningInteraction struct {
+	ReportID    string        `json:"report_id"`
+	TaskID      string        `json:"task_id"`
+	Status      string        `json:"status"`
+	WaitingJson string        `json:"waiting_json"`
+	Reply       string        `json:"reply"`
+	Approved    sql.NullInt64 `json:"approved"`
+	CreatedAt   int64         `json:"created_at"`
+	AnsweredAt  int64         `json:"answered_at"`
 }
 
 type PlanningMessage struct {
@@ -105,6 +120,19 @@ type Setting struct {
 	Value string `json:"value"`
 }
 
+type TypedReport struct {
+	ReportID    string `json:"report_id"`
+	TaskID      string `json:"task_id"`
+	ToolCallID  string `json:"tool_call_id"`
+	AgentID     string `json:"agent_id"`
+	RunID       string `json:"run_id"`
+	AttemptID   string `json:"attempt_id"`
+	TurnID      string `json:"turn_id"`
+	Kind        string `json:"kind"`
+	RequestJson string `json:"request_json"`
+	AcceptedAt  int64  `json:"accepted_at"`
+}
+
 type WorkflowAttempt struct {
 	ID              string `json:"id"`
 	CardID          string `json:"card_id"`
@@ -125,6 +153,18 @@ type WorkflowAttempt struct {
 	EventSeq        int64  `json:"event_seq"`
 	CreatedAt       int64  `json:"created_at"`
 	UpdatedAt       int64  `json:"updated_at"`
+}
+
+type WorkflowCancelRequest struct {
+	ID              int64          `json:"id"`
+	TaskID          sql.NullString `json:"task_id"`
+	AgentID         sql.NullString `json:"agent_id"`
+	RunID           sql.NullString `json:"run_id"`
+	RemoteAttemptID sql.NullString `json:"remote_attempt_id"`
+	TurnID          sql.NullString `json:"turn_id"`
+	Status          sql.NullString `json:"status"`
+	Error           sql.NullString `json:"error"`
+	CreatedAt       sql.NullInt64  `json:"created_at"`
 }
 
 type WorkflowConflict struct {

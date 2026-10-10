@@ -37,16 +37,17 @@ it to Planning for repository investigation and refinement. Open the planning
 card to read the proposed specification, answer questions, and review versioned
 plans. **Approve & build** freezes the displayed revision and starts implementation;
 dragging Planning to Building opens that review rather than bypassing approval.
-Replies start independent durable agent turns; retry and cancel are available.
+Replies resume the same durable planning run; retry and cancel are available.
 The original request and discussion remain separate from the approved specification.
 
-Planning tasks use the existing BONNIE queue and submit their result through the
-`proposeSpec` tool with `spec`, an explicit `questions` array, and a full
-`repo_commit` SHA. Build tasks call `completeTask(pr_number)`; either stage may
-call `reportBlocker(reason)`. These tools send typed NATS reports with trusted
-execution identity and acknowledge only after the orchestrator commits them.
-Natural-language final responses are not workflow reports; there is no text/JSON
-parser fallback. Planning does not create PRs or use build verification. **Read-only planning is instructed, not sandbox-enforced
+Planning uses one durable BONNIE task/run/attempt: `clarify(questions)` waits
+indefinitely for input, and `proposeSpec(spec, repo_commit)` waits for review
+without questions. Replies require the displayed interaction token and persist
+before exact-suspension Answer dispatch; no new task is created on reply.
+Approval freezes the reviewed revision and atomically queues a planning approval
+Answer plus a distinct implementation task. Natural planning completion after
+approval cannot change the build. Typed reports, not natural text, are authoritative;
+there is no parser fallback. Planning does not create PRs or use build verification. **Read-only planning is instructed, not sandbox-enforced
 by the orchestrator:** BONNIE v0.22 has no per-task tool restrictions. Configure
 agent credentials and tools appropriately; shared build-capable agents are not a
 security boundary. See [Planning contract](internal/orchestrator/PLANNING_HANDOFF.md).

@@ -8,13 +8,18 @@ import (
 )
 
 type Binding struct {
-	Identity func(context.Context) (reportprotocol.Identity, error)
-	Submit   func(context.Context, reportprotocol.Request) (reportprotocol.Ack, error)
+	Identity   func(context.Context) (reportprotocol.Identity, error)
+	FinalValue func(reportprotocol.Request) any
+	// Prepare preserves original durable interaction identity on ambiguous retry.
+	Prepare func(context.Context, reportprotocol.Request) (reportprotocol.Request, error)
+	Submit  func(context.Context, reportprotocol.Request) (reportprotocol.Ack, error)
 }
 type SpecInput struct {
-	Spec       string   `json:"spec" description:"Implementation-ready specification based on repository inspection"`
-	Questions  []string `json:"questions" description:"Clarification questions; empty when ready"`
-	RepoCommit string   `json:"repo_commit" description:"Full SHA of inspected repository commit"`
+	Spec       string `json:"spec" description:"Implementation-ready specification based on repository inspection"`
+	RepoCommit string `json:"repo_commit" description:"Full SHA of inspected repository commit"`
+}
+type ClarifyInput struct {
+	Questions []string `json:"questions" description:"Nonempty clarification questions requiring operator answers"`
 }
 type CompleteInput struct {
 	PRNumber int `json:"pr_number" description:"Positive pull request number opened for this task"`
@@ -35,6 +40,12 @@ func (b Binding) execute(ctx context.Context, kind reportprotocol.Kind, p report
 	if err != nil {
 		return kit.ErrorResult(err.Error()), nil
 	}
+	if b.Prepare != nil {
+		r, err = b.Prepare(ctx, r)
+		if err != nil {
+			return kit.ErrorResult(err.Error()), nil
+		}
+	}
 	ack, err := b.Submit(ctx, r)
 	if err != nil {
 		return kit.ErrorResult(err.Error()), nil
@@ -42,11 +53,20 @@ func (b Binding) execute(ctx context.Context, kind reportprotocol.Kind, p report
 	if !ack.Accepted || ack.Error != "" || ack.Version != reportprotocol.Version || ack.ReportID != r.ReportID {
 		return kit.ErrorResult("typed report commit acknowledgement does not match report"), nil
 	}
-	return kit.ToolOutput{Content: "Typed report committed.", Halt: true, FinalValue: r, Metadata: ack}, nil
+	var final any = r
+	if b.FinalValue != nil {
+		final = b.FinalValue(r)
+	}
+	return kit.ToolOutput{Content: "Typed report committed.", Halt: true, FinalValue: final, Metadata: ack}, nil
 }
 func ProposeSpec(b Binding) kit.Tool {
-	return kit.NewTool("proposeSpec", "Submit a terminal planning specification and questions. Planning tasks only. Success means durable orchestrator commit and ends this run.", func(ctx context.Context, in SpecInput) (kit.ToolOutput, error) {
-		return b.execute(ctx, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: in.Spec, Questions: in.Questions, RepoCommit: in.RepoCommit})
+	return kit.NewTool("proposeSpec", "Submit an implementation-ready specification for operator review. Planning tasks only. Success pauses this run until review; rejected proposals may be revised in this same conversation.", func(ctx context.Context, in SpecInput) (kit.ToolOutput, error) {
+		return b.execute(ctx, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: in.Spec, RepoCommit: in.RepoCommit})
+	})
+}
+func Clarify(b Binding) kit.Tool {
+	return kit.NewTool("clarify", "Ask nonempty clarification questions for a planning task. Success durably pauses this run until operator answers; then continue this same conversation.", func(ctx context.Context, in ClarifyInput) (kit.ToolOutput, error) {
+		return b.execute(ctx, reportprotocol.Clarify, reportprotocol.Payload{Questions: in.Questions})
 	})
 }
 func CompleteTask(b Binding) kit.Tool {
@@ -60,5 +80,5 @@ func ReportBlocker(b Binding) kit.Tool {
 	})
 }
 func Tools(b Binding) []kit.Tool {
-	return []kit.Tool{ProposeSpec(b), CompleteTask(b), ReportBlocker(b)}
+	return []kit.Tool{Clarify(b), ProposeSpec(b), CompleteTask(b), ReportBlocker(b)}
 }

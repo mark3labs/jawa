@@ -24,7 +24,7 @@ import (
 // Bridge is host configuration, never model input. Managed setup captures
 // the runtime scope; admission correlation comes from BONNIE's durable journal.
 type Bridge struct {
-	// Serialize intent admission so simultaneous terminal tools cannot race.
+	// Serialize intent admission so simultaneous report tools cannot race.
 	submitMu sync.Mutex
 	mu       sync.RWMutex
 	runner   *runtime.Runner
@@ -38,9 +38,18 @@ func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) e
 	if err := b.recoverIntent(ctx, scope.RunID); err != nil {
 		return err
 	}
+	// BONNIE's recovery hook stores only text, not typed FinalValue. Resolve
+	// report calls from our durable receipt before it reconstructs tool pairs.
+	if scope.Session != nil {
+		if err := b.resolveReportTools(ctx, scope); err != nil {
+			return err
+		}
+	}
 	k.AddTools(reporttools.Tools(reporttools.Binding{
-		Identity: func(ctx context.Context) (reportprotocol.Identity, error) { return b.identity(ctx, scope.RunID) },
-		Submit:   b.submit,
+		Identity:   func(ctx context.Context) (reportprotocol.Identity, error) { return b.identity(ctx, scope.RunID) },
+		Submit:     b.submit,
+		FinalValue: suspensionValue,
+		Prepare:    b.prepareRetry,
 	})...)
 	return nil
 }
@@ -104,6 +113,10 @@ func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Ide
 		return id, errors.New("typed report requires the active runtime turn")
 	}
 	id.TurnID = snapshot.TurnID
+	id.ToolCallID = kit.ToolCallIDFromContext(ctx)
+	if id.ToolCallID == "" {
+		return id, errors.New("typed report requires a trusted tool call ID")
+	}
 	return id, nil
 }
 
@@ -123,6 +136,14 @@ func (c *reportChannel) Start(ctx context.Context) error {
 	c.bridge.mu.Lock()
 	c.bridge.conn = conn
 	c.bridge.mu.Unlock()
+	// Repair the ACK-before-RecordSuspend crash window before BONNIE admits
+	// recovery work. This never prompts the model or creates a new task/run.
+	if err = c.bridge.restorePendingSuspensions(ctx); err != nil {
+		if owned != nil {
+			owned.Close()
+		}
+		return err
+	}
 	if err = c.Channel.(interface{ Start(context.Context) error }).Start(ctx); err != nil {
 		if owned != nil {
 			owned.Close()
@@ -190,20 +211,23 @@ func validReportRoot(root string) bool { return root != "" && !strings.ContainsA
 
 // Channel binds the runtime supplied by BONNIE's channel factory and mounts the
 // trusted NATS adapter. Use the same Bridge's Setup via bonnie.WithKitSetup.
+// New binds the trusted runtime and channel without starting a root BONNIE host.
+// It is the same adapter used by Channel and permits embedded runtime tests.
+func (b *Bridge) New(r *runtime.Runner, cfg natschannel.Config) (bonnie.Channel, error) {
+	ch, err := natschannel.New(r, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if !validReportRoot(cfg.RootSubject) {
+		return nil, errors.New("jawa: typed reports require a literal NATS root subject")
+	}
+	b.mu.Lock()
+	b.runner, b.cfg = r, cfg
+	b.mu.Unlock()
+	return &reportChannel{Channel: ch, bridge: b, cfg: cfg}, nil
+}
 func (b *Bridge) Channel(cfg natschannel.Config) bonnie.Option {
-	return bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
-		ch, err := natschannel.New(r, cfg)
-		if err != nil {
-			return nil, err
-		}
-		if !validReportRoot(cfg.RootSubject) {
-			return nil, errors.New("jawa: typed reports require a literal NATS root subject")
-		}
-		b.mu.Lock()
-		b.runner, b.cfg = r, cfg
-		b.mu.Unlock()
-		return &reportChannel{Channel: ch, bridge: b, cfg: cfg}, nil
-	})
+	return bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) { return b.New(r, cfg) })
 }
 
 func (c *reportChannel) AgentIdentity() string { return c.cfg.AgentID }
@@ -229,8 +253,8 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 	if r == nil {
 		return reportprotocol.Ack{}, errors.New("report runtime unavailable")
 	}
-	// A timeout is ambiguous, not permission to send a different terminal
-	// report. Preserve the original request across retries/recovery turns.
+	// A timeout is ambiguous, not permission to send a different
+	// interaction. Preserve the original request across retries/recovery turns.
 	records, err := r.Journal().Replay(ctx, request.RunID)
 	if err != nil {
 		return reportprotocol.Ack{}, err
@@ -254,13 +278,16 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 	}
 	for id, old := range prior {
 		ack, resolved := receipts[id]
+		if old.ToolCallID == request.ToolCallID && id != request.ReportID {
+			return reportprotocol.Ack{}, errors.New("tool interaction payload conflict")
+		}
 		if id == request.ReportID {
-			if old.TaskID != request.TaskID || old.AgentID != request.AgentID || old.RunID != request.RunID || old.AttemptID != request.AttemptID {
+			if old.TaskID != request.TaskID || old.AgentID != request.AgentID || old.RunID != request.RunID || old.AttemptID != request.AttemptID || old.ToolCallID != request.ToolCallID {
 				return reportprotocol.Ack{}, errors.New("report retry owner mismatch")
 			}
 			request = old
-		} else if !resolved || ack.Accepted {
-			return reportprotocol.Ack{}, errors.New("task already has a committed or unconfirmed terminal report; retry the identical payload")
+		} else if !resolved || (ack.Accepted && (old.Kind == reportprotocol.CompleteTask || old.Kind == reportprotocol.ReportBlocker)) {
+			return reportprotocol.Ack{}, errors.New("task has a terminal report or unconfirmed interaction; retry the identical payload")
 		}
 	}
 	data, err := json.Marshal(request)
@@ -328,4 +355,223 @@ func (b *Bridge) recoverIntent(ctx context.Context, runID string) error {
 		}
 	}
 	return nil
+}
+
+// KIT preserves dynamic FinalValue types; BONNIE accepts only its actual
+// SuspendRequest value/pointer. Public after-tool hooks can only rewrite text.
+func suspensionValue(r reportprotocol.Request) any {
+	switch r.Kind {
+	case reportprotocol.Clarify:
+		return runtime.SuspendRequest{Kind: runtime.SuspendQuestion, Prompt: strings.Join(r.Payload.Questions, "\n"), TurnID: r.TurnID, ToolCallID: r.ToolCallID}
+	case reportprotocol.ProposeSpec:
+		return runtime.SuspendRequest{Kind: runtime.SuspendApproval, Prompt: r.Payload.Spec, Options: []string{"approve", "reject"}, TurnID: r.TurnID, ToolCallID: r.ToolCallID}
+	default:
+		return r
+	}
+}
+
+// resolveReportTools makes SDK transcript repair use the trusted durable ACK,
+// rather than marking an already committed report's external effect unknown.
+func (b *Bridge) resolveReportTools(ctx context.Context, scope bonnie.RunScope) error {
+	b.mu.RLock()
+	r := b.runner
+	b.mu.RUnlock()
+	if r == nil {
+		return nil
+	}
+	recs, err := r.Journal().Replay(ctx, scope.RunID)
+	if err != nil {
+		return err
+	}
+	requests := map[string]reportprotocol.Request{}
+	accepted := map[string]bool{}
+	done := map[string]bool{}
+	intents := map[string]bool{}
+	for _, rec := range recs {
+		switch rec.ExtType {
+		case intentType:
+			var req reportprotocol.Request
+			if err := json.Unmarshal(rec.Payload, &req); err != nil {
+				return err
+			}
+			requests[req.ReportID] = req
+		case receiptType:
+			var ack reportprotocol.Ack
+			if err := json.Unmarshal(rec.Payload, &ack); err != nil {
+				return err
+			}
+			accepted[ack.ReportID] = ack.Accepted
+		}
+		if rec.Kind == runtime.RecordToolIntent || rec.Kind == runtime.RecordToolOutcome {
+			var call struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(rec.Payload, &call); err != nil {
+				return err
+			}
+			if rec.Kind == runtime.RecordToolOutcome {
+				done[call.ID] = true
+			} else {
+				intents[call.ID] = true
+			}
+		}
+	}
+	for id, req := range requests {
+		if accepted[id] && intents[req.ToolCallID] && !done[req.ToolCallID] {
+			if err := scope.Session.ResolveInterruptedTool(ctx, req.ToolCallID, "Typed report committed."); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// restorePendingSuspensions runs while this host owns no active turns. Durable
+// receipts identify what must wait; RecordResume identifies consumed requests.
+func (b *Bridge) restorePendingSuspensions(ctx context.Context) error {
+	b.mu.RLock()
+	r := b.runner
+	b.mu.RUnlock()
+	if r == nil {
+		return nil
+	}
+	runs, err := r.Journal().Runs(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, runID := range runs {
+		if runtime.IsReservedRun(runID) {
+			continue
+		}
+		state, err := r.Journal().State(ctx, runID)
+		if err != nil {
+			return err
+		}
+		if state == runtime.RunCompleted || state == runtime.RunFailed || state == runtime.RunCancelled || state == runtime.RunRetired {
+			continue
+		}
+		if err := b.recoverIntent(ctx, runID); err != nil {
+			return err
+		}
+		recs, err := r.Journal().Replay(ctx, runID)
+		if err != nil {
+			return err
+		}
+		requests := map[string]reportprotocol.Request{}
+		consumed := map[string]bool{}
+		var pending *reportprotocol.Request
+		var suspendedCall string
+		for _, rec := range recs {
+			switch rec.ExtType {
+			case intentType:
+				var req reportprotocol.Request
+				if err := json.Unmarshal(rec.Payload, &req); err != nil {
+					return err
+				}
+				requests[req.ReportID] = req
+			case receiptType:
+				var ack reportprotocol.Ack
+				if err := json.Unmarshal(rec.Payload, &ack); err != nil {
+					return err
+				}
+				req, exists := requests[ack.ReportID]
+				if ack.Accepted && exists && !consumed[req.ToolCallID] {
+					if req.Kind == reportprotocol.Clarify || req.Kind == reportprotocol.ProposeSpec {
+						pending = &req
+					} else {
+						pending = nil
+					}
+				}
+			}
+			if rec.Kind == runtime.RecordSuspend {
+				var sus runtime.SuspendRequest
+				if err := json.Unmarshal(rec.Payload, &sus); err != nil {
+					return err
+				}
+				suspendedCall = sus.ToolCallID
+			}
+			if rec.Kind == runtime.RecordResume {
+				consumed[suspendedCall] = true
+				pending = nil
+				suspendedCall = ""
+			}
+		}
+		if pending == nil {
+			continue
+		}
+		if suspendedCall != pending.ToolCallID {
+			sus := suspensionValue(*pending).(runtime.SuspendRequest)
+			data, _ := json.Marshal(sus)
+			if _, err := r.Journal().Append(ctx, runtime.Record{RunID: runID, Kind: runtime.RecordSuspend, Timestamp: time.Now().UTC(), Text: sus.Prompt, Payload: data}); err != nil {
+				return err
+			}
+		}
+		if state != runtime.RunWaiting {
+			// Recovery may have begun a fresh turn before the ACK was recovered.
+			// Answers must target the original suspension's turn identity.
+			var latestTurn string
+			for _, rec := range recs {
+				if rec.Kind == runtime.RecordTurn {
+					latestTurn = rec.Text
+				}
+			}
+			if latestTurn != pending.TurnID {
+				if _, err := r.Journal().Append(ctx, runtime.Record{RunID: runID, Kind: runtime.RecordTurn, Text: pending.TurnID, Timestamp: time.Now().UTC()}); err != nil {
+					return err
+				}
+			}
+			if err := r.Journal().Checkpoint(ctx, runID, runtime.RunWaiting); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// prepareRetry treats a model retry after transport ambiguity as delivery of
+// the SAME interaction, not a new report. Resolved planning calls are never
+// coalesced, so identical later questions/proposals still get distinct IDs.
+func (b *Bridge) prepareRetry(ctx context.Context, request reportprotocol.Request) (reportprotocol.Request, error) {
+	b.submitMu.Lock()
+	defer b.submitMu.Unlock()
+	b.mu.RLock()
+	r := b.runner
+	b.mu.RUnlock()
+	if r == nil {
+		return request, errors.New("report runtime unavailable")
+	}
+	recs, err := r.Journal().Replay(ctx, request.RunID)
+	if err != nil {
+		return request, err
+	}
+	intents := map[string]reportprotocol.Request{}
+	resolved := map[string]bool{}
+	for _, rec := range recs {
+		switch rec.ExtType {
+		case intentType:
+			var old reportprotocol.Request
+			if json.Unmarshal(rec.Payload, &old) != nil || old.Validate() != nil {
+				return request, errors.New("invalid durable report intent")
+			}
+			intents[old.ReportID] = old
+		case receiptType:
+			var ack reportprotocol.Ack
+			if err := json.Unmarshal(rec.Payload, &ack); err != nil {
+				return request, err
+			}
+			resolved[ack.ReportID] = true
+		}
+	}
+	for id, old := range intents {
+		if resolved[id] {
+			continue
+		}
+		a, _ := json.Marshal(old.Payload)
+		c, _ := json.Marshal(request.Payload)
+		if old.Kind != request.Kind || string(a) != string(c) || old.TaskID != request.TaskID || old.AgentID != request.AgentID || old.RunID != request.RunID || old.AttemptID != request.AttemptID {
+			return request, errors.New("unconfirmed interaction; retry the identical payload")
+		}
+		return old, nil
+	}
+	return request, nil
 }

@@ -18,9 +18,11 @@ type Querier interface {
 	ListCardLane(ctx context.Context, arg ListCardLaneParams) ([]string, error)
 	ListCards(ctx context.Context, projectID interface{}) ([]Card, error)
 	ListPlanningCancellations(ctx context.Context) ([]PlanningTurn, error)
+	ListPlanningInteractions(ctx context.Context, sessionID string) ([]ListPlanningInteractionsRow, error)
 	ListPlanningMessages(ctx context.Context, sessionID string) ([]PlanningMessage, error)
 	ListPlanningRevisions(ctx context.Context, sessionID string) ([]PlanningRevision, error)
 	ListPlanningTurns(ctx context.Context, sessionID string) ([]PlanningTurn, error)
+	ListQueuedPlanningReplies(ctx context.Context) ([]string, error)
 	ListQueuedPlanningTurns(ctx context.Context) ([]PlanningTurn, error)
 	MarkPlanningCancellationSent(ctx context.Context, arg MarkPlanningCancellationSentParams) error
 	NextCardPosition(ctx context.Context, arg NextCardPositionParams) (int64, error)

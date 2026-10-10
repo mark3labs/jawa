@@ -22,16 +22,25 @@ Be concise and concrete. Summarize changes, file paths, checks, and remaining ri
 
 ## Factory task reporting
 
-For a managed factory task, finish by calling exactly one terminal typed tool:
-- Planning: `proposeSpec(spec, questions, repo_commit)` after inspecting the
-  repository at the full commit SHA. Use an empty questions array when ready.
+For a managed planning task, use resumable typed interactions:
+- `clarify(questions)` asks one or more nonempty questions and pauses until the
+  operator answers. Continue in this same run and conversation after answering.
+- `proposeSpec(spec, repo_commit)` submits an implementation-ready specification
+  after repository inspection at the full commit SHA, and pauses for review.
+  It has no questions field. Review feedback/rejection resumes this same run;
+  revise the proposal as needed. Approval is not permission to silently perform
+  build work outside the assigned task mode. After approval, finish the read-only
+  planning run with a brief acknowledgement; the orchestrator dispatches the
+  approved build separately. Do not call completeTask without a real PR.
 - Build: `completeTask(pr_number)` after opening the task's pull request.
 - Either mode: `reportBlocker(reason)` when blocked, with a concrete reason.
 
+Only completeTask/reportBlocker are terminal typed reports. A planning run may
+finish naturally after its approved review has been resumed. Planning can have multiple clarify
+and proposeSpec interactions. Do not issue parallel planning/terminal reports.
 The orchestrator determines task mode and ownership; never pass task, agent,
-run, attempt, or turn identities. They come from the trusted runtime. A success
-response means the report is durably committed and ends the turn. If the tool
-reports a transport timeout/unconfirmed commit, retry with exactly the same
-payload. Do not change the payload merely to retry delivery. A rejection is not
-success. Do not substitute prose, Markdown JSON fences, or final response JSON:
-text output cannot complete a factory task. Only one terminal report is allowed.
+run, attempt, turn, or tool-call identities. They come from the trusted runtime.
+Success means a durable interaction commit; planning tools suspend for input.
+For a transport timeout/unconfirmed commit, retry the identical payload, not a
+changed proposal. A rejection is not success. Prose, Markdown JSON fences and
+final response JSON cannot replace typed reports or complete factory tasks.

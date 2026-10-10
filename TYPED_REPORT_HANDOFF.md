@@ -1,3 +1,13 @@
+# Current resumable protocol update
+
+Historical notes below are superseded by RESUMABLE_PLANNING_HANDOFF.md and
+internal/orchestrator/PLANNING_HANDOFF.md. Clarify is questions-only; proposeSpec
+accepts spec/commit only. Identity requires trusted ToolCallID; hashes include
+task + tool-call identity + kind + canonical payload. Planning reports suspend
+after interaction DB ACK and replies Answer the same run. Backend v7 supports
+multiple interactions and a durable exact-waiting outbox. Build completeTask
+remains positive-PR-only with independent provider verification.
+
 # Typed report bridge contract (tool-side owner)
 
 Actual inspected APIs: BONNIE v0.22.0 `WithKitSetup(func(context.Context,*kit.Kit,bonnie.RunScope) error)` supplies trusted RunID and Session. KIT v0.126.0 `kit.NewTool[T]` handlers receive context with ONLY ToolCallIDFromContext (not task/run/attempt). `k.AddTools` replaces discovered tools by name. We will bind per-run tools in WithKitSetup, not accept identity params. Channel factory captures runtime.Runner. Trusted task/attempt lookup replays BONNIE NATS admission journal `nats_task_admitted` for configured agent, matching runtime RunID; runtime Snapshot provides TurnID. Admission is durable before agent runs.

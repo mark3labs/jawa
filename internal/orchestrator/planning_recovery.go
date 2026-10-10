@@ -15,7 +15,7 @@ import (
 func (w *Workflow) recoverPlanningResults(conn *nats.Conn) error {
 	ctx, cancel := context.WithTimeout(w.ctx, 5*time.Second)
 	defer cancel()
-	rows, err := w.s.db.QueryContext(ctx, `SELECT t.id FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id JOIN cards c ON c.id=s.card_id WHERE c.status='Planning' AND s.state IN ('queued','running','failed') AND t.outcome_json='' AND t.state IN ('queued','submitted','running','failed') AND t.number=(SELECT max(number) FROM planning_turns WHERE session_id=s.id)`)
+	rows, err := w.s.db.QueryContext(ctx, `SELECT t.id FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id JOIN cards c ON c.id=s.card_id WHERE (c.status='Planning' OR s.state='approved') AND s.state IN ('queued','running','failed','questions','ready','approved') AND t.outcome_json='' AND t.state IN ('queued','submitted','running','failed','waiting') AND t.number=(SELECT max(number) FROM planning_turns WHERE session_id=s.id)`)
 	if err != nil {
 		return err
 	}

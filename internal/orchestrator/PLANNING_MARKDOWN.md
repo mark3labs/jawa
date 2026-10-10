@@ -10,9 +10,9 @@ mailto and relative destinations, with nofollow/noreferrer; no new-tab target is
 added. Code is escaped and displayed without executing or interpreting HTML.
 
 `planningDiscussionMessage` renders persisted readable Markdown directly. Typed
-`proposeSpec` acceptance stores a structured immutable revision (spec, questions,
-commit) and constructs readable discussion content from those fields in the same
-transaction. No discussion text is decoded as JSON, repaired or interpreted as a
+`proposeSpec` acceptance stores a structured immutable revision (spec and commit; no questions) and constructs
+readable discussion content in the same transaction. Clarify separately stores
+questions as a typed interaction without creating a revision. No discussion text is decoded as JSON, repaired or interpreted as a
 report. Historical arbitrary prose/JSON remains literal safe Markdown. Current
 and historical revision surfaces use their persisted structured fields.
 

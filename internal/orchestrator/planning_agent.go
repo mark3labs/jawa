@@ -8,7 +8,9 @@ import (
 	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
+	"github.com/mark3labs/bonnie/runtime"
 	"jawa/internal/orchestrator/db/sqlc"
+	"jawa/internal/reportprotocol"
 )
 
 func planningIdentityMatches(t sqlc.PlanningTurn, agent, run, attempt string) bool {
@@ -16,8 +18,8 @@ func planningIdentityMatches(t sqlc.PlanningTurn, agent, run, attempt string) bo
 }
 func planningTurnCurrent(tx *sql.Tx, t sqlc.PlanningTurn) (bool, error) {
 	var current bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_sessions s JOIN cards c ON c.id=s.card_id WHERE s.id=? AND c.status='Planning' AND s.state IN ('queued','running','failed') AND ?=(SELECT max(number) FROM planning_turns WHERE session_id=s.id))`, t.SessionID, t.Number).Scan(&current)
-	return current && (planningTurnActive(t.State) || (t.State == "failed" && t.OutcomeJson == "")), err
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_sessions s JOIN cards c ON c.id=s.card_id WHERE s.id=? AND c.status='Planning' AND s.state IN ('queued','running','failed','questions','ready') AND ?=(SELECT max(number) FROM planning_turns WHERE session_id=s.id))`, t.SessionID, t.Number).Scan(&current)
+	return current && (planningTurnActive(t.State) || t.State == "waiting" || (t.State == "failed" && t.OutcomeJson == "")), err
 }
 
 // Share the main BONNIE consumers, classifying task IDs while holding their transaction.
@@ -43,6 +45,13 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	if reported {
 		return true, nil
 	}
+	var interacted bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=?)`, t.ID).Scan(&interacted); err != nil {
+		return true, err
+	}
+	if interacted {
+		return true, nil
+	} // Waiting/running events must not erase a typed interaction or approval.
 	// Capture an admission arriving after local cancellation only to cancel its
 	// exact remote identity. It must never revive the session or turn.
 	if t.State == "cancelled" && t.AgentID == "" {
@@ -88,19 +97,49 @@ func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Ou
 	if err = q.RetainPlanningDelivery(ctx, sqlc.RetainPlanningDeliveryParams{TurnID: t.ID, Kind: "outcome", Payload: string(data), ReceivedAt: time.Now().UnixMilli()}); err != nil {
 		return true, err
 	}
-	current, err := planningTurnCurrent(tx, t)
-	if err != nil {
+	if !planningIdentityMatches(t, out.AgentID, out.RunID, out.AttemptID) || t.State == "cancelled" || t.OutcomeJson != "" {
+		return true, nil
+	}
+	if out.State == runtime.RunWaiting {
+		if out.Version != 1 || out.Suspend == nil || out.Error != "" || out.AnswerSubject != "bonnie.answers."+out.AgentID {
+			return true, nil
+		}
+		var request string
+		err = tx.QueryRow(`SELECT r.request_json FROM typed_reports r JOIN planning_interactions i ON i.report_id=r.report_id WHERE i.task_id=? AND r.tool_call_id=? AND i.status IN ('pending','queued')`, t.ID, out.Suspend.ToolCallID).Scan(&request)
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		if err != nil {
+			return true, err
+		}
+		var r reportprotocol.Request
+		if err = json.Unmarshal([]byte(request), &r); err != nil {
+			return true, err
+		}
+		if r.AgentID != out.AgentID || r.RunID != out.RunID || r.AttemptID != out.AttemptID || r.TurnID != out.Suspend.TurnID {
+			return true, nil
+		}
+		_, err = tx.Exec(`UPDATE planning_interactions SET waiting_json=? WHERE report_id=? AND status IN ('pending','queued')`, string(data), r.ReportID)
 		return true, err
 	}
-	if !current || t.OutcomeJson != "" || !planningIdentityMatches(t, out.AgentID, out.RunID, out.AttemptID) {
-		return true, nil
+	var sessionState string
+	if err = tx.QueryRow(`SELECT state FROM planning_sessions WHERE id=?`, t.SessionID).Scan(&sessionState); err != nil {
+		return true, err
+	}
+	if sessionState == "approved" {
+		// Post-approval completion/failure is planning bookkeeping only, never build authority.
+		if out.State == runtime.RunCompleted || out.State == runtime.RunFailed || out.State == runtime.RunCancelled {
+			_, err = tx.Exec(`UPDATE planning_turns SET state=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, string(out.State), string(data), out.Error, time.Now().UnixMilli(), t.ID)
+		}
+		return true, err
+	}
+	current, err := planningTurnCurrent(tx, t)
+	if err != nil || !current {
+		return true, err
 	}
 	reported, err := acceptedReport(tx, t.ID)
-	if err != nil {
+	if err != nil || reported {
 		return true, err
-	}
-	if reported {
-		return true, nil
 	}
 	reason := out.Error
 	if reason == "" {
@@ -108,6 +147,9 @@ func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Ou
 	}
 	now := time.Now().UnixMilli()
 	if _, err = tx.Exec(`UPDATE planning_turns SET state='failed',agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, out.Response, string(data), reason, now, t.ID); err != nil {
+		return true, err
+	}
+	if _, err = tx.Exec(`UPDATE planning_interactions SET status='cancelled' WHERE task_id=? AND status IN ('pending','queued')`, t.ID); err != nil {
 		return true, err
 	}
 	if err = planningMessage(tx, t.SessionID, "assistant", reason); err != nil {
@@ -119,6 +161,7 @@ func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Ou
 
 func (w *Workflow) dispatchPlanning() {
 	w.dispatchPlanningCancellations()
+	w.dispatchPlanningReplies()
 	if w.client == nil {
 		return
 	}

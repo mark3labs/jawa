@@ -279,5 +279,20 @@ func selectedCard(cards []Card, id string) (Card, bool) {
 	return Card{}, false
 }
 func planningCanReply(detail PlanningDetail) bool {
-	return detail.Session.State == "questions" || detail.Session.State == "ready" || detail.Session.State == "failed"
+	return detail.InteractionToken != "" && (detail.Session.State == "questions" || detail.Session.State == "ready")
+}
+
+func planningInteractionLabel(status string) string {
+	switch status {
+	case "pending":
+		return "Waiting for your input"
+	case "queued":
+		return "Reply queued — waiting for agent suspension/delivery"
+	case "answered":
+		return "Reply dispatched"
+	case "cancelled":
+		return "Closed"
+	default:
+		return status
+	}
 }

@@ -381,6 +381,35 @@ try {
  await action('Planning smoke card', 'Delete…');
  await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
  await expect(card('Planning smoke card')).toHaveCount(0);
+ // Exercise the full planning tool suspension cycle with the real backend ACK.
+ await createCard('Resumable planning smoke');
+ const resumableID = await card('Resumable planning smoke').getAttribute('data-card-id');
+ await drag('Resumable planning smoke', 'Planning');
+ await screen(`/planning?card=${resumableID}`, 'planning');
+ await bridge('/start-planning'); started = true;
+ await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
+ assert.equal(await page.getByRole('heading', {name: /Proposed plan/}).count(), 0, 'clarify must not fabricate a plan');
+ assert.equal(await page.locator('#planning-approve-form').count(), 0);
+ const questionToken = await page.locator('input[name="expected_interaction"]').inputValue();
+ assert.ok(questionToken);
+ await page.getByLabel('Reply or request a revision').fill('API v2');
+ await page.getByRole('button', {name: 'Send reply', exact: true}).click();
+ await page.getByRole('heading', {name: 'Draft plan', exact: true}).first().waitFor();
+ await page.locator('#planning-approve-form').waitFor();
+ assert.notEqual(await page.locator('input[name="expected_interaction"]').inputValue(), questionToken);
+ await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
+ await page.getByRole('button', {name: 'Send reply', exact: true}).click();
+ await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
+ await page.getByLabel('Plan revision to approve').selectOption('2');
+ await page.locator('#planning-approve-form input[type="checkbox"]').check();
+ await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
+ await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
+ await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL), 'approved plan distinct build');
+ await bridge('/stop'); started = false;
+ await screen(`/board?project=${otherID}`, 'board');
+ await action('Resumable planning smoke', 'Delete…');
+ await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
+ await expect(card('Resumable planning smoke')).toHaveCount(0);
  // Modal positioning is explicit: Tailwind's reset must not put dialogs at (0,0).
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {
@@ -436,7 +465,7 @@ try {
  await expect(page.locator('details.run')).toHaveCount(3);
  assert.deepEqual(browserActivityRequests, [], 'browser must never poll /activity including re-login');
  assert.deepEqual(errors, [], 'no browser errors');
- console.log('PASS: planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
+ console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
 } finally {
  if (started) await bridge('/stop').catch(() => {});
  await browser.close();

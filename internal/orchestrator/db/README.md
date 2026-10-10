@@ -65,3 +65,14 @@ and generated queries to Store.writeTx. Revision tokens increase across all
 sessions for a card (even after cancellation), protecting old approval forms.
 `cancel_sent` tracks acknowledged best-effort BONNIE exact-turn cancellation;
 local cancellation invalidates authority independently of agent availability.
+
+## Version 7 resumable interactions
+
+`00007_resumable_planning.sql` retains receipt JSON/owner history while changing
+receipt uniqueness to report ID and task/tool-call ID. Terminal reports remain
+one-per-task. `planning_interactions` is the durable reply outbox; only one
+pending/queued interaction per task is allowed. Waiting outcome and immutable
+response must be persisted before dispatch. sqlc exposes interaction history and
+queued-reply selection. Legacy ready/questions sessions cannot be resumed because
+v6 completed their remote run: preserve history/spec but mark them failed with an
+explicit retry message. Deploy upgraded agents/backend together.

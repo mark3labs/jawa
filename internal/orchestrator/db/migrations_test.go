@@ -188,3 +188,45 @@ func TestFreshDatabaseAndGeneratedQueries(t *testing.T) {
 		t.Fatalf("transaction binding: %+v %v", card, err)
 	}
 }
+
+func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	for _, name := range []string{"00001_baseline.sql", "00003_workflow.sql", "00005_planning.sql"} {
+		raw, err := fs.ReadFile(migrations, "migrations/"+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execTest(t, database, strings.Split(string(raw), "-- +goose Down")[0])
+	}
+	execTest(t, database, `INSERT INTO projects(id,name,created_at) VALUES('p','project',1); INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Todo',0,1); INSERT INTO planning_sessions(id,card_id,state,repo,base_branch,provider,title,description,issue_url,spec,revision,created_at,updated_at) VALUES('session','c','questions','repo','main','github','title','','','legacy spec',1,1,1)`)
+	legacy, _ := fs.ReadFile(migrations, "migrations/00006_typed_reports.sql")
+	// Apply only the legacy Up DDL to simulate existing receipt history.
+	execTest(t, database, strings.Split(string(legacy), "-- +goose Down")[0])
+	execTest(t, database, `CREATE TABLE goose_db_version(id INTEGER PRIMARY KEY,version_id INTEGER NOT NULL,is_applied INTEGER NOT NULL,tstamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP); INSERT INTO goose_db_version(version_id,is_applied) VALUES(0,1),(1,1),(2,1),(3,1),(4,1),(5,1),(6,1)`)
+	execTest(t, database, `INSERT INTO typed_reports VALUES('task','receipt','agent','run','attempt','turn','complete_task','original JSON',123)`)
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	var state, spec string
+	if err := database.QueryRow(`SELECT state,spec FROM planning_sessions WHERE id='session'`).Scan(&state, &spec); err != nil || state != "failed" || spec != "legacy spec" {
+		t.Fatal(state, spec, err)
+	}
+	var raw, call string
+	if err := database.QueryRow(`SELECT request_json,tool_call_id FROM typed_reports WHERE report_id='receipt'`).Scan(&raw, &call); err != nil || raw != "original JSON" || call != "legacy:receipt" {
+		t.Fatal(raw, call, err)
+	}
+	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('other','task','other-call','agent','run','attempt','turn','report_blocker','{}',124)`); err == nil {
+		t.Fatal("second terminal accepted")
+	}
+	execTest(t, database, `INSERT INTO typed_reports VALUES('interaction','task','new-call','agent','run','attempt','turn','clarify','{}',124)`)
+	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('conflict','task','new-call','agent','run','attempt','turn','clarify','{}',125)`); err == nil {
+		t.Fatal("same tool identity accepted twice")
+	}
+	var version int
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 7 {
+		t.Fatal(version, err)
+	}
+}

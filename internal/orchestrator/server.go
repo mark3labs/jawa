@@ -199,7 +199,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cardID := r.FormValue("card_id")
 		switch r.URL.Path {
 		case "/cards/planning/reply":
-			err = a.workflow.ReplyPlanning(cardID, r.FormValue("reply"))
+			err = a.workflow.ReplyPlanning(cardID, r.FormValue("reply"), r.FormValue("expected_interaction"))
 		case "/cards/planning/retry":
 			err = a.workflow.RetryPlanning(cardID)
 		case "/cards/planning/cancel":

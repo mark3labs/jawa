@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
 const getPlanningSession = `-- name: GetPlanningSession :one
@@ -139,6 +140,59 @@ func (q *Queries) ListPlanningCancellations(ctx context.Context) ([]PlanningTurn
 	return items, nil
 }
 
+const listPlanningInteractions = `-- name: ListPlanningInteractions :many
+SELECT i.report_id, i.task_id, i.status, i.waiting_json, i.reply, i.approved, i.created_at, i.answered_at,r.kind,r.tool_call_id FROM planning_interactions i
+JOIN typed_reports r ON r.report_id=i.report_id
+JOIN planning_turns t ON t.id=i.task_id WHERE t.session_id=? ORDER BY i.created_at,i.rowid
+`
+
+type ListPlanningInteractionsRow struct {
+	ReportID    string        `json:"report_id"`
+	TaskID      string        `json:"task_id"`
+	Status      string        `json:"status"`
+	WaitingJson string        `json:"waiting_json"`
+	Reply       string        `json:"reply"`
+	Approved    sql.NullInt64 `json:"approved"`
+	CreatedAt   int64         `json:"created_at"`
+	AnsweredAt  int64         `json:"answered_at"`
+	Kind        string        `json:"kind"`
+	ToolCallID  string        `json:"tool_call_id"`
+}
+
+func (q *Queries) ListPlanningInteractions(ctx context.Context, sessionID string) ([]ListPlanningInteractionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlanningInteractions, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlanningInteractionsRow{}
+	for rows.Next() {
+		var i ListPlanningInteractionsRow
+		if err := rows.Scan(
+			&i.ReportID,
+			&i.TaskID,
+			&i.Status,
+			&i.WaitingJson,
+			&i.Reply,
+			&i.Approved,
+			&i.CreatedAt,
+			&i.AnsweredAt,
+			&i.Kind,
+			&i.ToolCallID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlanningMessages = `-- name: ListPlanningMessages :many
 SELECT id, session_id, sequence, role, content, created_at FROM planning_messages WHERE session_id=? ORDER BY sequence
 `
@@ -241,6 +295,33 @@ func (q *Queries) ListPlanningTurns(ctx context.Context, sessionID string) ([]Pl
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listQueuedPlanningReplies = `-- name: ListQueuedPlanningReplies :many
+SELECT report_id FROM planning_interactions WHERE status='queued' AND waiting_json<>'' ORDER BY created_at
+`
+
+func (q *Queries) ListQueuedPlanningReplies(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listQueuedPlanningReplies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var report_id string
+		if err := rows.Scan(&report_id); err != nil {
+			return nil, err
+		}
+		items = append(items, report_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

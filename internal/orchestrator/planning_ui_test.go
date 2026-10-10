@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"bytes"
+	"jawa/internal/reportprotocol"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,7 +30,7 @@ func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
 	c := Card{ID: "abc", Title: "A card", Description: "<script>original</script>", Status: "Planning"}
 	d := pageData{csrf: "csrf", v: viewParams{View: viewPlanning, Card: c.ID},
 		cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: {
-			Session: PlanningSession{State: "ready", Revision: 2, Spec: "<img src=x onerror=alert(1)>"}, CanApprove: true,
+			Session: PlanningSession{State: "ready", Revision: 2, Spec: "<img src=x onerror=alert(1)>"}, CanApprove: true, InteractionToken: "interaction",
 			Revisions: []PlanningRevision{{Number: 1, Spec: "first"}, {Number: 2, Spec: "second"}},
 			Messages:  []PlanningMessage{{Role: "assistant", Content: "<script>discussion</script>"}},
 		}}}
@@ -38,7 +39,7 @@ func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := out.String()
-	for _, want := range []string{"name=\"expected_revision\"", "value=\"1\"", "value=\"2\"", "Select the revision you reviewed", "data-ignore-morph", "Approve &amp; build", "/cards/planning/reply"} {
+	for _, want := range []string{"name=\"expected_revision\"", "value=\"1\"", "value=\"2\"", "Select the revision you reviewed", "data-ignore-morph", "Approve &amp; build", "/cards/planning/reply", "name=\"expected_interaction\"", "value=\"interaction\"", "id=\"planning-reply-form-interaction\""} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -164,5 +165,46 @@ func TestPlanningDiscussionFallback(t *testing.T) {
 		if !strings.Contains(out.String(), renderPlanningMarkdown(message.Content)) {
 			t.Fatal("fallback lost source")
 		}
+	}
+}
+
+func TestClarifyUIHasQuestionsWithoutProposalAndStaleTokenRejected(t *testing.T) {
+	a := testApp(t)
+	session, csrf := setupTest(t, a)
+	p, err := a.s.CreateProjectDetails("Planning", "github", "https://github.com/example/repo", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := a.s.CreateCard(p.ID, "Clarify", "description")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = a.workflow.MoveCard(c.ID, "Planning", 0); err != nil {
+		t.Fatal(err)
+	}
+	d := planningDetails(t, a.workflow, c.ID)
+	r := reportRequest(t, d.Turns[0].ID, reportprotocol.Clarify, reportprotocol.Payload{Questions: []string{"Which API?"}})
+	a.workflow.observeReport = fakeReportObserver
+	if _, err = a.workflow.acceptReport(t.Context(), r); err != nil {
+		t.Fatal(err)
+	}
+	page := request(a, "GET", planningPath(c.ID), nil, session, csrf)
+	html := page.Body.String()
+	for _, want := range []string{"<h3>Questions</h3>", "Which API?", "name=\"expected_interaction\"", "Waiting for your input", "Planning reports"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(html, "Proposed plan · Revision") || strings.Contains(html, "id=\"planning-approve-form\"") {
+		t.Fatal("clarify showed plan or approval")
+	}
+	form := url.Values{"_csrf": {csrf.Value}, "view": {"planning"}, "card_id": {c.ID}, "reply": {"API v2"}, "expected_interaction": {"stale"}}
+	status(t, request(a, "POST", "/cards/planning/reply", form, session, csrf), http.StatusBadRequest)
+	form.Set("expected_interaction", r.ReportID)
+	status(t, request(a, "POST", "/cards/planning/reply", form, session, csrf), http.StatusSeeOther)
+	status(t, request(a, "POST", "/cards/planning/reply", form, session, csrf), http.StatusBadRequest)
+	d = planningDetails(t, a.workflow, c.ID)
+	if len(d.Turns) != 1 || len(d.Revisions) != 0 || len(d.Messages) != 3 {
+		t.Fatal(d)
 	}
 }

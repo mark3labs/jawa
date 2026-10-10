@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
@@ -19,7 +18,7 @@ import (
 
 func acceptedReport(tx *sql.Tx, task string) (bool, error) {
 	var found bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=?)`, task).Scan(&found)
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND kind IN ('complete_task','report_blocker'))`, task).Scan(&found)
 	return found, err
 }
 
@@ -87,7 +86,7 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 	}
 	defer func() { _ = tx.Rollback() }()
 	var stored string
-	err = tx.QueryRow(`SELECT request_json FROM typed_reports WHERE task_id=?`, r.TaskID).Scan(&stored)
+	err = tx.QueryRow(`SELECT request_json FROM typed_reports WHERE report_id=? OR (task_id=? AND tool_call_id=?)`, r.ReportID, r.TaskID, r.ToolCallID).Scan(&stored)
 	if err == nil {
 		var previous reportprotocol.Request
 		if json.Unmarshal([]byte(stored), &previous) != nil {
@@ -110,14 +109,25 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 	planning := planningErr == nil
 	var a Attempt
 	if planning {
-		if r.Kind == reportprotocol.CompleteTask {
-			return ack, errors.New("completeTask is not allowed during planning")
+		var sessionState string
+		if err = tx.QueryRow(`SELECT state FROM planning_sessions WHERE id=?`, t.SessionID).Scan(&sessionState); err != nil {
+			return ack, err
+		}
+		if r.Kind == reportprotocol.CompleteTask && sessionState != "approved" {
+			return ack, errors.New("completeTask is not allowed before planning approval")
 		}
 		current, err := planningTurnCurrent(tx, t)
 		if err != nil {
 			return ack, err
 		}
-		if !current || t.OutcomeJson != "" || !planningIdentityMatches(t, r.AgentID, r.RunID, r.AttemptID) {
+		if sessionState == "approved" && (r.Kind == reportprotocol.CompleteTask || r.Kind == reportprotocol.ReportBlocker) {
+			current = t.State != "cancelled" && t.OutcomeJson == ""
+		}
+		var pending bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued'))`, t.ID).Scan(&pending); err != nil {
+			return ack, err
+		}
+		if pending || !current || t.OutcomeJson != "" || !planningIdentityMatches(t, r.AgentID, r.RunID, r.AttemptID) {
 			return ack, errors.New("planning task is stale, terminal, cancelled or owned by another execution")
 		}
 	} else {
@@ -125,7 +135,7 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if err != nil {
 			return ack, fmt.Errorf("unknown build task: %w", err)
 		}
-		if r.Kind == reportprotocol.ProposeSpec {
+		if r.Kind == reportprotocol.ProposeSpec || r.Kind == reportprotocol.Clarify {
 			return ack, errors.New("proposeSpec is not allowed during build")
 		}
 		var current bool
@@ -164,6 +174,9 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 	if err != nil {
 		return ack, err
 	}
+	if _, err = tx.Exec(`INSERT INTO typed_reports(task_id,report_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, r.TaskID, r.ReportID, r.ToolCallID, r.AgentID, r.RunID, r.AttemptID, r.TurnID, r.Kind, string(raw), now); err != nil {
+		return ack, err
+	}
 	if planning {
 		err = persistPlanningReport(tx, ctx, t, r, string(raw), now)
 	} else {
@@ -183,9 +196,6 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 	if err != nil {
 		return ack, err
 	}
-	if _, err = tx.Exec(`INSERT INTO typed_reports(task_id,report_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES(?,?,?,?,?,?,?,?,?)`, r.TaskID, r.ReportID, r.AgentID, r.RunID, r.AttemptID, r.TurnID, r.Kind, string(raw), now); err != nil {
-		return ack, err
-	}
 	if err = tx.Commit(); err != nil {
 		return ack, err
 	}
@@ -198,46 +208,50 @@ func persistPlanningReport(tx *sql.Tx, ctx context.Context, t sqlc.PlanningTurn,
 	if err != nil {
 		return err
 	}
-	state, session, reason := "completed", "ready", ""
+	if r.Kind == reportprotocol.CompleteTask {
+		_, err = tx.Exec(`UPDATE planning_turns SET state='completed',result=?,outcome_json=?,error='',updated_at=? WHERE id=?`, raw, raw, now, t.ID)
+		return err // Approved snapshot and the distinct build are immutable here.
+	}
+	state, session, reason := "waiting", "ready", ""
 	message := r.Payload.Spec
-	if r.Kind == reportprotocol.ReportBlocker {
+	terminal := ""
+	switch r.Kind {
+	case reportprotocol.ReportBlocker:
 		state, session, reason = "failed", "failed", r.Payload.Reason
-		message = reason
-	} else {
+		message, terminal = reason, raw
+	case reportprotocol.Clarify:
+		session = "questions"
+		for _, question := range r.Payload.Questions {
+			message += question + "\n"
+		}
+	default:
 		if p.RepoCommit != "" && p.RepoCommit != r.Payload.RepoCommit {
 			return errors.New("planner inspected a different commit than the pinned session")
-		}
-		questions := r.Payload.Questions
-		if questions == nil {
-			questions = []string{}
-		}
-		encoded, err := json.Marshal(questions)
-		if err != nil {
-			return err
 		}
 		var revision int64
 		if err = tx.QueryRow(`SELECT coalesce(max(r.number),0)+1 FROM planning_revisions r JOIN planning_sessions s ON s.id=r.session_id WHERE s.card_id=?`, p.CardID).Scan(&revision); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`INSERT INTO planning_revisions(session_id,number,spec,questions_json,repo_commit,created_at) VALUES(?,?,?,?,?,?)`, p.ID, revision, r.Payload.Spec, string(encoded), r.Payload.RepoCommit, now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO planning_revisions(session_id,number,spec,questions_json,repo_commit,created_at) VALUES(?,?,?,'[]',?,?)`, p.ID, revision, r.Payload.Spec, r.Payload.RepoCommit, now); err != nil {
 			return err
-		}
-		if len(questions) > 0 {
-			session = "questions"
-			message += "\n\n## Questions\n"
-			for _, q := range questions {
-				message += "\n" + strings.TrimSpace(q) + "\n"
-			}
 		}
 		if _, err = tx.Exec(`UPDATE planning_sessions SET spec=?,repo_commit=?,revision=? WHERE id=?`, r.Payload.Spec, r.Payload.RepoCommit, revision, p.ID); err != nil {
 			return err
 		}
 	}
-	if _, err = tx.Exec(`UPDATE planning_turns SET state=?,agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, state, r.AgentID, r.RunID, r.AttemptID, message, raw, reason, now, t.ID); err != nil {
+	if terminal == "" {
+		if _, err = tx.Exec(`INSERT INTO planning_interactions(report_id,task_id,created_at) VALUES(?,?,?)`, r.ReportID, t.ID, now); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(`UPDATE planning_turns SET state=?,agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, state, r.AgentID, r.RunID, r.AttemptID, message, terminal, reason, now, t.ID); err != nil {
 		return err
 	}
 	if err = planningMessage(tx, p.ID, "assistant", message); err != nil {
 		return err
+	}
+	if p.State == "approved" {
+		return nil
 	}
 	_, err = tx.Exec(`UPDATE planning_sessions SET state=?,error=?,updated_at=? WHERE id=?`, session, reason, now, p.ID)
 	return err

@@ -10,9 +10,10 @@ import (
 	"embed"
 
 	"github.com/mark3labs/bonnie"
-	tool0 "jawa/tools/completeTask"
-	tool1 "jawa/tools/proposeSpec"
-	tool2 "jawa/tools/reportBlocker"
+	tool0 "jawa/tools/clarify"
+	tool1 "jawa/tools/completeTask"
+	tool2 "jawa/tools/proposeSpec"
+	tool3 "jawa/tools/reportBlocker"
 
 	kit "github.com/mark3labs/kit/pkg/kit"
 )
@@ -37,6 +38,7 @@ func init() {
 			tool0.Tool(),
 			tool1.Tool(),
 			tool2.Tool(),
+			tool3.Tool(),
 		},
 	})
 }

@@ -25,7 +25,7 @@ func TestClientRequiresMatchingCommitACK(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer nc.Close()
-	request, err := NewRequest(Identity{"task", "agent", "run", "attempt", "turn"}, CompleteTask, Payload{PRNumber: 2})
+	request, err := NewRequest(Identity{"task", "agent", "run", "attempt", "turn", "call"}, CompleteTask, Payload{PRNumber: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestClientRequiresMatchingCommitACK(t *testing.T) {
 func TestClientCancellationDoesNotImplyCommit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	r, _ := NewRequest(Identity{"task", "agent", "run", "attempt", "turn"}, CompleteTask, Payload{PRNumber: 1})
+	r, _ := NewRequest(Identity{"task", "agent", "run", "attempt", "turn", "call"}, CompleteTask, Payload{PRNumber: 1})
 	if _, err := (Client{}).Submit(ctx, r); err == nil {
 		t.Fatal("transport absence acknowledged")
 	}

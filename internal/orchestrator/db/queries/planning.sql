@@ -19,3 +19,9 @@ INSERT OR IGNORE INTO planning_deliveries(turn_id,kind,payload,received_at) VALU
 SELECT * FROM planning_turns WHERE state='cancelled' AND published=1 AND cancel_sent=0 AND agent_id<>'' AND run_id<>'' AND remote_attempt_id<>'' ORDER BY updated_at;
 -- name: MarkPlanningCancellationSent :exec
 UPDATE planning_turns SET cancel_sent=1 WHERE id=? AND state='cancelled' AND agent_id=? AND run_id=? AND remote_attempt_id=?;
+-- name: ListPlanningInteractions :many
+SELECT i.*,r.kind,r.tool_call_id FROM planning_interactions i
+JOIN typed_reports r ON r.report_id=i.report_id
+JOIN planning_turns t ON t.id=i.task_id WHERE t.session_id=? ORDER BY i.created_at,i.rowid;
+-- name: ListQueuedPlanningReplies :many
+SELECT report_id FROM planning_interactions WHERE status='queued' AND waiting_json<>'' ORDER BY created_at;

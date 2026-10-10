@@ -57,7 +57,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if e := w.MoveCard(c.ID, "Building", 0); e == nil {
 		t.Fatal("bypassed approval")
 	}
-	if e := w.ReplyPlanning(c.ID, "premature"); e == nil {
+	if e := w.ReplyPlanning(c.ID, "premature", planningDetails(t, w, c.ID).InteractionToken); e == nil {
 		t.Fatal("reply while active")
 	}
 	first := planningOutcome(t, w, c.ID, "Draft spec", "Which API?")
@@ -68,26 +68,26 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 		t.Fatal(e)
 	}
 	d := planningDetails(t, w, c.ID)
-	if d.Session.Revision != 1 || len(d.Messages) != 2 || len(d.Questions) != 1 || d.CanApprove {
+	if d.Session.Revision != 0 || len(d.Messages) != 2 || len(d.Questions) != 1 || d.CanApprove {
 		t.Fatalf("questions snapshot: %#v", d)
 	}
 	if e := w.ApprovePlanning(c.ID, 1); e == nil {
 		t.Fatal("approved questions")
 	}
-	if e := w.ReplyPlanning(c.ID, "Use API v2"); e != nil {
+	if e := w.ReplyPlanning(c.ID, "Use API v2", planningDetails(t, w, c.ID).InteractionToken); e != nil {
 		t.Fatal(e)
 	}
 	second := planningOutcome(t, w, c.ID, "Approved spec v2")
 	if e := planningDelivery(t, w, second); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.ApprovePlanning(c.ID, 1); e == nil {
+	if e := w.ApprovePlanning(c.ID, 0); e == nil {
 		t.Fatal("approved stale revision")
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
-		wg.Go(func() { ; errs <- w.ApprovePlanning(c.ID, 2) })
+		wg.Go(func() { ; errs <- w.ApprovePlanning(c.ID, 1) })
 	}
 	wg.Wait()
 	close(errs)
@@ -101,7 +101,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 		t.Fatalf("approval successes %d", success)
 	}
 	d = planningDetails(t, w, c.ID)
-	if d.Session.ApprovedSpec != "Approved spec v2" || d.Session.ApprovedRevision != 2 || d.Session.State != "approved" {
+	if d.Session.ApprovedSpec != "Approved spec v2" || d.Session.ApprovedRevision != 1 || d.Session.State != "approved" {
 		t.Fatal(d.Session)
 	}
 	cards, e := s.Cards(c.ProjectID)
@@ -128,7 +128,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if e = planningDelivery(t, w, first); e != nil {
 		t.Fatal(e)
 	}
-	if planningDetails(t, w, c.ID).Session.Revision != 2 {
+	if planningDetails(t, w, c.ID).Session.Revision != 1 {
 		t.Fatal("late planning result changed approved revision")
 	}
 }
@@ -200,7 +200,7 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 	if e := planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.ReplyPlanning(c.ID, "Please refine"); e != nil {
+	if e := w.ReplyPlanning(c.ID, "Please refine", planningDetails(t, w, c.ID).InteractionToken); e != nil {
 		t.Fatal(e)
 	}
 	out = planningOutcome(t, w, c.ID, "different")
@@ -209,7 +209,7 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 		t.Fatal("different pinned commit accepted")
 	}
 	d = planningDetails(t, w, c.ID)
-	if d.Session.State != "queued" || d.Session.Revision != 1 || d.Session.Spec != "spec" {
+	if d.Session.State != "running" || d.Session.Revision != 1 || d.Session.Spec != "spec" {
 		t.Fatal(d.Session)
 	}
 }
@@ -271,13 +271,13 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 	if e = planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
-	publishOutcome(t, nc, out)
+	publishOutcome(t, nc, storedPlanningWaiting(t, w, out.TaskID))
 	waitWorkflow(t, func() bool { d, e := w.PlanningDetail(c.ID); return e == nil && d.Session.State == "questions" })
 	if e = w.Close(); e != nil {
 		t.Fatal(e)
 	}
 	local = &Workflow{s: s, ctx: context.Background()}
-	if e = local.ReplyPlanning(c.ID, "answer"); e != nil {
+	if e = local.ReplyPlanning(c.ID, "answer", planningDetails(t, local, c.ID).InteractionToken); e != nil {
 		t.Fatal(e)
 	}
 	w, e = NewWorkflow(t.Context(), s, nc)
@@ -287,18 +287,18 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 	defer func() { _ = w.Close() }()
 	waitWorkflow(t, func() bool {
 		d, e := w.PlanningDetail(c.ID)
-		return e == nil && len(d.Turns) == 2 && d.Turns[1].Published
+		return e == nil && len(d.Turns) == 1 && d.Turns[0].Published
 	})
 	out = planningOutcome(t, w, c.ID, "Final spec")
 	if e = planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
-	publishOutcome(t, nc, out)
+	publishOutcome(t, nc, storedPlanningWaiting(t, w, out.TaskID))
 	waitWorkflow(t, func() bool {
 		d, e := w.PlanningDetail(c.ID)
-		return e == nil && d.CanApprove && d.Session.Revision == 2
+		return e == nil && d.CanApprove && d.Session.Revision == 1
 	})
-	if e = w.ApprovePlanning(c.ID, 2); e != nil {
+	if e = w.ApprovePlanning(c.ID, 1); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -393,14 +393,14 @@ func TestPlanningBackendActualStoreReopen(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	w = &Workflow{s: s, ctx: context.Background()}
 	d := planningDetails(t, w, c.ID)
-	if d.Session.Spec != "durable spec" || len(d.Messages) != 2 || len(d.Questions) != 1 {
+	if d.Session.Spec != "" || len(d.Messages) != 2 || len(d.Questions) != 1 {
 		t.Fatal("lost persisted conversation", d)
 	}
-	if e = w.ReplyPlanning(c.ID, "answer after reopen"); e != nil {
+	if e = w.ReplyPlanning(c.ID, "answer after reopen", planningDetails(t, w, c.ID).InteractionToken); e != nil {
 		t.Fatal(e)
 	}
 	d = planningDetails(t, w, c.ID)
-	if d.Session.State != "queued" || len(d.Turns) != 2 || len(d.Messages) != 3 {
+	if d.Session.State != "running" || len(d.Turns) != 1 || len(d.Messages) != 3 {
 		t.Fatal(d)
 	}
 }
@@ -424,7 +424,7 @@ func TestPlanningBackendRetainedOutcomeRecovery(t *testing.T) {
 	if e = planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
-	publishOutcome(t, nc, out)
+	publishOutcome(t, nc, storedPlanningWaiting(t, w, out.TaskID))
 	if e = w.recoverPlanningResults(nc); e != nil {
 		t.Fatal(e)
 	}

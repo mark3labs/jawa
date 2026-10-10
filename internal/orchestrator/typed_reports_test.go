@@ -14,7 +14,7 @@ import (
 
 func reportRequest(t *testing.T, task string, kind reportprotocol.Kind, p reportprotocol.Payload) reportprotocol.Request {
 	t.Helper()
-	r, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: task, AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn"}, kind, p)
+	r, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: task, AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn", ToolCallID: "call"}, kind, p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestTypedPlanningProposalQuestionsReceiptAndBlocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := planningDetails(t, w, c.ID)
-	r := reportRequest(t, d.Turns[0].ID, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: "## Plan\nImplement safely", Questions: []string{"Which API?"}, RepoCommit: strings.Repeat("a", 40)})
+	r := reportRequest(t, d.Turns[0].ID, reportprotocol.Clarify, reportprotocol.Payload{Questions: []string{"Which API?"}})
 	w.observeReport = fakeReportObserver
 	ack, err := w.acceptReport(t.Context(), r)
 	if err != nil || !ack.Accepted {
@@ -190,25 +190,30 @@ func TestTypedPlanningProposalQuestionsReceiptAndBlocker(t *testing.T) {
 		t.Fatal(ack, err)
 	}
 	d = planningDetails(t, w, c.ID)
-	if d.CanApprove || len(d.Revisions) != 1 || len(d.Messages) != 2 || !strings.Contains(d.Messages[1].Content, "## Questions") || strings.Contains(d.Messages[1].Content, "repo_commit") {
+	if d.CanApprove || len(d.Revisions) != 0 || len(d.Messages) != 2 || len(d.Questions) != 1 {
 		t.Fatal(d)
 	}
-	if err = w.ReplyPlanning(c.ID, "API v2"); err != nil {
+	if err = w.ReplyPlanning(c.ID, "API v2", d.InteractionToken); err != nil {
 		t.Fatal(err)
 	}
-	d = planningDetails(t, w, c.ID)
-	next := reportRequest(t, d.Turns[1].ID, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: "## Revised plan", Questions: []string{}, RepoCommit: r.Payload.RepoCommit})
+	if _, err = w.s.db.Exec(`UPDATE planning_interactions SET status='answered' WHERE report_id=?`, r.ReportID); err != nil {
+		t.Fatal(err)
+	}
+	next, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: r.TaskID, AgentID: r.AgentID, RunID: r.RunID, AttemptID: r.AttemptID, TurnID: r.TurnID, ToolCallID: "proposal"}, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: "## Revised plan", RepoCommit: strings.Repeat("a", 40)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ack, err = w.acceptReport(t.Context(), next); err != nil || !ack.Accepted {
 		t.Fatal(ack, err)
 	}
 	d = planningDetails(t, w, c.ID)
-	if !d.CanApprove || d.Session.Revision != 2 || len(d.Revisions) != 2 {
+	if !d.CanApprove || d.Session.Revision != 1 || len(d.Revisions) != 1 {
 		t.Fatal(d)
 	}
-	if err = w.ApprovePlanning(c.ID, 1); err == nil {
+	if err = w.ApprovePlanning(c.ID, 2); err == nil {
 		t.Fatal("stale approval accepted")
 	}
-	if err = w.ApprovePlanning(c.ID, 2); err != nil {
+	if err = w.ApprovePlanning(c.ID, 1); err != nil {
 		t.Fatal(err)
 	}
 	a, _ := w.CardResult(c.ID)
