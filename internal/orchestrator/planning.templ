@@ -12,7 +12,7 @@ templ planningContent(d pageData) {
 			<section class="planning-section" aria-label="Original description">
 				<h2>Original description</h2>
 				if c.Description != "" {
-					<div class="plan-text">{ c.Description }</div>
+					@planningMarkdownText(c.Description)
 				} else {
 					<p class="meta">No description provided.</p>
 				}
@@ -22,7 +22,7 @@ templ planningContent(d pageData) {
 					<h2>Proposed plan <span class={ "chip", "tone-" + planningTone(detail.Session.State) }>{ planningLabel(detail.Session.State) }</span></h2>
 					<p class="meta">Revision { strconv.Itoa(detail.Session.Revision) }</p>
 					if detail.Session.Spec != "" {
-						<div class="plan-text">{ detail.Session.Spec }</div>
+						@planningMarkdownText(detail.Session.Spec)
 					} else {
 						<p class="meta">The planner has not proposed a plan yet.</p>
 					}
@@ -36,7 +36,7 @@ templ planningContent(d pageData) {
 						<h3>Questions needing your input</h3>
 						<ul>
 							for _, question := range detail.Questions {
-								<li class="plan-text">{ question }</li>
+								<li>@planningMarkdownText(question)</li>
 							}
 						</ul>
 					}
@@ -45,9 +45,9 @@ templ planningContent(d pageData) {
 							for _, revision := range detail.Revisions {
 								<article class="plan-message">
 									<h3>Revision { strconv.Itoa(revision.Number) }</h3>
-									<div class="plan-text">{ revision.Spec }</div>
+									@planningMarkdownText(revision.Spec)
 									for _, question := range revision.Questions {
-										<p class="plan-text">{ question }</p>
+										@planningMarkdownText(question)
 									}
 								</article>
 							}
@@ -57,7 +57,7 @@ templ planningContent(d pageData) {
 				<section class="planning-section" aria-label="Planning discussion">
 					<h2>Discussion</h2>
 					for _, message := range detail.Messages {
-						<article class="plan-message"><h3>{ message.Role }</h3><div class="plan-text">{ message.Content }</div></article>
+						<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
 					}
 					if c.Status == "Planning" && planningCanReply(detail) {
 						<form id="planning-reply-form" method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
@@ -118,4 +118,27 @@ templ planningAction(d pageData, c Card, route, title string) {
 		@planningFields(d, c)
 		@submit(title)
 	</form>
+}
+
+// Every planning surface uses the same sanitized Markdown boundary.
+templ planningMarkdownText(source string) {
+	<div class="planning-markdown">@templ.Raw(renderPlanningMarkdown(source))</div>
+}
+
+// Decode only valid assistant reports for presentation, including historical
+// messages. Keep original content in storage and leave ordinary prose untouched.
+templ planningDiscussionMessage(message PlanningMessage) {
+	if report, err := parsePlanningReport(message.Content); message.Role == "assistant" && err == nil {
+		@planningMarkdownText(report.Spec)
+		if len(report.Questions) > 0 {
+			<h4>Questions</h4>
+			<ul class="planning-questions">
+				for _, question := range report.Questions {
+					<li>@planningMarkdownText(question)</li>
+				}
+			</ul>
+		}
+	} else {
+		@planningMarkdownText(message.Content)
+	}
 }

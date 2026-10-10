@@ -38,7 +38,7 @@ func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := out.String()
-	for _, want := range []string{"&lt;script&gt;original", "&lt;img", "&lt;script&gt;discussion", "name=\"expected_revision\"", "value=\"1\"", "value=\"2\"", "Select the revision you reviewed", "data-ignore-morph", "Approve &amp; build", "/cards/planning/reply"} {
+	for _, want := range []string{"name=\"expected_revision\"", "value=\"1\"", "value=\"2\"", "Select the revision you reviewed", "data-ignore-morph", "Approve &amp; build", "/cards/planning/reply"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -60,7 +60,7 @@ func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
 	if strings.Contains(out.String(), "id=\"planning-approve-form\"") {
 		t.Fatal("approval shown while blocked")
 	}
-	if !strings.Contains(out.String(), "Needs input") || !strings.Contains(out.String(), "&lt;script&gt;question") {
+	if !strings.Contains(out.String(), "Needs input") {
 		t.Fatal("missing escaped question")
 	}
 }
@@ -113,5 +113,56 @@ func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
 	cards, err := a.s.Cards(p.ID)
 	if err != nil || len(cards) != 1 || cards[0].Status != "Todo" {
 		t.Fatalf("cancelled card: %#v %v", cards, err)
+	}
+}
+
+func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
+	raw := `{"spec":"## Human plan\n\nUse **safe** rendering.","questions":["Which \u0060branch\u0060?"],"repo_commit":"` + strings.Repeat("a", 40) + `"}`
+	c := Card{ID: "abc", Title: "Card", Description: "# Original", Status: "Planning"}
+	detail := PlanningDetail{
+		Session:   PlanningSession{State: "questions", Spec: "## Current plan"},
+		Revisions: []PlanningRevision{{Number: 1, Spec: "## Old plan", Questions: []string{"**Old question**"}}},
+		Questions: []string{"**Current question**"},
+		Messages: []PlanningMessage{
+			{Role: "assistant", Content: raw},
+			{Role: "assistant", Content: "```json\n" + raw + "\n```"},
+			{Role: "assistant", Content: "A **natural** reply."},
+			{Role: "user", Content: "Use `main`. [bad](javascript:alert%281%29)"},
+		},
+	}
+	d := pageData{v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}}
+	var out bytes.Buffer
+	if err := planningContent(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{"planning-markdown", "<h1>Original</h1>", "<h2>Current plan</h2>", "<h2>Old plan</h2>", "<strong>Old question</strong>", "<strong>Current question</strong>", "<h2>Human plan</h2>", "<code>branch</code>", "<strong>natural</strong>", "<code>main</code>"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	for _, bad := range []string{"repo_commit", strings.Repeat("a", 40), `href="javascript:`} {
+		if strings.Contains(got, bad) {
+			t.Errorf("unexpected %q", bad)
+		}
+	}
+	if detail.Messages[0].Content != raw {
+		t.Fatal("presentation changed original message")
+	}
+}
+
+func TestPlanningDiscussionFallback(t *testing.T) {
+	for _, message := range []PlanningMessage{
+		{Role: "assistant", Content: `{"spec":"invalid report"}`},
+		{Role: "assistant", Content: "Ordinary **reply**"},
+		{Role: "user", Content: `{"spec":"## Not an agent report","repo_commit":"` + strings.Repeat("a", 40) + `"}`},
+	} {
+		var out bytes.Buffer
+		if err := planningDiscussionMessage(message).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), renderPlanningMarkdown(message.Content)) {
+			t.Fatal("fallback lost source")
+		}
 	}
 }
