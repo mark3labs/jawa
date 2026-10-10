@@ -151,7 +151,7 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 		}
 		return a.WorkerID == "worker"
 	})
-	out := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "worker", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_url":"https://github.com/example/repo/pull/1"}`}
+	out := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "worker", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1}`}
 	publishOutcome(t, nc, out)
 	waitWorkflow(t, func() bool {
 		a, e := w.CardResult(c.ID)
@@ -180,7 +180,7 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 	// A competing worker, duplicates and delayed statuses must not replace the report.
 	bad := out
 	bad.WorkerID = "other"
-	bad.Response = `{"pr_url":"https://evil.example/pull/2"}`
+	bad.Response = `{"pr_number":2}`
 	publishOutcome(t, nc, bad)
 	publishOutcome(t, nc, out)
 	ev.Seq = 50
@@ -399,7 +399,7 @@ func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
 		t.Fatalf("retry did not create isolated attempt: first=%+v second=%+v", first, second)
 	}
 	// A delayed successful result for the prior task must not complete the new attempt.
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, WorkerID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_url":"https://github.com/example/repo/pull/1}`})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: first.TaskID, WorkerID: "w", RunID: "r", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1`})
 	time.Sleep(350 * time.Millisecond)
 	latest, err := w.CardResult(c.ID)
 	if err != nil {
@@ -462,7 +462,7 @@ func TestWorkflowFailureAndWaitingRemainBuilding(t *testing.T) {
 					t.Fatal("retry of waiting/nonterminal outcome permitted")
 				}
 				out.State = runtime.RunCompleted
-				out.Response = `{"pr_url":"https://github.com/example/repo/pull/1"}`
+				out.Response = `{"pr_number":1}`
 				publishOutcome(t, nc, out)
 				waitWorkflow(t, func() bool {
 					a, e := w.CardResult(c.ID)

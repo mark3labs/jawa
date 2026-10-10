@@ -32,7 +32,7 @@ import (
 )
 
 const workerID = "factory-smoke-worker"
-const fixturePR = `{"pr_url":"https://github.com/example/smoke/pull/1"}`
+const fixturePR = `{"pr_number":1}`
 
 // This is a real Kit provider, not a replacement runtime.Agent or a protocol
 // consumer. Hold the turn open long enough for the browser to observe running.

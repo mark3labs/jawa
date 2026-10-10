@@ -78,7 +78,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 			if _, err = js.AddConsumer(stream, &nats.ConsumerConfig{Durable: "operator-test", AckPolicy: nats.AckExplicitPolicy}); err != nil {
 				t.Fatal(err)
 			}
-			out := client.Outcome{TaskID: a.TaskID, WorkerID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: "```json\n{\"pr_url\":\"https://github.com/example/repo/pull/2\"}\n```"}
+			out := client.Outcome{TaskID: a.TaskID, WorkerID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: "```json\n{\"pr_number\":2}\n```"}
 			publishOutcome(t, nc, out)
 			before, err := js.ConsumerInfo(stream, "operator-test")
 			if err != nil {

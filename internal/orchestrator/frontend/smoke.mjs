@@ -237,7 +237,7 @@ try {
   assert.ok(attempt.RunID && attempt.RemoteAttemptID && attempt.OutcomeJSON);
   assert.equal(attempt.RunState, 'completed');
   assert.equal(attempt.PRURL, pr);
-  assert.equal(JSON.parse(attempt.Result).pr_url, pr);
+  assert.equal(JSON.parse(attempt.Result).pr_number, 1);
   assert.equal(attempt.Ready, false);
   assert.equal(attempt.Number, 1);
   assert.ok(JSON.parse(attempt.TaskJSON).text.split('\nBranch: ')[1].endsWith(`-${attempt.CardID.slice(0,6)}-a1`));
@@ -289,7 +289,7 @@ try {
  const run = page.locator('details.run');
  await run.locator('summary').click();
  await run.locator('.card-note').filter({hasText: 'provider: credentials missing'}).waitFor();
- assert.equal(JSON.parse(await run.locator('.result').textContent()).pr_url, pr);
+ assert.equal(JSON.parse(await run.locator('.result').textContent()).pr_number, 1);
  assert.equal(await run.locator('.run-pr a').getAttribute('href'), pr);
  await run.getByText(JSON.parse(data.attempts.find(a=>a.CardID===firstID).TaskJSON).text.split('\nBranch: ')[1], {exact: true}).waitFor();
  const runID = await run.getAttribute('id');

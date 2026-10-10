@@ -168,7 +168,7 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 		}
 		return a.State == "running" && a.WorkerID == target.WorkerID && a.RunID == target.RunID && a.RemoteAttemptID == target.AttemptID
 	})
-	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: task.TaskID, WorkerID: target.WorkerID, RunID: target.RunID, AttemptID: target.AttemptID, State: runtime.RunCompleted, Response: fmt.Sprintf(`{"pr_url":%q}`, prURL)})
+	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: task.TaskID, WorkerID: target.WorkerID, RunID: target.RunID, AttemptID: target.AttemptID, State: runtime.RunCompleted, Response: `{"pr_number":7}`})
 	waitWorkflow(t, func() bool {
 		a, err := w.CardResult(card.ID)
 		if err != nil {

@@ -37,7 +37,7 @@ func TestReconcileRetainedNATSOutcome(t *testing.T) {
 	if err = w.event(t.Context(), ev); err != nil {
 		t.Fatal(err)
 	}
-	b := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "worker-B", RunID: "run-B", AttemptID: "attempt-B", State: runtime.RunCompleted, Response: `{"pr_url":"https://github.com/example/repo/pull/2"}`}
+	b := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "worker-B", RunID: "run-B", AttemptID: "attempt-B", State: runtime.RunCompleted, Response: `{"pr_number":2}`}
 	publishOutcome(t, nc, b)
 	waitWorkflow(t, func() bool { return conflictCount(t, s, a.TaskID) == 1 })
 	pinned, err := w.CardResult(card.ID)
@@ -215,7 +215,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 	if err = w.event(t.Context(), ev); err != nil {
 		t.Fatal(err)
 	}
-	b := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: `{"pr_url":"https://github.com/example/repo/pull/2"}`}
+	b := client.Outcome{Version: 1, TaskID: a.TaskID, WorkerID: "B", RunID: "B", AttemptID: "B", State: runtime.RunCompleted, Response: `{"pr_number":2}`}
 	publishOutcome(t, nc, b)
 	js, err := nc.JetStream()
 	if err != nil {
@@ -291,7 +291,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 func TestReconcileAtomicRollbackAndStaleVerification(t *testing.T) {
 	w, card := stoppedReconciliationWorkflow(t)
 	a, _ := w.CardResult(card.ID)
-	old := client.Outcome{TaskID: a.TaskID, WorkerID: "A", RunID: "A", AttemptID: "A", State: runtime.RunCompleted, Response: `{"pr_url":"https://github.com/example/repo/pull/1"}`}
+	old := client.Outcome{TaskID: a.TaskID, WorkerID: "A", RunID: "A", AttemptID: "A", State: runtime.RunCompleted, Response: `{"pr_number":1}`}
 	if err := w.result(t.Context(), old); err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestReconcileAtomicRollbackAndStaleVerification(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.State = runtime.RunCompleted
-	b.Response = `{"pr_url":"https://github.com/example/repo/pull/2"}`
+	b.Response = `{"pr_number":2}`
 	if err := w.result(t.Context(), b); err != nil {
 		t.Fatal(err)
 	}
