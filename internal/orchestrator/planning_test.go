@@ -317,6 +317,34 @@ func TestPlanningBackendApprovalTransactionRollsBack(t *testing.T) {
 	}
 }
 
+func TestPlanningBackendOutputParserMarkdown(t *testing.T) {
+	report := "{\"spec\":\"Plan with literal ```json in its text\", \"questions\":[], \"repo_commit\":\"" + strings.Repeat("a", 40) + "\"}"
+	for _, text := range []string{
+		report,
+		"  \n```json\n" + report + "\n```\n ",
+		"```\n" + report + "\n```",
+		"```JSON\r\n" + report + "\r\n```\r\n",
+	} {
+		parsed, err := parsePlanningReport(text)
+		if err != nil || parsed.Spec != "Plan with literal ```json in its text" {
+			t.Fatalf("rejected valid report %q: %+v %v", text, parsed, err)
+		}
+	}
+	for _, text := range []string{
+		"```json\n" + report,
+		"```json\n" + report + "\n```\nExtra prose",
+		"Here is the plan:\n```json\n" + report + "\n```",
+		"```javascript\n" + report + "\n```",
+		"```json\n" + report + "\n```\n```json\n" + report + "\n```",
+		"```json\n{broken}\n```",
+		"```json\n" + report + "\n" + report + "\n```",
+	} {
+		if _, err := parsePlanningReport(text); err == nil {
+			t.Fatalf("accepted invalid fenced report %q", text)
+		}
+	}
+}
+
 func TestPlanningBackendOutputParser(t *testing.T) {
 	for _, text := range []string{`null`, `{"spec":"x","repo_commit":"abc"}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[]} extra`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[""]}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","unexpected":true}`} {
 		if _, e := parsePlanningReport(text); e == nil {

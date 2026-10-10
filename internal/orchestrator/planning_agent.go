@@ -27,6 +27,21 @@ func parsePlanningReport(text string) (planningReport, error) {
 	if len(text) > 256000 {
 		return r, errors.New("planning output exceeds 256000 bytes")
 	}
+	// Accept presentation-only Markdown wrapping, but never extract JSON from
+	// arbitrary prose or multiple blocks: the entire response remains one report.
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "```") {
+		header, body, ok := strings.Cut(text, "\n")
+		if !ok || (strings.TrimSpace(header) != "```" && !strings.EqualFold(strings.TrimSpace(header), "```json")) {
+			return r, errors.New("planning report fence must be unlabelled or json")
+		}
+		body = strings.TrimSpace(body)
+		closing := strings.LastIndex(body, "\n")
+		if closing < 0 || strings.TrimSpace(body[closing+1:]) != "```" {
+			return r, errors.New("planning report requires a closing fence with no trailing content")
+		}
+		text = strings.TrimSpace(body[:closing])
+	}
 	dec := json.NewDecoder(strings.NewReader(text))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&r); err != nil {
