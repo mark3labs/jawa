@@ -20,6 +20,12 @@ go build -o ./bin/jawa .
   --listen 127.0.0.1:8080 --nats-listen 127.0.0.1:4222
 ```
 
+The orchestrator writes timestamped Charm logs to stderr for startup, task
+queueing/dispatch, execution status/results, cancellation, verification, recovery,
+and NATS connection lifecycle. Add `--debug` to include routine recovery polling
+and ignored stale/duplicate deliveries. Logs contain execution IDs and states,
+not prompts, raw result payloads, credentials, or remote error text.
+
 Open http://127.0.0.1:8080 and create an admin username/password. Add projects tied
 to GitHub or Forgejo repository URLs, then create cards. The Todo / Building / Done
 board supports drag-and-drop and keyboard moves, persistent ordering, and optional

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/charmbracelet/log"
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/nats-io/nats.go"
 )
@@ -31,7 +31,13 @@ func retainConflict(tx *sql.Tx, out client.Outcome) error {
 // Reconcile explicitly selects a retained terminal execution. Selection, identity
 // replacement, application and audit all commit together; delivery cannot race
 // through an unlocked interval. This never grants PR readiness.
-func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
+func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) (retErr error) {
+	w.log().Info("workflow reconciliation requested", "task_id", taskID, "run_id", runID, "remote_attempt_id", remoteAttemptID)
+	defer func() {
+		if retErr != nil {
+			w.log().Warn("workflow reconciliation failed", "task_id", taskID, "run_id", runID, "remote_attempt_id", remoteAttemptID)
+		}
+	}()
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -82,6 +88,7 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 			continue
 		}
 		if selected != "" && selectedAgent != candidate.AgentID {
+			w.logAttempt(log.WarnLevel, "workflow reconciliation rejected ambiguous retained agents", a)
 			err = errors.New("reconcile: ambiguous retained agents")
 			break
 		}
@@ -120,14 +127,31 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) error {
 	if _, err = tx.Exec(`INSERT INTO workflow_reconciliations(task_id,previous_agent_id,previous_run_id,previous_remote_attempt_id,selected_agent_id,selected_run_id,selected_remote_attempt_id,conflict_id,reconciled_at) VALUES(?,?,?,?,?,?,?,?,?)`, taskID, a.AgentID, a.RunID, a.RemoteAttemptID, out.AgentID, out.RunID, out.AttemptID, conflictID, now); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	w.log().Info("workflow execution conflict reconciled", "attempt_id", a.ID, "card_id", a.CardID,
+		"task_id", taskID, "previous_agent_id", a.AgentID, "previous_run_id", a.RunID,
+		"previous_remote_attempt_id", a.RemoteAttemptID, "agent_id", out.AgentID,
+		"run_id", out.RunID, "remote_attempt_id", out.AttemptID, "run_state", string(out.State), "conflict_id", conflictID)
+	return nil
 }
 
 // RecoverResults reads retained stream history without consuming, acknowledging,
 // deleting messages or changing consumer state. It can recover previously acked
 // deliveries after migration and is also safe to invoke manually. The last 10,000
 // sequence positions (including holes) and a five-second budget bound the scan.
-func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
+func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) (retErr error) {
+	var taskCount, scanned, recovered int
+	defer func() {
+		if retErr != nil {
+			w.log().Warn("workflow result recovery failed", "category", "recovery",
+				"tasks", taskCount, "scanned", scanned, "replayed", recovered)
+		} else {
+			w.log().Debug("workflow result recovery summary", "tasks", taskCount,
+				"scanned", scanned, "replayed", recovered)
+		}
+	}()
 	if ctx == nil || conn == nil {
 		return errors.New("recover results: context and connection required")
 	}
@@ -158,6 +182,7 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
 	if closeErr != nil {
 		return closeErr
 	}
+	taskCount = len(tasks)
 	if len(tasks) == 0 {
 		return nil
 	}
@@ -171,7 +196,7 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
 		return nil
 	}
 	if err != nil {
-		return recoveryError(ctx, err)
+		return w.recoveryError(ctx, err)
 	}
 	first, last := info.State.FirstSeq, info.State.LastSeq
 	if info.State.Msgs == 0 {
@@ -179,18 +204,19 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
 	}
 	if last-first >= 10000 {
 		first = last - 9999
-		log.Printf("workflow result recovery: large stream; skipping older history, scanning only last 10000 sequence positions")
+		w.log().Warn("workflow result recovery history truncated", "sequence_limit", 10000, "first_sequence", first, "last_sequence", last)
 	}
 	for seq := first; seq <= last; seq++ {
 		if err = ctx.Err(); err != nil {
-			return recoveryError(ctx, err)
+			return w.recoveryError(ctx, err)
 		}
+		scanned++
 		msg, getErr := js.GetMsg(stream, seq, nats.Context(ctx))
 		if errors.Is(getErr, nats.ErrMsgNotFound) {
 			continue
 		}
 		if getErr != nil {
-			return recoveryError(ctx, getErr)
+			return w.recoveryError(ctx, getErr)
 		}
 		if msg.Subject != "bonnie.results" {
 			continue
@@ -202,6 +228,7 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
 		if err = w.result(ctx, out); err != nil {
 			return fmt.Errorf("recover results: %w", err)
 		}
+		recovered++
 		if seq == last {
 			break
 		} // Avoid uint64 overflow.
@@ -209,9 +236,9 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) error {
 	return nil
 }
 
-func recoveryError(ctx context.Context, err error) error {
+func (w *Workflow) recoveryError(ctx context.Context, err error) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		log.Printf("workflow result recovery: five-second scan budget exhausted; remaining history skipped")
+		w.log().Warn("workflow result recovery scan budget exhausted; remaining history skipped", "category", "deadline", "budget_seconds", 5)
 		return nil
 	}
 	return fmt.Errorf("recover results: %w", err)

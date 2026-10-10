@@ -6,6 +6,7 @@ require (
 	charm.land/fantasy v0.45.2
 	github.com/a-h/templ v0.3.1070
 	github.com/axadrn/shadcn-templ/v2 v2.0.0-beta.13
+	github.com/charmbracelet/log v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/bonnie v0.22.0
 	github.com/mark3labs/kit v0.126.0
@@ -53,7 +54,6 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/fang v1.0.0 // indirect
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834 // indirect
-	github.com/charmbracelet/log v1.0.0 // indirect
 	github.com/charmbracelet/openai-go v0.0.0-20260921175203-216db9e71b83 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261001125412-878653296cfd // indirect
 	github.com/charmbracelet/x/ansi v0.11.8 // indirect
