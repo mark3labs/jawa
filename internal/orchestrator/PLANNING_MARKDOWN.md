@@ -9,11 +9,12 @@ before `templ.Raw`. Scripts, event handlers, styles, embedded HTML and images
 mailto and relative destinations, with nofollow/noreferrer; no new-tab target is
 added. Code is escaped and displayed without executing or interpreting HTML.
 
-`planningDiscussionMessage` uses the existing `parsePlanningReport` only for
-valid assistant reports (plain or JSON-fenced), displaying the spec and questions
-instead of transport JSON/commit metadata. Invalid reports and ordinary prose
-fall back to safe Markdown. This applies to historical messages as well. No DB
-content, outcome retention, parsing contract, approval or workflow logic changes.
+`planningDiscussionMessage` renders persisted readable Markdown directly. Typed
+`proposeSpec` acceptance stores a structured immutable revision (spec, questions,
+commit) and constructs readable discussion content from those fields in the same
+transaction. No discussion text is decoded as JSON, repaired or interpreted as a
+report. Historical arbitrary prose/JSON remains literal safe Markdown. Current
+and historical revision surfaces use their persisted structured fields.
 
 Typography is scoped to `.planning-markdown` in `frontend/src/style.css`, using
 the existing night palette. Lists, headings, links, inline/fenced code,
@@ -35,5 +36,5 @@ golangci-lint run ./...
 The pinned generator matches go.mod. Only planning's generated template is
 included; unrelated generator-version churn is excluded. Renderer tests cover
 Markdown elements, escaped code, safe links, dangerous schemes, raw HTML and
-tracking images. Template tests cover planning surfaces, historical structured
-reports, natural/user messages, invalid-report fallback and approval controls.
+tracking images. Template tests cover planning surfaces, structured persisted
+revisions, readable discussions, literal natural/user messages and approval controls.

@@ -125,20 +125,7 @@ templ planningMarkdownText(source string) {
 	<div class="planning-markdown">@templ.Raw(renderPlanningMarkdown(source))</div>
 }
 
-// Decode only valid assistant reports for presentation, including historical
-// messages. Keep original content in storage and leave ordinary prose untouched.
+// Discussion content is readable Markdown persisted from structured reports.
 templ planningDiscussionMessage(message PlanningMessage) {
-	if report, err := parsePlanningReport(message.Content); message.Role == "assistant" && err == nil {
-		@planningMarkdownText(report.Spec)
-		if len(report.Questions) > 0 {
-			<h4>Questions</h4>
-			<ul class="planning-questions">
-				for _, question := range report.Questions {
-					<li>@planningMarkdownText(question)</li>
-				}
-			</ul>
-		}
-	} else {
-		@planningMarkdownText(message.Content)
-	}
+ @planningMarkdownText(message.Content)
 }

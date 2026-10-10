@@ -18,6 +18,8 @@ import (
 	kit "github.com/mark3labs/kit/pkg/kit"
 	server "github.com/nats-io/nats-server/v2/server"
 	nats "github.com/nats-io/nats.go"
+	"jawa/internal/reportbridge"
+	"jawa/internal/reportprotocol"
 )
 
 func TestLifecycleSmoke(t *testing.T) {
@@ -39,6 +41,7 @@ func TestLifecycleSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer nc.Close()
+	installLifecycleReportReceiver(t, nc)
 	js, err := nc.JetStream()
 	if err != nil {
 		t.Fatal(err)
@@ -52,15 +55,14 @@ func TestLifecycleSmoke(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		var reports reportbridge.Bridge
 		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithKit(func(o *kit.Options) {
 			o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
 			kit.WithProvider("smoke", func(context.Context, *kit.ProviderConfig, string) (*kit.ProviderResult, error) {
 				return &kit.ProviderResult{Model: model{}}, nil
 			})(o)
 			kit.WithModel("smoke/final")(o)
-		}), bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
-			return natschannel.New(r, natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true, EventSubject: "bonnie.events"})
-		}), bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}))
+		}), bonnie.WithKitSetup(reports.Setup), reports.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true, EventSubject: "bonnie.events"}), bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}))
 		done := make(chan error, 1)
 		go func() { done <- a.Run(agentCtx) }()
 		return stop, done
@@ -181,6 +183,7 @@ func TestLifecycleReconnectSmoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer nc.Close()
+	installLifecycleReportReceiver(t, nc)
 	js, err := nc.JetStream()
 	if err != nil {
 		t.Fatal(err)
@@ -195,15 +198,14 @@ func TestLifecycleReconnectSmoke(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		var reports reportbridge.Bridge
 		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithKit(func(o *kit.Options) {
 			o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
 			kit.WithProvider("smoke", func(context.Context, *kit.ProviderConfig, string) (*kit.ProviderResult, error) {
 				return &kit.ProviderResult{Model: model{}}, nil
 			})(o)
 			kit.WithModel("smoke/final")(o)
-		}), bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
-			return natschannel.New(r, natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true, EventSubject: "bonnie.events"})
-		}), bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}))
+		}), bonnie.WithKitSetup(reports.Setup), reports.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true, EventSubject: "bonnie.events"}), bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}))
 		done := make(chan error, 1)
 		go func() { done <- a.Run(agentCtx) }()
 		return stop, done
@@ -301,5 +303,31 @@ func waitNewRunning(t *testing.T, events <-chan client.StatusEvent, taskID, prev
 			t.Fatal("timed out waiting for running event")
 			return client.StatusEvent{}
 		}
+	}
+}
+
+// Lifecycle fixtures have no orchestrator/database. ACK only validates transport;
+// production DB-commit behavior is covered by workflow typed report tests.
+func installLifecycleReportReceiver(t *testing.T, nc *nats.Conn) {
+	t.Helper()
+	sub, err := nc.Subscribe(reportprotocol.Subject("bonnie"), func(m *nats.Msg) {
+		var r reportprotocol.Request
+		if err := json.Unmarshal(m.Data, &r); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := r.Validate(); err != nil {
+			t.Error(err)
+			return
+		}
+		data, _ := json.Marshal(reportprotocol.Ack{Version: 1, ReportID: r.ReportID, Accepted: true})
+		_ = m.Respond(data)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sub.Unsubscribe() })
+	if err := nc.Flush(); err != nil {
+		t.Fatal(err)
 	}
 }

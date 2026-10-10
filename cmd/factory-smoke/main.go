@@ -24,11 +24,12 @@ import (
 	"github.com/mark3labs/bonnie"
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
 	presencenats "github.com/mark3labs/bonnie/presence/nats"
-	"github.com/mark3labs/bonnie/runtime"
+
 	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
 	"jawa/internal/orchestrator"
+	"jawa/internal/reportbridge"
 )
 
 const agentID = "factory-smoke-agent"
@@ -39,7 +40,7 @@ const fixturePR = `{"pr_number":1}`
 type model struct{}
 
 func (model) answer(ctx context.Context) error {
-	log.Print("BONNIE Kit model pickup (offline scripted final; no tools)")
+	log.Print("BONNIE Kit model pickup (offline scripted completeTask tool)")
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -51,7 +52,7 @@ func (m model) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response,
 	if err := m.answer(ctx); err != nil {
 		return nil, err
 	}
-	return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: fixturePR}}, FinishReason: fantasy.FinishReasonStop}, nil
+	return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.ToolCallContent{ToolCallID: "smoke-complete", ToolName: "completeTask", Input: fixturePR}}, FinishReason: fantasy.FinishReasonToolCalls}, nil
 }
 func (m model) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamResponse, error) {
 	if err := m.answer(ctx); err != nil {
@@ -59,10 +60,8 @@ func (m model) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamRespon
 	}
 	return iter.Seq[fantasy.StreamPart](func(yield func(fantasy.StreamPart) bool) {
 		for _, part := range []fantasy.StreamPart{
-			{Type: fantasy.StreamPartTypeTextStart, ID: "final"},
-			{Type: fantasy.StreamPartTypeTextDelta, ID: "final", Delta: fixturePR},
-			{Type: fantasy.StreamPartTypeTextEnd, ID: "final"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonStop},
+			{Type: fantasy.StreamPartTypeToolCall, ID: "smoke-complete", ToolCallName: "completeTask", ToolCallInput: fixturePR},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
 		} {
 			if !yield(part) {
 				return
@@ -258,6 +257,7 @@ func run() (runErr error) {
 			http.Error(w, "observer failed", http.StatusInternalServerError)
 			return
 		}
+		var reportRuntime reportbridge.Bridge
 		agent := bonnie.New(
 			bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
 			bonnie.WithJournal(filepath.Join(dir, "agent")), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""),
@@ -269,9 +269,8 @@ func run() (runErr error) {
 				})(o)
 				kit.WithModel("smoke/final")(o)
 			}),
-			bonnie.WithChannel(func(runner *runtime.Runner) (bonnie.Channel, error) {
-				return natschannel.New(runner, natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true})
-			}),
+			bonnie.WithKitSetup(reportRuntime.Setup),
+			reportRuntime.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true}),
 			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}),
 		)
 		stopAgent = wcancel

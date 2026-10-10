@@ -5,43 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"regexp"
-	"strings"
 	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
 	"jawa/internal/orchestrator/db/sqlc"
 )
 
-var planningCommit = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
-
-type planningReport struct {
-	Spec       string   `json:"spec"`
-	Questions  []string `json:"questions"`
-	RepoCommit string   `json:"repo_commit"`
-}
-
-func parsePlanningReport(text string) (planningReport, error) {
-	r, err := decodePlanningOutput(text)
-	if err != nil {
-		return r, err
-	}
-	r.Spec = strings.TrimSpace(r.Spec)
-	r.RepoCommit = strings.ToLower(strings.TrimSpace(r.RepoCommit))
-	if r.Spec == "" || !planningCommit.MatchString(r.RepoCommit) {
-		return r, errors.New("planning report requires a spec and full inspected commit SHA")
-	}
-	if len(r.Questions) > 30 {
-		return r, errors.New("too many planning questions")
-	}
-	for i, v := range r.Questions {
-		r.Questions[i] = strings.TrimSpace(v)
-		if r.Questions[i] == "" || len(v) > 4000 {
-			return r, errors.New("invalid planning question")
-		}
-	}
-	return r, nil
-}
 func planningIdentityMatches(t sqlc.PlanningTurn, agent, run, attempt string) bool {
 	return (t.AgentID == "" && t.RunID == "" && t.RemoteAttemptID == "") || (t.AgentID == agent && t.RunID == run && t.RemoteAttemptID == attempt)
 }
@@ -67,6 +36,13 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	if err = sqlc.New(tx).RetainPlanningDelivery(ctx, sqlc.RetainPlanningDeliveryParams{TurnID: t.ID, Kind: "event", Payload: string(data), ReceivedAt: time.Now().UnixMilli()}); err != nil {
 		return true, err
 	}
+	reported, err := acceptedReport(tx, t.ID)
+	if err != nil {
+		return true, err
+	}
+	if reported {
+		return true, nil
+	}
 	// Capture an admission arriving after local cancellation only to cancel its
 	// exact remote identity. It must never revive the session or turn.
 	if t.State == "cancelled" && t.AgentID == "" {
@@ -80,7 +56,7 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	if !current || t.State == "failed" || !planningIdentityMatches(t, ev.AgentID, ev.RunID, ev.AttemptID) || (t.AgentID != "" && int64(ev.Seq) <= t.EventSeq) {
 		return true, nil
 	}
-	// A completed event does not finalize the turn: outcomes contain the specification.
+	// Status events never carry an authoritative proposal.
 	state, session, reason := "running", "running", ""
 	switch string(ev.State) {
 	case "failed", "cancelled":
@@ -119,63 +95,25 @@ func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Ou
 	if !current || t.OutcomeJson != "" || !planningIdentityMatches(t, out.AgentID, out.RunID, out.AttemptID) {
 		return true, nil
 	}
-	p, err := q.GetPlanningSessionByID(ctx, t.SessionID)
+	reported, err := acceptedReport(tx, t.ID)
 	if err != nil {
 		return true, err
+	}
+	if reported {
+		return true, nil
+	}
+	reason := out.Error
+	if reason == "" {
+		reason = "planner finished without an accepted typed report"
 	}
 	now := time.Now().UnixMilli()
-	state, session, reason := "completed", "ready", out.Error
-	var report planningReport
-	if out.Error != "" || string(out.State) != "completed" {
-		state, session = "failed", "failed"
-		if reason == "" {
-			reason = "planner did not complete; retry investigation (native waiting is not supported by planner contract)"
-		}
-	} else if out.AgentID == "" || out.RunID == "" || out.AttemptID == "" {
-		state, session, reason = "failed", "failed", "planning result lacks execution identity"
-	} else {
-		report, err = parsePlanningReport(out.Response)
-		if err != nil {
-			state, session, reason = "failed", "failed", err.Error()
-		} else if p.RepoCommit != "" && p.RepoCommit != report.RepoCommit {
-			state, session, reason = "failed", "failed", "planner inspected a different commit than the pinned session"
-		}
-	}
-	raw, err := json.Marshal(out)
-	if err != nil {
+	if _, err = tx.Exec(`UPDATE planning_turns SET state='failed',agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, out.Response, string(data), reason, now, t.ID); err != nil {
 		return true, err
 	}
-	if _, err = tx.Exec(`UPDATE planning_turns SET state=?,agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, state, out.AgentID, out.RunID, out.AttemptID, out.Response, string(raw), reason, now, t.ID); err != nil {
+	if err = planningMessage(tx, t.SessionID, "assistant", reason); err != nil {
 		return true, err
 	}
-	message := out.Response
-	if strings.TrimSpace(message) == "" && reason != "" {
-		message = reason
-	}
-	if err = planningMessage(tx, p.ID, "assistant", message); err != nil {
-		return true, err
-	}
-	if state == "completed" {
-		questions, err := json.Marshal(report.Questions)
-		if err != nil {
-			return true, err
-		}
-		// Revision tokens are card-global, not session-local: an approval form
-		// from a cancelled session must not approve revision 1 of a new session.
-		var revision int64
-		if err = tx.QueryRow(`SELECT coalesce(max(r.number),0)+1 FROM planning_revisions r JOIN planning_sessions s ON s.id=r.session_id WHERE s.card_id=?`, p.CardID).Scan(&revision); err != nil {
-			return true, err
-		}
-		if _, err = tx.Exec(`INSERT INTO planning_revisions(session_id,number,spec,questions_json,repo_commit,created_at) VALUES(?,?,?,?,?,?)`, p.ID, revision, report.Spec, string(questions), report.RepoCommit, now); err != nil {
-			return true, err
-		}
-		if len(report.Questions) > 0 {
-			session = "questions"
-		}
-		_, err = tx.Exec(`UPDATE planning_sessions SET state=?,spec=?,repo_commit=?,revision=?,error='',updated_at=? WHERE id=?`, session, report.Spec, report.RepoCommit, revision, now, p.ID)
-		return true, err
-	}
-	_, err = tx.Exec(`UPDATE planning_sessions SET state=?,error=?,updated_at=? WHERE id=?`, session, reason, now, p.ID)
+	_, err = tx.Exec(`UPDATE planning_sessions SET state='failed',error=?,updated_at=? WHERE id=?`, reason, now, t.SessionID)
 	return true, err
 }
 

@@ -16,7 +16,6 @@ import (
 
 	"github.com/mark3labs/bonnie"
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
-	"github.com/mark3labs/bonnie/runtime"
 	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/spf13/cobra"
@@ -57,6 +56,7 @@ func main() {
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
 		bonnie.WithRunSandboxCleanup(sandboxCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
+		bonnie.WithKitSetup(trustedReports.Setup),
 		bonnie.WithoutHumanInput(),
 		bonnie.WithKit(func(o *kit.Options) {
 			o.MCPConfig = lightpandaMCPConfig()
@@ -141,14 +141,7 @@ func natsConfig() natschannel.Config {
 // A genuinely nil interface lets BONNIE report the error instead of panicking
 // when it attempts to shut down the channel that was never constructed.
 func withNATS(cfg natschannel.Config) bonnie.Option {
-	return bonnie.WithChannel(func(r *runtime.Runner) (bonnie.Channel, error) {
-		c := natsAuthConfig(cfg)
-		ch, err := natschannel.New(r, c)
-		if err != nil {
-			return nil, err
-		}
-		return ch, nil
-	})
+	return trustedReports.Channel(natsAuthConfig(cfg))
 }
 
 // Lightpanda uses local stdio transport; KIT manages the MCP subprocess.

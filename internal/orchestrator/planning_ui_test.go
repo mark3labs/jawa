@@ -117,7 +117,7 @@ func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
 }
 
 func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
-	raw := `{"spec":"## Human plan\n\nUse **safe** rendering.","questions":["Which \u0060branch\u0060?"],"repo_commit":"` + strings.Repeat("a", 40) + `"}`
+	raw := "## Human plan\n\nUse **safe** rendering.\n\n## Questions\n\nWhich `branch`?"
 	c := Card{ID: "abc", Title: "Card", Description: "# Original", Status: "Planning"}
 	detail := PlanningDetail{
 		Session:   PlanningSession{State: "questions", Spec: "## Current plan"},
@@ -125,7 +125,7 @@ func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 		Questions: []string{"**Current question**"},
 		Messages: []PlanningMessage{
 			{Role: "assistant", Content: raw},
-			{Role: "assistant", Content: "```json\n" + raw + "\n```"},
+			{Role: "assistant", Content: raw},
 			{Role: "assistant", Content: "A **natural** reply."},
 			{Role: "user", Content: "Use `main`. [bad](javascript:alert%281%29)"},
 		},

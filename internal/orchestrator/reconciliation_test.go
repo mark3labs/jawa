@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	client "github.com/mark3labs/bonnie/client/nats"
@@ -75,7 +76,7 @@ func TestReconcileRetainedNATSOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 	selected, err := w.CardResult(card.ID)
-	if err != nil || selected.AgentID != b.AgentID || selected.PRURL == "" || selected.State != "blocked" || selected.Ready || selected.RunState != "completed" || selected.EventSeq != -1 {
+	if err != nil || selected.AgentID != b.AgentID || selected.PRURL != "" || selected.State != "failed" || !strings.Contains(selected.Error, "without an accepted typed report") || selected.Ready || selected.RunState != "completed" || selected.EventSeq != -1 {
 		t.Fatalf("selected: %+v %v", selected, err)
 	}
 	var previous, chosen string
@@ -92,6 +93,10 @@ func TestReconcileRetainedNATSOutcome(t *testing.T) {
 		t.Fatal("late result replaced selected result")
 	}
 	if err = w.markReady(selected); err != nil {
+		t.Fatal(err)
+	}
+	selected.Ready = true
+	if _, err = s.db.Exec(`UPDATE workflow_attempts SET ready=1,state='ready' WHERE task_id=?`, a.TaskID); err != nil {
 		t.Fatal(err)
 	}
 	if err = w.Reconcile(a.TaskID, old.RunID, old.AttemptID); err == nil {
@@ -278,7 +283,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := w.CardResult(card.ID)
-	if got.State != "blocked" || got.Ready || got.AgentID != "B" {
+	if got.State != "failed" || got.PRURL != "" || got.Ready || got.AgentID != "B" || !strings.Contains(got.Error, "without an accepted typed report") {
 		t.Fatalf("recovered result: %+v", got)
 	}
 	info, err := js.StreamInfo(stream)
@@ -334,7 +339,7 @@ func TestReconcileAtomicRollbackAndStaleVerification(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, _ = w.CardResult(card.ID)
-	if current.Ready || current.AgentID != "B" || current.PRURL != "https://github.com/example/repo/pull/2" {
+	if current.Ready || current.AgentID != "B" || current.PRURL != "" || current.State != "failed" {
 		t.Fatalf("stale verification applied: %+v", current)
 	}
 }

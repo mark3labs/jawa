@@ -168,6 +168,7 @@ func TestWorkflowProviderVerifierToDone(t *testing.T) {
 		}
 		return a.State == "running" && a.AgentID == target.AgentID && a.RunID == target.RunID && a.RemoteAttemptID == target.AttemptID
 	})
+	submitBuildReport(t, w, target, 7)
 	publishOutcome(t, nc, client.Outcome{Version: 1, TaskID: task.TaskID, AgentID: target.AgentID, RunID: target.RunID, AttemptID: target.AttemptID, State: runtime.RunCompleted, Response: `{"pr_number":7}`})
 	waitWorkflow(t, func() bool {
 		a, err := w.CardResult(card.ID)

@@ -40,9 +40,13 @@ dragging Planning to Building opens that review rather than bypassing approval.
 Replies start independent durable agent turns; retry and cancel are available.
 The original request and discussion remain separate from the approved specification.
 
-Planning tasks use the existing BONNIE queue and require a completed JSON report
-with `spec`, `questions`, and a full `repo_commit` SHA. They do not create PRs or
-use build verification. **Read-only planning is instructed, not sandbox-enforced
+Planning tasks use the existing BONNIE queue and submit their result through the
+`proposeSpec` tool with `spec`, an explicit `questions` array, and a full
+`repo_commit` SHA. Build tasks call `completeTask(pr_number)`; either stage may
+call `reportBlocker(reason)`. These tools send typed NATS reports with trusted
+execution identity and acknowledge only after the orchestrator commits them.
+Natural-language final responses are not workflow reports; there is no text/JSON
+parser fallback. Planning does not create PRs or use build verification. **Read-only planning is instructed, not sandbox-enforced
 by the orchestrator:** BONNIE v0.22 has no per-task tool restrictions. Configure
 agent credentials and tools appropriately; shared build-capable agents are not a
 security boundary. See [Planning contract](internal/orchestrator/PLANNING_HANDOFF.md).
@@ -98,7 +102,8 @@ explicit and audited; it never bypasses provider verification or republishes a t
 ```
 
 Credentials come from `NATS_USERNAME`/`NATS_PASSWORD`. Repeated selection can recheck
-an already-pinned result. A completed report may be bare JSON or one JSON code fence.
+an already-pinned result. Natural-language outcomes cannot establish completion;
+only accepted typed tool reports can supply the PR used for verification.
 Provider-confirmed merged PRs also count as Done, provided repository, branch, base,
 and head identity checks pass. Closed unmerged PRs remain blocked.
 

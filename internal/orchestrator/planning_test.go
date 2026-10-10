@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/bonnie/runtime"
 	"github.com/nats-io/nats.go"
 	"jawa/internal/orchestrator/db/sqlc"
+	"jawa/internal/reportprotocol"
 	"time"
 )
 
@@ -39,7 +40,7 @@ func planningOutcome(t *testing.T, w *Workflow, id, spec string, questions ...st
 	if questions == nil {
 		questions = []string{}
 	}
-	body, e := json.Marshal(planningReport{Spec: spec, Questions: questions, RepoCommit: strings.Repeat("a", 40)})
+	body, e := json.Marshal(reportprotocol.Payload{Spec: spec, Questions: questions, RepoCommit: strings.Repeat("a", 40)})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -60,10 +61,10 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 		t.Fatal("reply while active")
 	}
 	first := planningOutcome(t, w, c.ID, "Draft spec", "Which API?")
-	if e := w.result(t.Context(), first); e != nil {
+	if e := planningDelivery(t, w, first); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.result(t.Context(), first); e != nil {
+	if e := planningDelivery(t, w, first); e != nil {
 		t.Fatal(e)
 	}
 	d := planningDetails(t, w, c.ID)
@@ -77,7 +78,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 		t.Fatal(e)
 	}
 	second := planningOutcome(t, w, c.ID, "Approved spec v2")
-	if e := w.result(t.Context(), second); e != nil {
+	if e := planningDelivery(t, w, second); e != nil {
 		t.Fatal(e)
 	}
 	if e := w.ApprovePlanning(c.ID, 1); e == nil {
@@ -114,7 +115,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if !strings.Contains(a.TaskJSON, "Approved spec v2") {
 		t.Fatal("approved spec not in build task")
 	}
-	if e = w.result(t.Context(), client.Outcome{TaskID: a.TaskID, AgentID: "builder", RunID: "b", AttemptID: "b", State: runtime.RunFailed, Error: "test failed"}); e != nil {
+	if e = planningDelivery(t, w, client.Outcome{TaskID: a.TaskID, AgentID: "builder", RunID: "b", AttemptID: "b", State: runtime.RunFailed, Error: "test failed"}); e != nil {
 		t.Fatal(e)
 	}
 	if e = w.Retry(c.ID); e != nil {
@@ -124,7 +125,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if e != nil || !strings.Contains(a.TaskJSON, "Approved spec v2") {
 		t.Fatal("retry lost approved spec", e)
 	}
-	if e = w.result(t.Context(), first); e != nil {
+	if e = planningDelivery(t, w, first); e != nil {
 		t.Fatal(e)
 	}
 	if planningDetails(t, w, c.ID).Session.Revision != 2 {
@@ -145,8 +146,8 @@ func TestPlanningBackendCancellationNewSessionAndLateIdentity(t *testing.T) {
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.result(t.Context(), old); e != nil {
-		t.Fatal(e)
+	if e := planningDelivery(t, w, old); e == nil {
+		t.Fatal("late typed report accepted")
 	}
 	d := planningDetails(t, w, c.ID)
 	if d.Session.ID == before.Session.ID || d.Session.Revision != 0 {
@@ -159,13 +160,13 @@ func TestPlanningBackendCancellationNewSessionAndLateIdentity(t *testing.T) {
 	}
 	bad := out
 	bad.AgentID = "other"
-	if e := w.result(t.Context(), bad); e != nil {
-		t.Fatal(e)
+	if e := planningDelivery(t, w, bad); e == nil {
+		t.Fatal("wrong owner accepted")
 	}
 	if planningDetails(t, w, c.ID).Session.Revision != 0 {
 		t.Fatal("mismatched identity accepted")
 	}
-	if e := w.result(t.Context(), out); e != nil {
+	if e := planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
 	ev.State = runtime.RunFailed
@@ -185,7 +186,7 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 	}
 	out := planningOutcome(t, w, c.ID, "spec")
 	out.Response = `{"pr_number":123}`
-	if e := w.result(t.Context(), out); e != nil {
+	if e := planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
 	d := planningDetails(t, w, c.ID)
@@ -196,7 +197,7 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 		t.Fatal(e)
 	}
 	out = planningOutcome(t, w, c.ID, "spec")
-	if e := w.result(t.Context(), out); e != nil {
+	if e := planningDelivery(t, w, out); e != nil {
 		t.Fatal(e)
 	}
 	if e := w.ReplyPlanning(c.ID, "Please refine"); e != nil {
@@ -204,11 +205,11 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 	}
 	out = planningOutcome(t, w, c.ID, "different")
 	out.Response = strings.ReplaceAll(out.Response, strings.Repeat("a", 40), strings.Repeat("b", 40))
-	if e := w.result(t.Context(), out); e != nil {
-		t.Fatal(e)
+	if e := planningDelivery(t, w, out); e == nil {
+		t.Fatal("different pinned commit accepted")
 	}
 	d = planningDetails(t, w, c.ID)
-	if d.Session.State != "failed" || d.Session.Revision != 1 || d.Session.Spec != "spec" {
+	if d.Session.State != "queued" || d.Session.Revision != 1 || d.Session.Spec != "spec" {
 		t.Fatal(d.Session)
 	}
 }
@@ -267,6 +268,9 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 		}
 	}
 	out := planningOutcome(t, w, c.ID, "Persisted spec", "Question?")
+	if e = planningDelivery(t, w, out); e != nil {
+		t.Fatal(e)
+	}
 	publishOutcome(t, nc, out)
 	waitWorkflow(t, func() bool { d, e := w.PlanningDetail(c.ID); return e == nil && d.Session.State == "questions" })
 	if e = w.Close(); e != nil {
@@ -286,6 +290,9 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 		return e == nil && len(d.Turns) == 2 && d.Turns[1].Published
 	})
 	out = planningOutcome(t, w, c.ID, "Final spec")
+	if e = planningDelivery(t, w, out); e != nil {
+		t.Fatal(e)
+	}
 	publishOutcome(t, nc, out)
 	waitWorkflow(t, func() bool {
 		d, e := w.PlanningDetail(c.ID)
@@ -301,7 +308,7 @@ func TestPlanningBackendApprovalTransactionRollsBack(t *testing.T) {
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.result(t.Context(), planningOutcome(t, w, c.ID, "spec")); e != nil {
+	if e := planningDelivery(t, w, planningOutcome(t, w, c.ID, "spec")); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := s.db.Exec(`CREATE TRIGGER deny_build BEFORE UPDATE OF status ON cards WHEN NEW.status='Building' BEGIN SELECT RAISE(ABORT,'no'); END`); e != nil {
@@ -320,48 +327,12 @@ func TestPlanningBackendApprovalTransactionRollsBack(t *testing.T) {
 	}
 }
 
-func TestPlanningBackendOutputParserMarkdown(t *testing.T) {
-	report := "{\"spec\":\"Plan with literal ```json in its text\", \"questions\":[], \"repo_commit\":\"" + strings.Repeat("a", 40) + "\"}"
-	for _, text := range []string{
-		report,
-		"  \n```json\n" + report + "\n```\n ",
-		"```\n" + report + "\n```",
-		"```JSON\r\n" + report + "\r\n```\r\n",
-		"```json\n" + report + "\n```\nExtra prose",
-		"Here is the plan:\n```json\n" + report + "\n```",
-	} {
-		parsed, err := parsePlanningReport(text)
-		if err != nil || parsed.Spec != "Plan with literal ```json in its text" {
-			t.Fatalf("rejected valid report %q: %+v %v", text, parsed, err)
-		}
-	}
-	for _, text := range []string{
-		"```json\n" + report,
-		"```javascript\n" + report + "\n```",
-		"```json\n" + report + "\n```\n```json\n" + report + "\n```",
-		"```json\n{broken}\n```",
-		"```json\n" + report + "\n" + report + "\n```",
-	} {
-		if _, err := parsePlanningReport(text); err == nil {
-			t.Fatalf("accepted invalid fenced report %q", text)
-		}
-	}
-}
-
-func TestPlanningBackendOutputParser(t *testing.T) {
-	for _, text := range []string{`null`, `{"spec":"x","repo_commit":"abc"}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","questions":[""]}`, `{"spec":"x","repo_commit":"` + strings.Repeat("a", 40) + `","unexpected":true}`} {
-		if _, e := parsePlanningReport(text); e == nil {
-			t.Fatalf("accepted %s", text)
-		}
-	}
-}
-
 func TestPlanningBackendRevisionTokenAcrossSessions(t *testing.T) {
 	_, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.result(t.Context(), planningOutcome(t, w, c.ID, "old approved-looking spec")); e != nil {
+	if e := planningDelivery(t, w, planningOutcome(t, w, c.ID, "old approved-looking spec")); e != nil {
 		t.Fatal(e)
 	}
 	if e := w.CancelPlanning(c.ID); e != nil {
@@ -370,7 +341,7 @@ func TestPlanningBackendRevisionTokenAcrossSessions(t *testing.T) {
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e := w.result(t.Context(), planningOutcome(t, w, c.ID, "new spec")); e != nil {
+	if e := planningDelivery(t, w, planningOutcome(t, w, c.ID, "new spec")); e != nil {
 		t.Fatal(e)
 	}
 	if e := w.ApprovePlanning(c.ID, 1); e == nil {
@@ -409,7 +380,7 @@ func TestPlanningBackendActualStoreReopen(t *testing.T) {
 	if e = w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e = w.result(t.Context(), planningOutcome(t, w, c.ID, "durable spec", "Need answer")); e != nil {
+	if e = planningDelivery(t, w, planningOutcome(t, w, c.ID, "durable spec", "Need answer")); e != nil {
 		t.Fatal(e)
 	}
 	if e = s.Close(); e != nil {
@@ -450,6 +421,9 @@ func TestPlanningBackendRetainedOutcomeRecovery(t *testing.T) {
 	w.client = cli
 	w.dispatchPlanning()
 	out := planningOutcome(t, w, c.ID, "Recovered spec")
+	if e = planningDelivery(t, w, out); e != nil {
+		t.Fatal(e)
+	}
 	publishOutcome(t, nc, out)
 	if e = w.recoverPlanningResults(nc); e != nil {
 		t.Fatal(e)
@@ -522,8 +496,8 @@ func TestPlanningBackendCancellationQueueUsesObservedTurn(t *testing.T) {
 	if e != nil || turn.CancelSent != 1 || turn.State != "cancelled" {
 		t.Fatal(turn, e)
 	}
-	if e = w.result(t.Context(), out); e != nil {
-		t.Fatal(e)
+	if e = planningDelivery(t, w, out); e == nil {
+		t.Fatal("cancelled report accepted")
 	}
 	d := planningDetails(t, w, c.ID)
 	if d.Session.State != "cancelled" || d.Session.Revision != 0 {
@@ -543,7 +517,7 @@ func TestPlanningBackendHistoryCascadesAndLaneCompacts(t *testing.T) {
 	if e = w.MoveCard(other.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
 	}
-	if e = w.result(t.Context(), planningOutcome(t, w, c.ID, "spec")); e != nil {
+	if e = planningDelivery(t, w, planningOutcome(t, w, c.ID, "spec")); e != nil {
 		t.Fatal(e)
 	}
 	if e = w.DeleteCard(c.ID); e == nil {

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"jawa/internal/reportprotocol"
 	"testing"
 
 	client "github.com/mark3labs/bonnie/client/nats"
@@ -77,7 +78,19 @@ func TestWorkflowCancelledRunRestarts(t *testing.T) {
 			if action == "resume" && (a.State != "running" || a.RunState != "running" || a.Error != "" || !attemptActive(a)) {
 				t.Fatalf("resume ignored: %+v", a)
 			}
-			out.State, out.Response = runtime.RunCompleted, `{"pr_number":123}`
+			if action == "resume" {
+				submitBuildReport(t, w, client.Target{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID}, 123)
+			} else {
+				r, err := reportprotocol.NewRequest(reportprotocol.Identity{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID, TurnID: "turn"}, reportprotocol.CompleteTask, reportprotocol.Payload{PRNumber: 123})
+				if err != nil {
+					t.Fatal(err)
+				}
+				w.observeReport = fakeReportObserver
+				if _, err = w.acceptReport(t.Context(), r); err == nil {
+					t.Fatal("superseded/reset report accepted")
+				}
+			}
+			out.State, out.Response = runtime.RunCompleted, "ignored completion text"
 			if err := w.result(t.Context(), out); err != nil {
 				t.Fatal(err)
 			}

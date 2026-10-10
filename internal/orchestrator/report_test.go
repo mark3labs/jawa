@@ -24,17 +24,3 @@ func TestProjectPRURL(t *testing.T) {
 		}
 	}
 }
-
-func TestReportPR(t *testing.T) {
-	raw := `{"pr_number":1}`
-	for _, text := range []string{raw, "```json\n" + raw + "\n```", "```\n" + raw + "\n```", " \n```json\r\n" + raw + "\r\n```\n "} {
-		if reportPR(text) != 1 {
-			t.Fatalf("valid report rejected: %q", text)
-		}
-	}
-	for _, text := range []string{"prefix\n" + raw, "```json\n" + raw + "\n```\nextra", "```js\n" + raw + "\n```", raw + raw, "```json\n" + raw + "\n```\n```json\n" + raw + "\n```", `{"pr_url":"https://github.com/example/repo/pull/1"}`, `{}`, `null`, `1`, `{"pr_number":0}`, `{"pr_number":-1}`, `{"pr_number":1.5}`, `{"pr_number":"1"}`, `{"pr_number":null}`, `{"pr_number":9223372036854775808}`} {
-		if reportPR(text) != 0 {
-			t.Fatalf("invalid report accepted: %q", text)
-		}
-	}
-}

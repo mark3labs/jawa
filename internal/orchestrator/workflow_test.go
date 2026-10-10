@@ -151,7 +151,8 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 		}
 		return a.AgentID == "agent"
 	})
-	out := client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: `{"pr_number":1}`}
+	submitBuildReport(t, w, target, 1)
+	out := client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunCompleted, Response: "malformed natural completion"}
 	publishOutcome(t, nc, out)
 	waitWorkflow(t, func() bool {
 		a, e := w.CardResult(c.ID)
@@ -351,7 +352,7 @@ func TestWorkflowAtomicRollbackAndBlockedResults(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		return a.State == "blocked"
+		return a.State == "failed" && strings.Contains(a.Error, "without an accepted typed report")
 	})
 	w.SetVerifier(func(context.Context, Attempt) (bool, error) {
 		t.Error("invalid report reached verifier")
@@ -461,8 +462,9 @@ func TestWorkflowFailureAndWaitingRemainBuilding(t *testing.T) {
 				if e = w.Retry(c.ID); e == nil {
 					t.Fatal("retry of waiting/nonterminal outcome permitted")
 				}
+				submitBuildReport(t, w, client.Target{TaskID: out.TaskID, AgentID: out.AgentID, RunID: out.RunID, AttemptID: out.AttemptID}, 1)
 				out.State = runtime.RunCompleted
-				out.Response = `{"pr_number":1}`
+				out.Response = "ignored natural output"
 				publishOutcome(t, nc, out)
 				waitWorkflow(t, func() bool {
 					a, e := w.CardResult(c.ID)

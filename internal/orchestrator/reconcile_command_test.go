@@ -103,7 +103,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "latest unready attempt") {
 					t.Fatalf("latest guard: %v", err)
 				}
-			} else if err != nil || !strings.Contains(output.String(), "blocked; provider readiness not verified") {
+			} else if err != nil || !strings.Contains(output.String(), "Reconciled: failed") {
 				t.Fatalf("command: %v %s", err, &output)
 			}
 			got, err := scanAttempt(s.db.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, a.TaskID))
@@ -119,7 +119,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 					t.Fatalf("guard mutated attempt: %+v audits=%d", got, audits)
 				}
 			} else {
-				if got.AgentID != "B" || got.PRURL != "https://github.com/example/repo/pull/2" || got.State != "blocked" || got.Ready || audits != 1 {
+				if got.AgentID != "B" || got.PRURL != "" || got.State != "failed" || !strings.Contains(got.Error, "without an accepted typed report") || got.Ready || audits != 1 {
 					t.Fatalf("selected: %+v audits=%d", got, audits)
 				}
 				var previous, selected string

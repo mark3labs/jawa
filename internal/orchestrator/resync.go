@@ -83,6 +83,13 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 	if err != nil {
 		return err
 	}
+	reported, err := acceptedReport(tx, a.TaskID)
+	if err != nil {
+		return err
+	}
+	if reported {
+		return nil
+	}
 	if status.Version != 1 || status.Error != "" || status.TaskID != a.TaskID || !matches(a, status.AgentID, status.RunID, status.AttemptID) || a.Ready || status.Seq < a.EventSeq || a.OutcomeJSON != observed.OutcomeJSON || (a.OutcomeJSON != "" && !resumableOutcome(a)) {
 		return nil
 	}
