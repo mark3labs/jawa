@@ -56,7 +56,11 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	if err := migrateWorkflow(s); err != nil {
 		return nil, err
 	}
-	c, err := client.New(conn, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true, EventConsumer: "jawa-workflow-events", ResultConsumer: "jawa-workflow-results"})
+	consumerID, err := workflowConsumerID(s)
+	if err != nil {
+		return nil, err
+	}
+	c, err := client.New(conn, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true, EventConsumer: "jawa-workflow-events-" + consumerID, ResultConsumer: "jawa-workflow-results-" + consumerID})
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +70,10 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
+	if err := w.RecoverEvents(ctx, conn); err != nil {
+		cancel()
+		return nil, err
+	}
 	if err := w.RecoverResults(ctx, conn); err != nil {
 		cancel()
 		return nil, err

@@ -15,6 +15,9 @@ import (
 func (w *Workflow) resyncRuns(conn *nats.Conn) {
 	// Recover final reports before slow/unreachable status owners can exhaust
 	// the sweep budget. Result recovery has its own bounded deadline.
+	if err := w.RecoverEvents(w.ctx, conn); err != nil {
+		w.log().Warn("workflow resync event recovery failed", "category", "recovery")
+	}
 	if err := w.RecoverResults(w.ctx, conn); err != nil {
 		w.log().Warn("workflow resync result recovery failed", "category", "recovery")
 	}

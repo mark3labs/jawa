@@ -222,8 +222,13 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream := client.DefaultResultStreamName("bonnie.results")
+	consumerID, err := workflowConsumerID(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer := "jawa-workflow-results-" + consumerID
 	waitWorkflow(t, func() bool {
-		info, e := js.ConsumerInfo(stream, "jawa-workflow-results")
+		info, e := js.ConsumerInfo(stream, consumer)
 		return e == nil && info.AckFloor.Stream >= 1
 	})
 	if err = w.Close(); err != nil {
@@ -233,7 +238,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 	if _, err = s.db.Exec(`DELETE FROM workflow_conflicts`); err != nil {
 		t.Fatal(err)
 	}
-	before, err := js.ConsumerInfo(stream, "jawa-workflow-results")
+	before, err := js.ConsumerInfo(stream, consumer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +270,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 		t.Fatal("recovery changed first receipt")
 	}
 
-	after, err := js.ConsumerInfo(stream, "jawa-workflow-results")
+	after, err := js.ConsumerInfo(stream, consumer)
 	if err != nil || before.AckFloor.Stream != after.AckFloor.Stream || before.AckFloor.Consumer != after.AckFloor.Consumer {
 		t.Fatalf("consumer reset: %v", err)
 	}
