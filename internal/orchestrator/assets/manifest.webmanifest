@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Jawa — Coding Agent Workspace",
+  "short_name": "Jawa",
+  "description": "Plan tasks, follow builds, and manage coding agents.",
+  "lang": "en",
+  "start_url": "/board",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#130f0b",
+  "theme_color": "#130f0b",
+  "icons": [
+    {"src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

@@ -13,3 +13,4 @@ cp src/style.css src/.build.css
 trap 'rm -f src/.build.css' EXIT
 printf '\n@source "%s/components";\n' "$SHADCN" >> src/.build.css
 tailwindcss -i src/.build.css -o ../assets/style.css --minify
+node build-pwa.mjs

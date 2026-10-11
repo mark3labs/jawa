@@ -23,8 +23,15 @@ func authPageWithRequest(w http.ResponseWriter, r *http.Request, kind, msg strin
 templ head(title string) {
 	<head>
 		<meta charset="utf-8"/>
-		<meta name="viewport" content="width=device-width,initial-scale=1"/>
+		<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 		<meta name="color-scheme" content="dark"/>
+		<meta name="theme-color" content="#130f0b"/>
+		<meta name="description" content="Jawa — your coding agent workspace. Plan tasks, follow builds, and manage agents."/>
+		<meta name="apple-mobile-web-app-capable" content="yes"/>
+		<meta name="apple-mobile-web-app-title" content="Jawa"/>
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+		<link rel="manifest" href="/assets/manifest.webmanifest"/>
+		<link rel="apple-touch-icon" href="/assets/icon-180.png"/>
 		<title>{ title }</title>
 		<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"/>
 		<link rel="preload" href="/assets/inter.woff2" as="font" type="font/woff2" crossorigin/>

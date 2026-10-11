@@ -138,6 +138,19 @@ Datastar SSE morphs only each view's keyed content, sidebar counts, and agent
 chip. Rocket (Datastar v1.0.4 + Rocket beta.2) wraps SortableJS, menus, relative
 timestamps, clipboard controls, and keyboard shortcuts. No production CDN is used.
 
+On phones the board stacks its lanes; tablets use two columns, with visible card
+actions and touch-sized controls. Runs retain their agent, attempt, PR and update
+information in a compact card layout. Card menus allow moves without dragging.
+
+Jawa can be installed as a **PWA** using your browser's install command (on iOS,
+Safari **Share → Add to Home Screen**). Serve it over HTTPS for mobile installation;
+HTTP loopback works for local development, but HTTP on a LAN address does not
+support service workers. The installed app still requires a connection to the
+orchestrator. Only public static assets and a generic offline page are cached:
+no task data, authenticated HTML, API responses or offline mutations. A new asset
+build creates a versioned cache; close old app tabs/windows and reopen to activate
+a waiting update. Installation availability depends on the browser/platform.
+
 Keyboard shortcuts: `c` opens a new card, `/` focuses the board filter, and
 `g` followed by `b`, `r`, `a`, or `s` opens Board, Runs, Agents, or Settings.
 Shortcuts are disabled while typing or using a dialog. Card actions are in the

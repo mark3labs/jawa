@@ -6,6 +6,14 @@ import {rocket} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
 import {setupIssueSelector} from './issue-selector.js';
 
+// Installation is progressive enhancement; HTTP deployments remain usable.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', {scope: '/', updateViaCache: 'none'})
+      .catch(() => { /* Offline or disabled by browser policy; normal UI still works. */ });
+  }, {once: true});
+}
+
 // Load project issues only when needed; keep card drafts outside live patches.
 rocket('jawa-issue-selector', {
   mode: 'light',
@@ -112,13 +120,17 @@ rocket('jawa-menu', {
     popover.addEventListener('click', onClick);
     popover.addEventListener('keydown', onKey);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    // Scrolling a tall touch menu must not dismiss it; only outside scrolls do.
+    const onScroll = event => {
+      if (!popover.contains(event.target)) close();
+    };
+    window.addEventListener('scroll', onScroll, true);
     cleanup(() => {
       popover.removeEventListener('toggle', onToggle);
       popover.removeEventListener('click', onClick);
       popover.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
     });
   },
 });
