@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/a-h/templ"
+	"maps"
 	"net/http"
 	"net/url"
 	"time"
@@ -33,8 +34,10 @@ type uiSnapshot struct {
 
 // pageData is everything a view needs to render. Views never query storage.
 type pageData struct {
-	csrf string
-	v    viewParams
+	csrf      string
+	v         viewParams
+	dashboard map[string]string
+	defaults  map[string]string
 	uiSnapshot
 }
 
@@ -68,7 +71,7 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	return snap, nil
 }
 
-func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams) (pageData, error) {
+func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams, runtimeDefaults ...map[string]string) (pageData, error) {
 	snap, err := loadUISnapshot(ctx, s, wf)
 	if err != nil {
 		return pageData{}, err
@@ -78,14 +81,22 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 			v.Project = p.ID
 		}
 	}
-	return pageData{csrf: csrf, v: v, uiSnapshot: snap}, nil
+	dashboard, err := s.DashboardOverrides()
+	if err != nil {
+		return pageData{}, fmt.Errorf("load dashboard settings: %w", err)
+	}
+	defaults := map[string]string{}
+	if len(runtimeDefaults) > 0 {
+		maps.Copy(defaults, runtimeDefaults[0])
+	}
+	return pageData{csrf: csrf, v: v, dashboard: dashboard, defaults: defaults, uiSnapshot: snap}, nil
 }
 
 // renderFragments returns only stable patch roots, never the shell or open
 // forms: the active view's root, the sidebar navigation, the agent chip and,
 // last, the (empty) notice. Live updates omit that last fragment.
-func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams) ([]templ.Component, error) {
-	d, err := loadPageData(ctx, s, wf, csrf, v)
+func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v viewParams, runtimeDefaults ...map[string]string) ([]templ.Component, error) {
+	d, err := loadPageData(ctx, s, wf, csrf, v, runtimeDefaults...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,13 +110,15 @@ func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v
 		out = append(out, runsContent(d))
 	case viewAgents:
 		out = append(out, agentsContent(d))
+	case viewSettings:
+		out = append(out, settingsContent(d))
 	}
 	return append(out, sidebarNav(d), agentStatus(d), notification("", "")), nil
 }
 
 // Snapshot renders HTML for a Datastar patch-elements SSE frame.
-func Snapshot(r *http.Request, s *Store, wf *Workflow, v viewParams) (string, error) {
-	fragments, err := renderFragments(r.Context(), s, wf, CSRFToken(r), v)
+func Snapshot(r *http.Request, s *Store, wf *Workflow, v viewParams, runtimeDefaults ...map[string]string) (string, error) {
+	fragments, err := renderFragments(r.Context(), s, wf, CSRFToken(r), v, runtimeDefaults...)
 	if err != nil {
 		return "", err
 	}
@@ -118,8 +131,8 @@ func Snapshot(r *http.Request, s *Store, wf *Workflow, v viewParams) (string, er
 	return out.String(), nil
 }
 
-func renderWorkflowPage(w http.ResponseWriter, r *http.Request, s *Store, wf *Workflow, v viewParams) {
-	d, err := loadPageData(r.Context(), s, wf, CSRFToken(r), v)
+func renderWorkflowPage(w http.ResponseWriter, r *http.Request, s *Store, wf *Workflow, v viewParams, runtimeDefaults ...map[string]string) {
+	d, err := loadPageData(r.Context(), s, wf, CSRFToken(r), v, runtimeDefaults...)
 	if err != nil {
 		http.Error(w, "Unable to load workspace", http.StatusInternalServerError)
 		return

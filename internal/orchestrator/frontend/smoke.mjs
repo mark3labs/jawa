@@ -151,7 +151,7 @@ async function createCard(title) {
 async function createProject(name) {
  await page.locator('#sidebar-nav').getByRole('button', {name: 'New project'}).click();
  await page.getByLabel('Name', {exact: true}).fill(name);
- await page.getByLabel('Repository URL').fill('https://github.com/example/smoke.git');
+ await page.getByLabel('Repository name', {exact: true}).fill('example/smoke');
  await page.getByRole('button', {name: 'Create project', exact: true}).click();
  await page.getByRole('heading', {name, exact: true}).waitFor();
  return new URL(page.url()).searchParams.get('project');
@@ -268,13 +268,13 @@ try {
  // Project draft is outside patch roots as well.
  await page.locator('#sidebar-nav').getByRole('button', {name: 'New project'}).click();
  await page.getByLabel('Name', {exact: true}).fill('Project draft survives SSE');
- await page.getByLabel('Repository URL').fill('https://github.com/example/draft.git');
+ await page.getByLabel('Repository name', {exact: true}).fill('example/draft');
  await bridge('/start'); started = true;
  await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'restarted agent');
  await page.locator('#agent-status').getByText('1 agent online').waitFor();
  await expect(page.locator('#project-dialog')).toBeVisible();
  await expect(page.getByLabel('Name', {exact: true})).toHaveValue('Project draft survives SSE');
- await expect(page.getByLabel('Repository URL')).toHaveValue('https://github.com/example/draft.git');
+ await expect(page.getByLabel('Repository name', {exact: true})).toHaveValue('example/draft');
  await page.locator('#project-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
  await page.getByLabel('Filter cards').fill('');
  await sameDocument();

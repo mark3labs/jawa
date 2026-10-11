@@ -292,3 +292,20 @@ go run ./cmd/factory-smoke
 
 Pushes publish images to GHCR with branch and commit tags; `master` updates
 `latest`.
+
+### Dashboard orchestrator overrides
+
+The authenticated Settings page saves dashboard overrides for the running
+orchestrator's HTTP/NATS listener addresses, debug logging, GitHub/Forgejo
+read-only provider tokens, and GitHub's `JAWA_ALLOW_NO_CI` opt-in. Dashboard
+values override explicit `orchestrator` CLI flags, which override the
+`JAWA_ORCHESTRATOR_LISTEN`, `JAWA_ORCHESTRATOR_NATS_LISTEN`, and
+`JAWA_ORCHESTRATOR_DEBUG` environment defaults. `JAWA_ORCHESTRATOR_DATA_DIR`
+selects the bootstrap database directory; `--data-dir` overrides it. The data
+directory is needed to load these saved settings, so its selection is not a
+dashboard override. Listener changes take effect after restart; debug logging
+and provider settings resolve immediately, without mutating process environment.
+Provider tokens are write-only in the UI; explicit clear-token controls remove
+the dashboard override and reveal the environment fallback. Reset all removes
+every dashboard override. These settings apply only to the `orchestrator`
+command, not standalone agent/`serve` or administrative subcommands.

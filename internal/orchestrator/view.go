@@ -379,7 +379,20 @@ type providerConfig struct {
 	Configured   bool
 }
 
-func providerConfigs() []providerConfig {
+func dashboardValue(d pageData, key, env, fallback string) string {
+	if value, ok := d.dashboard[key]; ok {
+		return value
+	}
+	if value, ok := d.defaults[key]; ok {
+		return value
+	}
+	if value := os.Getenv(env); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func providerConfigs(overrides map[string]string) []providerConfig {
 	has := func(keys ...string) bool {
 		for _, k := range keys {
 			if strings.TrimSpace(os.Getenv(k)) != "" {
@@ -388,9 +401,10 @@ func providerConfigs() []providerConfig {
 		}
 		return false
 	}
+	configured := map[string]bool{"GitHub": overrides["github-token"] != "", "Forgejo": overrides["forgejo-token"] != ""}
 	return []providerConfig{
-		{"GitHub", "JAWA_GITHUB_TOKEN or GITHUB_TOKEN", has("JAWA_GITHUB_TOKEN", "GITHUB_TOKEN")},
-		{"Forgejo", "JAWA_FORGEJO_TOKEN", has("JAWA_FORGEJO_TOKEN")},
+		{"GitHub", "JAWA_GITHUB_TOKEN or GITHUB_TOKEN", configured["GitHub"] || has("JAWA_GITHUB_TOKEN", "GITHUB_TOKEN")},
+		{"Forgejo", "JAWA_FORGEJO_TOKEN", configured["Forgejo"] || has("JAWA_FORGEJO_TOKEN")},
 	}
 }
 

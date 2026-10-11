@@ -50,13 +50,16 @@ type loginAttempts struct {
 	until time.Time
 }
 type app struct {
-	s           *Store
-	issueClient *http.Client
-	workflow    *Workflow
-	ns          *server.Server
-	options     *server.Options // Latest successfully applied options; guarded by mu.
-	mu          sync.Mutex
-	attempts    map[string]loginAttempts
+	s               *Store
+	issueClient     *http.Client
+	logger          *log.Logger
+	debugDefault    bool
+	runtimeDefaults map[string]string
+	workflow        *Workflow
+	ns              *server.Server
+	options         *server.Options // Latest successfully applied options; guarded by mu.
+	mu              sync.Mutex
+	attempts        map[string]loginAttempts
 }
 
 const maxRequestBody = 1 << 20
@@ -103,7 +106,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if kind, ok := viewFromPath(r.URL.Path); ok && r.Method == http.MethodGet {
 		a.ensureCSRF(w, r)
-		renderWorkflowPage(w, r, a.s, a.workflow, parseViewParams(r, kind))
+		renderWorkflowPage(w, r, a.s, a.workflow, parseViewParams(r, kind), a.runtimeDefaults)
 		return
 	}
 	if r.URL.Path == "/activity" && r.Method == http.MethodGet {
@@ -129,7 +132,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -249,6 +252,67 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = a.workflow.CancelCard(r.Context(), r.FormValue("card_id"))
 			if err == nil {
 				fx.flash = "Cancellation was requested; it is not confirmed until the agent reports cancellation. External actions already taken cannot be undone."
+			}
+		}
+	case "/settings/orchestrator/reset":
+		err = a.s.ClearDashboardOverrides()
+		if err == nil {
+			fx.flash = "Dashboard overrides cleared. Restart required for listener changes."
+			if a.logger != nil {
+				if a.debugDefault {
+					a.logger.SetLevel(log.DebugLevel)
+				} else {
+					a.logger.SetLevel(log.InfoLevel)
+				}
+			}
+		}
+	case "/settings/orchestrator":
+		var values map[string]string
+		values, err = a.s.DashboardOverrides()
+		if err == nil {
+			for _, key := range []string{"listen", "nats-listen"} {
+				if value := strings.TrimSpace(r.FormValue(key)); value != "" {
+					if _, _, e := validatedListenAddress(value); e != nil {
+						err = fmt.Errorf("invalid %s address", key)
+						break
+					}
+					values[key] = value
+				}
+			}
+			if err == nil && r.Form.Has("debug") {
+				value := r.Form.Get("debug")
+				if value != "true" && value != "false" {
+					err = errors.New("debug must be true or false")
+				} else {
+					values["debug"] = value
+				}
+			}
+			for _, pair := range [][2]string{{"github-token", "github-token"}, {"forgejo-token", "forgejo-token"}} {
+				if r.Form.Has(pair[0]+"-clear") && r.Form.Get(pair[0]+"-clear") == "true" {
+					delete(values, pair[1])
+				}
+				if value := strings.TrimSpace(r.FormValue(pair[0])); value != "" {
+					values[pair[1]] = value
+				}
+			}
+			if err == nil && r.Form.Has("allow-no-ci") {
+				value := r.Form.Get("allow-no-ci")
+				if value != "true" && value != "false" {
+					err = errors.New("allow-no-ci must be true or false")
+				} else {
+					values["allow-no-ci"] = value
+				}
+			}
+			if err == nil {
+				err = a.s.ReplaceDashboardOverrides(values)
+				fx.flash = "Overrides saved. Listener changes require a restart; debug logging applies immediately."
+			}
+			if err == nil && values["debug"] != "" && a.logger != nil {
+				if values["debug"] == "true" {
+					a.logger.SetLevel(log.DebugLevel)
+				} else {
+					a.logger.SetLevel(log.InfoLevel)
+				}
 			}
 		}
 	case "/settings/nats":
@@ -563,9 +627,13 @@ func Command() *cobra.Command {
 			logger.SetLevel(log.DebugLevel)
 		}
 		logger.Info("Starting orchestrator")
-		if _, _, err := net.SplitHostPort(listen); err != nil {
-			return err
+		runtimeDefaults := map[string]string{"listen": listen, "nats-listen": natsListen, "debug": strconv.FormatBool(debug), "allow-no-ci": strconv.FormatBool(orchestratorEnv("JAWA_ALLOW_NO_CI", "false") == "true")}
+		for _, key := range []string{"debug", "listen", "nats-listen"} {
+			if cmd.Flags().Changed(key) {
+				runtimeDefaults[key] = cmd.Flags().Lookup(key).Value.String()
+			}
 		}
+		debugDefault := debug
 		if dir == "" {
 			base, err := os.UserConfigDir()
 			if err != nil {
@@ -586,6 +654,35 @@ func Command() *cobra.Command {
 				logger.Error("Failed to close store", "err", closeErr)
 			}
 		}()
+		overrides, err := s.DashboardOverrides()
+		if err != nil {
+			return err
+		}
+		if v := overrides["listen"]; v != "" {
+			listen = v
+		}
+		if v := overrides["nats-listen"]; v != "" {
+			natsListen = v
+		}
+		if v := overrides["debug"]; v == "true" {
+			logger.SetLevel(log.DebugLevel)
+		} else if v == "false" {
+			logger.SetLevel(log.InfoLevel)
+		}
+		if _, _, err := validatedListenAddress(listen); err != nil {
+			return err
+		}
+		if _, _, err := validatedListenAddress(natsListen); err != nil {
+			return err
+		}
+		if value, ok := overrides["debug"]; ok {
+			debug = value == "true"
+		}
+		if debug {
+			logger.SetLevel(log.DebugLevel)
+		} else {
+			logger.SetLevel(log.InfoLevel)
+		}
 		opts, err := natsOptions(s, natsListen, dir)
 		if err != nil {
 			return err
@@ -633,7 +730,7 @@ func Command() *cobra.Command {
 		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		srv := &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Addr: listen, Handler: &app{s: s, ns: ns, options: opts, workflow: workflow}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+		srv := &http.Server{BaseContext: func(net.Listener) context.Context { return ctx }, Addr: listen, Handler: &app{s: s, ns: ns, options: opts, workflow: workflow, logger: logger, debugDefault: debugDefault, runtimeDefaults: runtimeDefaults}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 		listener, err := net.Listen("tcp", listen)
 		if err != nil {
 			logger.Error("Failed to listen for HTTP", "address", listen, "err", err)
@@ -670,12 +767,31 @@ func Command() *cobra.Command {
 			return err
 		}
 	}}
-	cmd.Flags().BoolVar(&debug, "debug", false, "Include debug logs for polling and ignored deliveries")
-	cmd.Flags().StringVar(&dir, "data-dir", "", "Persistent data directory")
-	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8080", "HTTP listen address")
-	cmd.Flags().StringVar(&natsListen, "nats-listen", "127.0.0.1:4222", "Authenticated embedded NATS listen address")
+	cmd.Flags().BoolVar(&debug, "debug", orchestratorEnv("JAWA_ORCHESTRATOR_DEBUG", "false") == "true", "Include debug logs for polling and ignored deliveries")
+	cmd.Flags().StringVar(&dir, "data-dir", orchestratorEnv("JAWA_ORCHESTRATOR_DATA_DIR", ""), "Persistent data directory")
+	cmd.Flags().StringVar(&listen, "listen", orchestratorEnv("JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
+	cmd.Flags().StringVar(&natsListen, "nats-listen", orchestratorEnv("JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), "Authenticated embedded NATS listen address")
 	cmd.AddCommand(ReconcileCommand())
 	return cmd
+}
+
+func orchestratorEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func validatedListenAddress(address string) (string, int, error) {
+	host, portText, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", 0, err
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 0 || port > 65535 {
+		return "", 0, errors.New("port must be between 0 and 65535")
+	}
+	return host, port, nil
 }
 
 func (a *app) activity(w http.ResponseWriter, r *http.Request) {
