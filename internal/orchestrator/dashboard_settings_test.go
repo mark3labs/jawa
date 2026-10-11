@@ -62,6 +62,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if strings.Contains(page.Body.String(), "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("secret appeared in settings page")
 	}
+	assertSettingsProviderUX(t, page.Body.String())
 	// Reject invalid addresses before any setting is changed.
 	bad := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "listen": {"127.0.0.1:70000"}, "github-token": {"JAWA_SECRET_SHOULD_NOT_APPEAR"}}, session, csrf)
 	status(t, bad, 400)
@@ -81,6 +82,9 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	values, err = a.s.DashboardOverrides()
 	if err != nil || values["debug"] != "false" || values["allow-no-ci"] != "false" || values["github-token"] != "JAWA_SECRET_SHOULD_NOT_APPEAR" {
 		t.Fatalf("explicit false or secret override not persisted: %#v, %v", values, err)
+	}
+	if values["forgejo-token"] != "" {
+		t.Fatalf("unexpected Forgejo token override: %#v", values)
 	}
 	page = request(a, "GET", "/settings", nil, session, csrf)
 	status(t, page, 200)
@@ -109,6 +113,58 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	}
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("cleared secret appeared in live refresh")
+	}
+}
+
+func assertSettingsProviderUX(t *testing.T, body string) {
+	t.Helper()
+	for _, want := range []string{`>Save</button>`, `Clear saved GitHub token override`, `Clear saved Forgejo token override`, `github.com`, `codeberg.org`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("settings page missing expected provider UX %q", want)
+		}
+	}
+	for _, old := range []string{"Clear GitHub token", "Clear Forgejo token", `name="clear-github-token"`, `name="clear-forgejo-token"`} {
+		if strings.Contains(body, old) {
+			t.Errorf("settings page contains obsolete separate clear control %q", old)
+		}
+	}
+}
+
+func TestDashboardSettingsClearTokenOverridesIndependently(t *testing.T) {
+	a := testApp(t)
+	session, csrf := setupTest(t, a)
+	page := request(a, "GET", "/settings", nil, session)
+	csrf = cookie(t, page, "csrf")
+	seed := request(a, "POST", "/settings/orchestrator", url.Values{
+		"_csrf": {csrf.Value}, "listen": {"127.0.0.1:9100"}, "nats-listen": {"127.0.0.1:4223"},
+		"debug": {"false"}, "allow-no-ci": {"true"}, "github-token": {"github-secret"}, "forgejo-token": {"forgejo-secret"},
+	}, session, csrf)
+	status(t, seed, 303)
+
+	clearGitHub := request(a, "POST", "/settings/orchestrator", url.Values{
+		"_csrf": {csrf.Value}, "github-token-clear": {"true"}, "listen": {"127.0.0.1:9200"},
+		"nats-listen": {"127.0.0.1:4224"}, "debug": {"true"}, "allow-no-ci": {"false"},
+	}, session, csrf)
+	status(t, clearGitHub, 303)
+	values, err := a.s.DashboardOverrides()
+	if err != nil || values["github-token"] != "" || values["forgejo-token"] != "forgejo-secret" {
+		t.Fatalf("clearing GitHub changed wrong token: %#v, %v", values, err)
+	}
+	if values["listen"] != "127.0.0.1:9200" || values["nats-listen"] != "127.0.0.1:4224" || values["debug"] != "true" || values["allow-no-ci"] != "false" {
+		t.Fatalf("clearing GitHub did not preserve submitted settings: %#v", values)
+	}
+
+	clearForgejo := request(a, "POST", "/settings/orchestrator", url.Values{
+		"_csrf": {csrf.Value}, "forgejo-token-clear": {"true"}, "listen": {"127.0.0.1:9300"},
+		"nats-listen": {"127.0.0.1:4225"}, "debug": {"false"}, "allow-no-ci": {"true"},
+	}, session, csrf)
+	status(t, clearForgejo, 303)
+	values, err = a.s.DashboardOverrides()
+	if err != nil || values["forgejo-token"] != "" || values["github-token"] != "" {
+		t.Fatalf("clearing Forgejo changed wrong token: %#v, %v", values, err)
+	}
+	if values["listen"] != "127.0.0.1:9300" || values["nats-listen"] != "127.0.0.1:4225" || values["debug"] != "false" || values["allow-no-ci"] != "true" {
+		t.Fatalf("clearing Forgejo did not preserve submitted settings: %#v", values)
 	}
 }
 
