@@ -1,9 +1,16 @@
-// Datastar owns every request and DOM patch. Rocket (Datastar's web component
+// Datastar owns form requests and DOM patches. Rocket (Datastar's web component
 // API, bundled with Datastar in datastar-rocket.js) owns the behaviors below.
 // Components render in the light DOM so server-rendered markup stays the source
 // of truth and live SSE morphs keep working.
 import {rocket} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
+import {setupIssueSelector} from './issue-selector.js';
+
+// Load project issues only when needed; keep card drafts outside live patches.
+rocket('jawa-issue-selector', {
+  mode: 'light',
+  setup: ({host, cleanup}) => setupIssueSelector(host, cleanup),
+});
 
 const cardsIn = list => [...list.querySelectorAll(':scope > .task-card')];
 
