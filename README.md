@@ -32,6 +32,16 @@ Building / Done board supports drag-and-drop and keyboard moves, persistent orde
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
 
+The **New card** dialog lists open issues from the selected project's repository
+as `#number title`; choosing one stores its issue link. Changing projects clears
+the previous selection. **Refresh issues** retries loading or picks up new issues.
+You can still create a card with **No linked issue** when the list is empty or
+unavailable. The orchestrator needs `JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) with
+repository issue read access for GitHub, or `JAWA_FORGEJO_TOKEN` for Forgejo;
+these credentials stay on the server. Loading is bounded to 20 seconds and 20
+pages of 100 API entries; larger lists report a loading error rather than show
+an incomplete selector.
+
 **Planning is optional:** drag Todo directly to Building for clear tasks, or move
 it to Planning for repository investigation and refinement. Open the planning
 card to read the proposed specification, answer questions, and review versioned

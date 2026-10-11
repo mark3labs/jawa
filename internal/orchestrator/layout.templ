@@ -449,12 +449,19 @@ templ dialogs(d pageData) {
 				}
 				@textarea.Textarea(textarea.Props{ID: "card-description", Name: "description", Rows: 5})
 			</div>
-			<div class="field">
+			<jawa-issue-selector class="field">
 				@label.Label(label.Props{For: "card-issue"}) {
-					Issue URL
+					Open issue (optional)
 				}
-				@input.Input(input.Props{ID: "card-issue", Name: "issue_url", Type: "url", Placeholder: "https://github.com/owner/repo/issues/1"})
-			</div>
+				<select id="card-issue" name="issue_url" aria-describedby="card-issue-status">
+					<option value="">No linked issue</option>
+				</select>
+				<p id="card-issue-status" class="muted" role="status" aria-live="polite">Open the dialog to load this project's issues.</p>
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
+					Refresh issues
+				}
+				<noscript>You can create a card without an issue. Enable JavaScript to select an open issue.</noscript>
+			</jawa-issue-selector>
 			<div class="dialog-actions">
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {
 					Cancel

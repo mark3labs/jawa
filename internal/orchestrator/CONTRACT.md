@@ -17,6 +17,17 @@ Authenticated routes: `/board?project=<id>`, `/runs?state=<tab>&card=<id>`,
 `/agents`, `/settings`. `/` redirects to `/board`. Board shows one project;
 execution history, agent inspection, and configuration live in separate views.
 
+`GET /projects/issues?project_id=<id>` requires an authenticated session and
+returns JSON `{"issues":[{"number":2,"title":"Example","url":"https://github.com/owner/repo/issues/2"}]}`.
+Only open issues (not pull requests) from the configured project are listed;
+empty lists return `{"issues":[]}`. Errors use 401 for missing authentication,
+404 for an unknown project, 405 for non-GET methods, and 502 for provider loading
+failures. Provider credentials and response bodies are never returned to the
+browser. The New card Rocket selector loads on opening, project changes and
+explicit refresh; loading failures do not prevent creating an unlinked card.
+Run `cd internal/orchestrator/frontend && CHROMIUM_PATH=/path/to/chromium npm run test:issues`
+for isolated selector browser tests (including stale-response races).
+
 Templates are separated into `layout.templ`, `board.templ`, `runs.templ`,
 `agents.templ`, and `settings.templ`. Prebuilt shadcn-templ Card, Empty, Avatar,
 Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator

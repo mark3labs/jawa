@@ -50,12 +50,13 @@ type loginAttempts struct {
 	until time.Time
 }
 type app struct {
-	s        *Store
-	workflow *Workflow
-	ns       *server.Server
-	options  *server.Options // Latest successfully applied options; guarded by mu.
-	mu       sync.Mutex
-	attempts map[string]loginAttempts
+	s           *Store
+	issueClient *http.Client
+	workflow    *Workflow
+	ns          *server.Server
+	options     *server.Options // Latest successfully applied options; guarded by mu.
+	mu          sync.Mutex
+	attempts    map[string]loginAttempts
 }
 
 const maxRequestBody = 1 << 20
@@ -89,7 +90,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.authed(r) {
-		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || datastarRequest(r) {
+		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || r.URL.Path == "/projects/issues" || datastarRequest(r) {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
@@ -121,6 +122,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			a.snapshot(w, r, false, mutationEffects{})
 		}
+		return
+	}
+	if r.URL.Path == "/projects/issues" {
+		a.projectIssues(w, r)
 		return
 	}
 	switch r.URL.Path {
