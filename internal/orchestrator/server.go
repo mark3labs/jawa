@@ -67,6 +67,20 @@ const maxRequestBody = 1 << 20
 func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
+	// A root-scoped worker must be public, including before login. Never cache
+	// this script in HTTP caches: installations should discover new versions.
+	if r.URL.Path == "/sw.js" {
+		w.Header().Set("Cache-Control", "no-cache")
+		r2 := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/assets/sw.js"
+		r2.URL = &u
+		http.FileServer(http.FS(uiAssets)).ServeHTTP(w, r2)
+		return
+	}
+	if r.URL.Path == "/assets/manifest.webmanifest" {
+		w.Header().Set("Content-Type", "application/manifest+json")
+	}
 	// Embedded FS contains the assets directory, so preserve that prefix.
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
 		http.FileServer(http.FS(uiAssets)).ServeHTTP(w, r)

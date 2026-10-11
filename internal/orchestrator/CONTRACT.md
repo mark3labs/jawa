@@ -47,6 +47,42 @@ https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rock
 It includes Datastar v1.0.4 and Rocket beta.2 (beta API). Datastar's license is in
 frontend/DATASTAR-LICENSE.md, Inter's OFL license in frontend/INTER-LICENSE.
 
+## Mobile and PWA checks
+
+The public `/sw.js` endpoint serves the embedded worker with `no-cache`, before
+login. The manifest, icons and generic offline page live under `/assets/`.
+`frontend/src/sw.js` explicitly allowlists static assets; navigation uses the
+network, falling back only on network failure. Authenticated HTML, API calls,
+SSE and mutations are never cached. `npm run build` hashes the worker source
+and all precached assets to version the cache. It does not force activation
+while an old app window is open. Icon PNGs derive from `frontend/icon.svg`:
+`magick -background '#130f0b' frontend/icon.svg -resize 192x192 assets/icon-192.png`
+(from this directory); use 180/512 for the other sizes. The padded 512 image
+also supplies the maskable icon.
+
+For browser checks, build the binary after regenerating embedded assets, then
+start a disposable server from the repository root:
+
+```sh
+go build -o ./bin/jawa .
+./bin/jawa orchestrator --data-dir /tmp/jawa-mobile-test --listen 127.0.0.1:18081 --nats-listen 127.0.0.1:14223
+# In another terminal:
+cd internal/orchestrator/frontend
+JAWA_SMOKE_URL=http://127.0.0.1:18081 JAWA_RESPONSIVE_SETUP=1 npm run test:responsive
+JAWA_SMOKE_URL=http://127.0.0.1:18081 npm run test:pwa
+```
+
+Use a fresh data directory: responsive setup creates an administrator, configures
+NATS and creates a project/card/run (no agent or external provider needed).
+For subsequent runs use `JAWA_RESPONSIVE_STORAGE_STATE` with a Playwright state
+file saved via `JAWA_RESPONSIVE_SAVE_STATE`, plus `JAWA_RESPONSIVE_BOARD_PATH`
+if the board URL must select a project. Checks cover 320/390/768/1024/1440 widths,
+long names/titles, touch targets, run fields, menus, dialogs and overflow.
+The PWA check uses its own unauthenticated browser context and verifies actual
+worker registration, public-only cache contents, offline navigation and recovery.
+Set `CHROMIUM_PATH` for both scripts if needed. Physical iOS/Android installation
+and device-specific browser chrome still require manual testing.
+
 ## Full offline browser smoke
 
 Run `go run ./cmd/factory-smoke` after installing frontend dependencies. Set
