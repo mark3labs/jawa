@@ -2,7 +2,8 @@ name: Build and publish Docker image
 
 on:
   push:
-  workflow_dispatch:
+    branches:
+      - master
 
 # Deny permissions by default; grant only what the publishing job needs.
 permissions: {}

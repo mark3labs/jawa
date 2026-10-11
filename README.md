@@ -26,8 +26,11 @@ and NATS connection lifecycle. Add `--debug` to include routine recovery polling
 and ignored stale/duplicate deliveries. Logs contain execution IDs and states,
 not prompts, raw result payloads, credentials, or remote error text.
 
-Open http://127.0.0.1:8080 and create an admin username/password. Add projects tied
-to GitHub or Forgejo repository URLs, then create cards. The Todo / Planning /
+Open http://127.0.0.1:8080 and create an admin username/password. Add projects by
+selecting a provider and entering a repository name (`owner/repo`). GitHub uses
+`https://github.com` automatically. For Forgejo, also enter the instance URL;
+it defaults to `https://codeberg.org` and supports self-hosted HTTP(S) instances,
+including ports and deployment subpaths. Then create cards. The Todo / Planning /
 Building / Done board supports drag-and-drop and keyboard moves, persistent ordering, and optional
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
