@@ -43,6 +43,7 @@ type PlanningInteraction struct {
 type PlanningDetail struct {
 	Session          PlanningSession
 	Messages         []PlanningMessage
+	Discussion       []PlanningMessage
 	Revisions        []PlanningRevision
 	Turns            []PlanningTurn
 	Questions        []string
@@ -72,6 +73,52 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 	}
 	for _, m := range ms {
 		d.Messages = append(d.Messages, PlanningMessage{ID: m.ID, SessionID: m.SessionID, Role: m.Role, Content: m.Content, Sequence: int(m.Sequence), CreatedAt: time.UnixMilli(m.CreatedAt).UTC()})
+	}
+	// Typed clarification reports identify questions without interpreting prose or
+	// mistaking a proposal/blocker for a discussion message, including old sessions.
+	rows, err := tx.Query(`SELECT r.request_json FROM typed_reports r JOIN planning_turns t ON t.id=r.task_id WHERE t.session_id=? ORDER BY r.accepted_at,r.rowid`, p.ID)
+	if err != nil {
+		return d, err
+	}
+	reports := make(map[string][]reportprotocol.Kind)
+	for rows.Next() {
+		var raw string
+		if err = rows.Scan(&raw); err != nil {
+			_ = rows.Close()
+			return d, err
+		}
+		var request reportprotocol.Request
+		if err = json.Unmarshal([]byte(raw), &request); err != nil {
+			_ = rows.Close()
+			return d, err
+		}
+		var content string
+		switch request.Kind {
+		case reportprotocol.Clarify:
+			content = strings.Join(request.Payload.Questions, "\n") + "\n"
+		case reportprotocol.ProposeSpec:
+			content = request.Payload.Spec
+		case reportprotocol.ReportBlocker:
+			content = request.Payload.Reason
+		default:
+			continue
+		}
+		reports[content] = append(reports[content], request.Kind)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return d, err
+	}
+	for _, message := range d.Messages {
+		if message.Role == "user" && message.Sequence > 1 {
+			d.Discussion = append(d.Discussion, message)
+		} else if kinds := reports[message.Content]; message.Role == "assistant" && len(kinds) > 0 {
+			reports[message.Content] = kinds[1:]
+			if kinds[0] == reportprotocol.Clarify {
+				d.Discussion = append(d.Discussion, message)
+			}
+		}
 	}
 	rs, err := q.ListPlanningRevisions(ctx, p.ID)
 	if err != nil {
