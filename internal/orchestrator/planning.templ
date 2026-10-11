@@ -57,7 +57,7 @@ templ planningContent(d pageData) {
 				</section>
 				<section class="planning-section" aria-label="Planning discussion">
 					<h2>Discussion</h2>
-					for _, message := range detail.Messages {
+					for _, message := range detail.Discussion {
 						<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
 					}
 					if c.Status == "Planning" && planningCanReply(detail) {

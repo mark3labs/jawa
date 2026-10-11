@@ -202,7 +202,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{filter:'',projectOpen:false,cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',goto:''}"
+	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -409,12 +409,24 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "project-provider"}) {
 					Provider
 				}
-				<select id="project-provider" name="provider">
+				<select id="project-provider" name="provider" data-bind:project-provider>
 					<option value="github">GitHub</option>
 					<option value="forgejo">Forgejo</option>
 				</select>
 			</div>
-			@textField("project-repo", "repo", "Repository URL", "", true)
+			<div class="field" hidden data-attr:hidden="$projectProvider !== 'forgejo'">
+				@label.Label(label.Props{For: "project-forgejo-url"}) {
+					Forgejo URL
+				}
+				<input id="project-forgejo-url" name="forgejo_url" type="url" value="https://codeberg.org" data-attr:required="$projectProvider === 'forgejo'" data-attr:disabled="$projectProvider !== 'forgejo'"/>
+			</div>
+			<div class="field">
+				@label.Label(label.Props{For: "project-repo"}) {
+					Repository name
+				}
+				<input id="project-repo" name="repo_name" placeholder="owner/repo" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+" aria-describedby="project-repo-help"/>
+				<p id="project-repo-help" class="muted">Enter owner/repo, not a full URL. GitHub uses https://github.com; Forgejo uses the URL above.</p>
+			</div>
 			@textField("project-base", "base_branch", "Base branch", "main", true)
 			<div class="dialog-actions">
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$projectOpen = false"}}) {

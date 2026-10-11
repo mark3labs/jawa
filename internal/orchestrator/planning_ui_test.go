@@ -124,7 +124,7 @@ func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 		Session:   PlanningSession{State: "questions", Spec: "## Current plan"},
 		Revisions: []PlanningRevision{{Number: 1, Spec: "## Old plan", Questions: []string{"**Old question**"}}},
 		Questions: []string{"**Current question**"},
-		Messages: []PlanningMessage{
+		Discussion: []PlanningMessage{
 			{Role: "assistant", Content: raw},
 			{Role: "assistant", Content: raw},
 			{Role: "assistant", Content: "A **natural** reply."},
@@ -147,7 +147,7 @@ func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 			t.Errorf("unexpected %q", bad)
 		}
 	}
-	if detail.Messages[0].Content != raw {
+	if detail.Discussion[0].Content != raw {
 		t.Fatal("presentation changed original message")
 	}
 }
