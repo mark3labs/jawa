@@ -331,3 +331,11 @@ Provider tokens are write-only in the UI; explicit clear-token controls remove
 the dashboard override and reveal the environment fallback. Reset all removes
 every dashboard override. These settings apply only to the `orchestrator`
 command, not standalone agent/`serve` or administrative subcommands.
+
+### Continue after an execution failure
+
+Build and planning failures can offer **Resume failed run**, preserving the same
+run, saved context and branch. **Retry attempt / Retry planning** still starts fresh
+work. Explicit blockers, completed/cancelled runs and ambiguous ownership cannot
+be resumed. See [failed-run recovery](internal/orchestrator/FAILED_RESUME.md) for
+agent compatibility, pending-command safety and operational limitations.

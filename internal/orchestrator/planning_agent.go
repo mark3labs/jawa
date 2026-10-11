@@ -31,6 +31,10 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	if err != nil {
 		return true, err
 	}
+	blocked, e := resumeDeliveryBlocked(tx, ev.TaskID, true)
+	if e != nil || blocked {
+		return true, e
+	}
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return true, err
@@ -82,6 +86,9 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	return true, err
 }
 func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Outcome) (bool, error) {
+	return w.planningResultDelivery(tx, ctx, out, false)
+}
+func (w *Workflow) planningResultDelivery(tx *sql.Tx, ctx context.Context, out client.Outcome, trusted bool) (bool, error) {
 	q := sqlc.New(tx)
 	t, err := q.GetPlanningTurn(ctx, out.TaskID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -89,6 +96,13 @@ func (w *Workflow) planningResult(tx *sql.Tx, ctx context.Context, out client.Ou
 	}
 	if err != nil {
 		return true, err
+	}
+	blocked, e := resumeOutcomeBlocked(tx, out)
+	if e != nil {
+		return true, e
+	}
+	if blocked && !trusted && out.State != runtime.RunWaiting {
+		return true, nil
 	}
 	data, err := json.Marshal(out)
 	if err != nil {

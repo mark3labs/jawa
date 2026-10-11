@@ -76,3 +76,7 @@ response must be persisted before dispatch. sqlc exposes interaction history and
 queued-reply selection. Legacy ready/questions sessions cannot be resumed because
 v6 completed their remote run: preserve history/spec but mark them failed with an
 explicit retry message. Deploy upgraded agents/backend together.
+
+Version `00008_failed_resume.sql` adds the failed-run command reservation ledger,
+retaining original outcomes and durable request/reply audit without creating new
+execution identities. See `../FAILED_RESUME.md` for restart and ambiguity semantics.

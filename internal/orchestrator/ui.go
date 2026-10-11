@@ -206,6 +206,8 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	switch action {
 	case "start":
 		return c.Status == "Building" && legacy && !active
+	case "resume":
+		return c.Status == "Building" && !legacy && !active && executionFailure(latest[0])
 	case "retry":
 		return c.Status == "Building" && terminal && !active
 	case "reset":

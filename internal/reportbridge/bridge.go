@@ -25,11 +25,13 @@ import (
 // the runtime scope; admission correlation comes from BONNIE's durable journal.
 type Bridge struct {
 	// Serialize intent admission so simultaneous report tools cannot race.
-	submitMu sync.Mutex
-	mu       sync.RWMutex
-	runner   *runtime.Runner
-	cfg      natschannel.Config
-	conn     *nats.Conn
+	submitMu      sync.Mutex
+	resumeWG      sync.WaitGroup
+	resumeStopped bool
+	mu            sync.RWMutex
+	runner        *runtime.Runner
+	cfg           natschannel.Config
+	conn          *nats.Conn
 }
 
 func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) error {
@@ -122,9 +124,11 @@ func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Ide
 
 type reportChannel struct {
 	bonnie.Channel
-	bridge *Bridge
-	cfg    natschannel.Config
-	owned  *nats.Conn
+	bridge       *Bridge
+	cfg          natschannel.Config
+	owned        *nats.Conn
+	resumeSub    *nats.Subscription
+	resumeCancel context.CancelFunc
 }
 
 func (c *reportChannel) Start(ctx context.Context) error {
@@ -133,6 +137,9 @@ func (c *reportChannel) Start(ctx context.Context) error {
 		return err
 	}
 	c.owned = owned
+	c.bridge.submitMu.Lock()
+	c.bridge.resumeStopped = false
+	c.bridge.submitMu.Unlock()
 	c.bridge.mu.Lock()
 	c.bridge.conn = conn
 	c.bridge.mu.Unlock()
@@ -150,10 +157,36 @@ func (c *reportChannel) Start(ctx context.Context) error {
 		}
 		return err
 	}
+	resumeCtx, cancel := context.WithCancel(ctx)
+	c.resumeCancel = cancel
+	if err = c.startResume(resumeCtx, conn); err != nil {
+		cancel()
+		_ = c.Channel.(interface{ Shutdown(context.Context) error }).Shutdown(ctx)
+		if owned != nil {
+			owned.Close()
+		}
+		return err
+	}
 	return nil
 }
 func (c *reportChannel) Shutdown(ctx context.Context) error {
+	if c.resumeCancel != nil {
+		c.resumeCancel()
+	}
+	if c.resumeSub != nil {
+		_ = c.resumeSub.Unsubscribe()
+	}
 	err := c.Channel.(interface{ Shutdown(context.Context) error }).Shutdown(ctx)
+	c.bridge.submitMu.Lock()
+	c.bridge.resumeStopped = true
+	c.bridge.submitMu.Unlock()
+	drained := make(chan struct{})
+	go func() { c.bridge.resumeWG.Wait(); close(drained) }()
+	select {
+	case <-drained:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	if c.owned != nil {
 		c.owned.Close()
 	}

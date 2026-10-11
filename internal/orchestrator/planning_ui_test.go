@@ -78,7 +78,7 @@ func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
 		t.Fatal(err)
 	}
 	form := url.Values{"_csrf": {csrf.Value}, "view": {"planning"}, "card": {c.ID}, "card_id": {c.ID}}
-	for _, route := range []string{"/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel"} {
+	for _, route := range []string{"/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/resume", "/cards/planning/approve", "/cards/planning/cancel"} {
 		status(t, request(a, "GET", route, nil, session, csrf), http.StatusMethodNotAllowed)
 		status(t, request(a, "POST", route, nil, session), http.StatusForbidden)
 	}
@@ -206,5 +206,29 @@ func TestClarifyUIHasQuestionsWithoutProposalAndStaleTokenRejected(t *testing.T)
 	d = planningDetails(t, a.workflow, c.ID)
 	if len(d.Turns) != 1 || len(d.Revisions) != 0 || len(d.Messages) != 3 {
 		t.Fatal(d)
+	}
+}
+
+func TestFailedResumePlanningUI(t *testing.T) {
+	c := Card{ID: "card", Status: "Planning", Title: "Recover investigation"}
+	d := pageData{csrf: "csrf", v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: {Session: PlanningSession{State: "failed"}, CanResume: true, ResumeToken: "failure-token"}}}
+	var out bytes.Buffer
+	if err := planningContent(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Resume failed run", "Retry planning", "/cards/planning/resume", "name=\"expected_resume\"", "failure-token", "saved context"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	detail := d.planning[c.ID]
+	detail.CanResume = false
+	d.planning[c.ID] = detail
+	out.Reset()
+	if err := planningContent(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "Resume failed run") {
+		t.Fatal("resume shown for ineligible failure")
 	}
 }

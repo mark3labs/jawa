@@ -1,0 +1,291 @@
+package orchestrator
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	client "github.com/mark3labs/bonnie/client/nats"
+	"github.com/mark3labs/bonnie/runtime"
+	"github.com/nats-io/nats.go"
+	"jawa/internal/orchestrator/db/sqlc"
+	"jawa/internal/reportprotocol"
+)
+
+func executionFailure(a Attempt) bool {
+	var out client.Outcome
+	return a.State == "failed" && !a.Ready && a.RunState == "failed" && a.Error != executionConflictNotice && a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && json.Unmarshal([]byte(a.OutcomeJSON), &out) == nil && out.Version == 1 && out.State == runtime.RunFailed && out.TaskID == a.TaskID && matches(a, out.AgentID, out.RunID, out.AttemptID)
+}
+
+func (w *Workflow) ResumeFailed(id string) error         { return w.resumeFailed(id, false, "") }
+func (w *Workflow) ResumeFailedPlanning(id string) error { return w.resumeFailed(id, true, "") }
+
+// Bind rendered actions to this failure and journal generation.
+func resumeToken(a Attempt) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s\n%d\n%s", a.TaskID, a.EventSeq, a.OutcomeJSON))))
+}
+
+// Reserve before sending control. Unconfirmed delivery blocks competing work
+// across process restart; it is not permission for a blind fresh task.
+func (w *Workflow) resumeFailed(id string, planning bool, expected string) error {
+	if err := w.ctx.Err(); err != nil {
+		return err
+	}
+	if w.client == nil {
+		return errors.New("agent control unavailable")
+	}
+	tx, err := w.s.writeTx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var a Attempt
+	var session string
+	if planning {
+		p, e := currentPlanning(tx, w.ctx, id)
+		if e != nil {
+			return e
+		}
+		if p.State != "failed" {
+			return errors.New("resume requires failed planning")
+		}
+		session = p.ID
+		if e = noActivePlanningTurns(tx, p.ID); e != nil {
+			return e
+		}
+		var taskID string
+		e = tx.QueryRow(`SELECT id FROM planning_turns WHERE session_id=? ORDER BY number DESC LIMIT 1`, p.ID).Scan(&taskID)
+		if e != nil {
+			return e
+		}
+		t, e := sqlc.New(tx).GetPlanningTurn(w.ctx, taskID)
+		if e != nil {
+			return e
+		}
+		a = Attempt{ID: t.ID, TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error, EventSeq: int(t.EventSeq)}
+	} else {
+		a, err = scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
+		if err != nil {
+			return err
+		}
+		var lane string
+		if err = tx.QueryRow(`SELECT status FROM cards WHERE id=?`, id).Scan(&lane); err != nil {
+			return err
+		}
+		if lane != "Building" {
+			return errors.New("resume requires Building")
+		}
+		if err = noActiveAttempts(tx, id); err != nil {
+			return err
+		}
+	}
+	if expected != "" && expected != resumeToken(a) {
+		return errors.New("failed run changed; refresh before resuming")
+	}
+	if !executionFailure(a) {
+		return errors.New("resume requires an owned execution failure; use fresh Retry when safe")
+	}
+	reported, err := acceptedReport(tx, a.TaskID)
+	if err != nil {
+		return err
+	}
+	if reported {
+		return errors.New("terminal report cannot be resumed")
+	}
+	// Any retained competing delivery makes ownership ambiguous, even if the
+	// pinned execution itself failed.
+	var conflict bool
+	if planning {
+		err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_deliveries WHERE turn_id=? AND (json_extract(payload,'$.agent_id')<>? OR json_extract(payload,'$.run_id')<>? OR json_extract(payload,'$.attempt_id')<>?))`, a.TaskID, a.AgentID, a.RunID, a.RemoteAttemptID).Scan(&conflict)
+	} else {
+		err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_conflicts WHERE task_id=?)`, a.TaskID).Scan(&conflict)
+	}
+	if err != nil {
+		return err
+	}
+	if conflict {
+		return errors.New("ambiguous execution ownership; reconcile before retrying")
+	}
+	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
+	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+	defer cancel()
+	status, err := w.client.Status(ctx, target)
+	if err != nil || status.Error != "" || status.Target != target || status.State != runtime.RunFailed || status.Active || status.TurnID == "" || status.Seq < a.EventSeq {
+		return errors.New("failed run cannot be confirmed on its owning agent; fresh Retry remains available")
+	}
+	req := reportprotocol.FailedResume{Version: 1, ID: uuid.NewString(), Target: target, Seq: status.Seq, TurnID: status.TurnID}
+	raw, _ := json.Marshal(req)
+	now := time.Now().UnixMilli()
+	if _, err = tx.Exec(`INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES(?,?,?,?,?,?,?)`, req.ID, a.TaskID, id, planning, raw, a.OutcomeJSON, now); err != nil {
+		return err
+	}
+	if planning {
+		_, err = tx.Exec(`UPDATE planning_turns SET state='running',outcome_json='',error='Resume pending confirmation',event_seq=?,updated_at=? WHERE id=?`, status.Seq, now, a.TaskID)
+		if err == nil {
+			_, err = tx.Exec(`UPDATE planning_sessions SET state='running',error='Resume pending confirmation',updated_at=? WHERE id=?`, now, session)
+		}
+	} else {
+		_, err = tx.Exec(`UPDATE workflow_attempts SET state='running',run_state='running',outcome_json='',error='Resume pending confirmation',event_seq=?,updated_at=? WHERE id=?`, status.Seq, now, a.ID)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Reuse exactly the same durable command identity on timeouts and restart.
+func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
+	rows, err := w.s.db.Query(`SELECT id,request_json FROM failed_resumes WHERE status='pending'`)
+	if err != nil {
+		return
+	}
+	type command struct{ id, raw string }
+	var commands []command
+	for rows.Next() {
+		var c command
+		if rows.Scan(&c.id, &c.raw) != nil {
+			break
+		}
+		commands = append(commands, c)
+	}
+	_ = rows.Close()
+	for _, c := range commands {
+		var req reportprotocol.FailedResume
+		if json.Unmarshal([]byte(c.raw), &req) != nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+		reply, e := reportprotocol.ResumeFailed(ctx, conn, "bonnie", req)
+		cancel()
+		if e != nil || reply.Status == "pending" || reply.Status == "ambiguous" {
+			continue
+		}
+		if reply.Status != "completed" && reply.Status != "rejected" {
+			continue
+		}
+		_ = w.finishFailedResume(c.id, reply)
+	}
+}
+func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResumeReply) error {
+	tx, err := w.s.writeTx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var task, previous, requestJSON string
+	var planning bool
+	err = tx.QueryRow(`SELECT task_id,previous_outcome,planning,request_json FROM failed_resumes WHERE id=? AND status='pending'`, id).Scan(&task, &previous, &planning, &requestJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var req reportprotocol.FailedResume
+	if err = json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return err
+	}
+	if reply.Version != 1 || reply.ID != id || reply.Target != req.Target ||
+		(reply.Status != "completed" && reply.Status != "rejected") {
+		return errors.New("invalid resume receipt identity or status")
+	}
+	if reply.Status == "completed" && (reply.Seq <= req.Seq || reply.Outcome == nil ||
+		reply.Outcome.Version != 1 || reply.Outcome.TaskID != req.Target.TaskID ||
+		reply.Outcome.AgentID != req.Target.AgentID || reply.Outcome.RunID != req.Target.RunID ||
+		reply.Outcome.AttemptID != req.Target.AttemptID) {
+		return errors.New("invalid resumed outcome or journal cursor")
+	}
+	raw, _ := json.Marshal(reply)
+	if _, err = tx.Exec(`UPDATE failed_resumes SET status=?,reply_json=? WHERE id=?`, reply.Status, raw, id); err != nil {
+		return err
+	}
+	if reply.Status == "rejected" {
+		if planning {
+			_, err = tx.Exec(`UPDATE planning_turns SET state='failed',outcome_json=?,error=?,updated_at=? WHERE id=?`, previous, "Resume rejected: "+reply.Error, time.Now().UnixMilli(), task)
+			if err == nil {
+				_, err = tx.Exec(`UPDATE planning_sessions SET state='failed',error=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?)`, "Resume rejected: "+reply.Error, task)
+			}
+		} else {
+			_, err = tx.Exec(`UPDATE workflow_attempts SET state='failed',run_state='failed',outcome_json=?,error=?,updated_at=? WHERE task_id=?`, previous, "Resume rejected: "+reply.Error, time.Now().UnixMilli(), task)
+		}
+	} else if reply.Outcome != nil && reply.Outcome.TaskID == task && reply.Outcome.AgentID == reply.Target.AgentID && reply.Outcome.RunID == reply.Target.RunID && reply.Outcome.AttemptID == reply.Target.AttemptID {
+		// New outcomes come only from the durable host receipt, never a replay of
+		// the pre-resume transport cache. Accepted typed reports still win.
+		if planning {
+			_, err = w.planningResultDelivery(tx, w.ctx, *reply.Outcome, true)
+		} else {
+			var a Attempt
+			a, err = scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, task))
+			if err == nil {
+				err = applyOutcome(tx, a, *reply.Outcome)
+			}
+		}
+		if err == nil {
+			table := "workflow_attempts"
+			if planning {
+				table = "planning_turns"
+			}
+			_, err = tx.Exec(`UPDATE `+table+` SET event_seq=max(event_seq,?) WHERE id=?`, reply.Seq, task)
+		}
+	} else {
+		return errors.New("invalid resumed outcome")
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// BONNIE's cached pre-resume outcome lacks a journal cursor. Once a JAWA
+// continuation exists, terminal natural outcomes are read from host receipts
+// instead. Waiting answers remain on the normal planning transport path.
+func resumeDeliveryBlocked(tx *sql.Tx, task string, event bool) (bool, error) {
+	var blocked bool
+	query := `SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE task_id=? )`
+	if event {
+		query = `SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE task_id=? AND status='pending')`
+	}
+	err := tx.QueryRow(query, task).Scan(&blocked)
+	return blocked, err
+}
+
+func resumeOutcomeBlocked(tx *sql.Tx, out client.Outcome) (bool, error) {
+	rows, err := tx.Query(`SELECT status,previous_outcome FROM failed_resumes WHERE task_id=?`, out.TaskID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var status, raw string
+		if err = rows.Scan(&status, &raw); err != nil {
+			return false, err
+		}
+		var previous client.Outcome
+		if status == "pending" {
+			return true, nil
+		}
+		if json.Unmarshal([]byte(raw), &previous) == nil {
+			a, _ := json.Marshal(previous)
+			b, _ := json.Marshal(out)
+			if string(a) == string(b) {
+				return true, nil
+			}
+		}
+	}
+	return false, rows.Err()
+}
+func noPendingResume(tx *sql.Tx, card string) error {
+	var pending bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, card).Scan(&pending); err != nil {
+		return err
+	}
+	if pending {
+		return errors.New("resume is pending confirmation; wait for its owning agent")
+	}
+	return nil
+}

@@ -23,3 +23,10 @@ context. Approval atomically freezes the revision, queues approved Answer, and
 creates a distinct build attempt. Natural waiting is expected, and natural
 completion after approval cannot mutate build authority. See PLANNING_HANDOFF.md
 for outbox/restart/cancellation semantics and coordinated v7 deployment.
+
+## Failed execution continuation
+
+`ResumeFailed(cardID)` and `ResumeFailedPlanning(cardID)` reserve a same-run
+continuation for an owned execution failure only. UI routes require the rendered
+failure-generation token. Fresh Retry remains separate. See [FAILED_RESUME.md](FAILED_RESUME.md)
+for the verified BONNIE APIs, JAWA host control protocol, durability and ambiguity limits.

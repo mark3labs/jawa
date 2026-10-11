@@ -25,6 +25,18 @@ type Card struct {
 	IssueUrl    string `json:"issue_url"`
 }
 
+type FailedResume struct {
+	ID              string `json:"id"`
+	TaskID          string `json:"task_id"`
+	CardID          string `json:"card_id"`
+	Planning        int64  `json:"planning"`
+	RequestJson     string `json:"request_json"`
+	PreviousOutcome string `json:"previous_outcome"`
+	Status          string `json:"status"`
+	ReplyJson       string `json:"reply_json"`
+	CreatedAt       int64  `json:"created_at"`
+}
+
 type PlanningDelivery struct {
 	ID         int64  `json:"id"`
 	TurnID     string `json:"turn_id"`
