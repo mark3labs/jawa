@@ -103,7 +103,10 @@ templ taskCard(d pageData, c Card) {
 
 templ cardChips(d pageData, c Card) {
 	if c.Status == "Planning" {
-		<span class={ "chip", "planning-badge", "tone-" + planningTone(planningState(d, c.ID)) }>{ planningLabel(planningState(d, c.ID)) }</span>
+		<span class={ "chip", "planning-badge", "tone-" + planningTone(planningState(d, c.ID)) }>
+			@toneIcon(planningTone(planningState(d, c.ID)))
+			<span>{ planningLabel(planningState(d, c.ID)) }</span>
+		</span>
 	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
