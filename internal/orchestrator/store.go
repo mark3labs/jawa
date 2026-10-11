@@ -255,6 +255,15 @@ func (s *Store) NATSConfig() NATSConfig {
 	_ = s.db.QueryRow(`SELECT coalesce((SELECT value FROM settings WHERE key='nats_url'),''),coalesce((SELECT value FROM settings WHERE key='nats_username'),'')`).Scan(&c.URL, &c.Username)
 	return c
 }
+
+// NATSConfigured distinguishes user-confirmed credentials from the random
+// bootstrap password. Missing state (including older databases) requires setup.
+func (s *Store) NATSConfigured() (bool, error) {
+	var ready bool
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM settings WHERE key='nats_configured' AND value='true')`).Scan(&ready)
+	return ready, err
+}
+
 func (s *Store) saveNATS(url, user, pass string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
 	if err != nil {

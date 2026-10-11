@@ -98,6 +98,14 @@ func status(t *testing.T, w *httptest.ResponseRecorder, want int) {
 }
 func setupTest(t *testing.T, a *app) (*http.Cookie, *http.Cookie) {
 	t.Helper()
+	session, csrf := setupAccountTest(t, a)
+	w := request(a, "POST", "/settings/nats", url.Values{"_csrf": {csrf.Value}, "username": {"worker"}, "password": {"long-agent-password"}, "url": {a.s.NATSConfig().URL}}, session, csrf)
+	status(t, w, http.StatusSeeOther)
+	return session, csrf
+}
+
+func setupAccountTest(t *testing.T, a *app) (*http.Cookie, *http.Cookie) {
+	t.Helper()
 	w := request(a, "GET", "/setup", nil)
 	status(t, w, 200)
 	c := cookie(t, w, "csrf")

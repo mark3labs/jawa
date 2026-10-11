@@ -21,14 +21,15 @@ var uiAssets embed.FS
 
 // uiSnapshot is shared by full pages and SSE, so both show the same guards.
 type uiSnapshot struct {
-	projects []Project
-	cards    []Card
-	agents   []presence.Record
-	planning map[string]PlanningDetail
-	attempts []Attempt
-	nats     NATSConfig
-	presence bool // false when presence discovery failed
-	now      time.Time
+	projects       []Project
+	cards          []Card
+	agents         []presence.Record
+	planning       map[string]PlanningDetail
+	attempts       []Attempt
+	nats           NATSConfig
+	natsConfigured bool
+	presence       bool // false when presence discovery failed
+	now            time.Time
 }
 
 // pageData is everything a view needs to render. Views never query storage.
@@ -41,6 +42,12 @@ type pageData struct {
 func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, error) {
 	snap := uiSnapshot{now: time.Now(), nats: s.NATSConfig(), presence: true}
 	var err error
+	if snap.natsConfigured, err = s.NATSConfigured(); err != nil {
+		return snap, fmt.Errorf("load NATS setup: %w", err)
+	}
+	if !snap.natsConfigured {
+		snap.nats.Username = "worker"
+	}
 	if snap.projects, err = s.Projects(); err != nil {
 		return snap, fmt.Errorf("load projects: %w", err)
 	}

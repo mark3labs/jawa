@@ -96,6 +96,15 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+	ready, err := a.s.NATSConfigured()
+	if err != nil {
+		a.responseError(w, r, "Unable to check NATS setup. Please try again.", http.StatusServiceUnavailable)
+		return
+	}
+	if !ready && r.Method == http.MethodGet && r.URL.Path != "/settings" && r.URL.Path != "/events" && r.URL.Path != "/snapshot" {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
 	if r.Method == http.MethodGet && r.URL.Path == "/" {
 		http.Redirect(w, r, "/board", http.StatusSeeOther)
 		return
@@ -137,7 +146,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !a.csrf(w, r) {
 		return
 	}
-	var err error
+	if !ready && r.URL.Path != "/settings/nats" && r.URL.Path != "/logout" {
+		a.responseError(w, r, "NATS authentication setup is required. Open Settings and set the agent username and password before creating projects, cards or running work.", http.StatusConflict)
+		return
+	}
 	var fx mutationEffects
 	switch r.URL.Path {
 	case "/logout":
@@ -250,6 +262,9 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = a.rotateNATS(r.FormValue("url"), r.FormValue("username"), r.FormValue("password"))
 		if err == nil {
 			fx.flash = "Agent credentials rotated. Agents using the old password were disconnected."
+			if !ready {
+				fx.goTo = "/board"
+			}
 		}
 	}
 	if err != nil {
@@ -373,7 +388,7 @@ func (a *app) setup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unable to create session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 var dummyLoginHash = func() []byte {
@@ -477,7 +492,7 @@ func natsOptions(s *Store, listen, dir string) (*server.Options, error) {
 	var hash string
 	err = s.db.QueryRow("SELECT value FROM settings WHERE key='nats_password'").Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
-		if err = s.saveNATS("nats://"+listen, "admin", newID()); err != nil {
+		if err = s.saveNATS("nats://"+listen, "worker", newID()); err != nil {
 			return nil, err
 		}
 		err = s.db.QueryRow("SELECT value FROM settings WHERE key='nats_password'").Scan(&hash)
@@ -514,7 +529,7 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	}
 	// Rollback is best-effort; after Commit it returns sql.ErrTxDone.
 	defer func() { _ = tx.Rollback() }()
-	for _, kv := range [][2]string{{"nats_url", url}, {"nats_username", user}, {"nats_password", string(hash)}} {
+	for _, kv := range [][2]string{{"nats_url", url}, {"nats_username", user}, {"nats_password", string(hash)}, {"nats_configured", "true"}} {
 		if _, err = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", kv[0], kv[1]); err != nil {
 			return err
 		}

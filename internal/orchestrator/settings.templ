@@ -16,6 +16,9 @@ templ settingsContent(d pageData) {
 				<p class="meta">Connect agents, review provider access and rotate credentials.</p>
 			</div>
 		</div>
+		if !d.natsConfigured {
+			<div class="notice" role="alert">Complete NATS authentication setup: choose an agent password below. The default username is worker. Projects, cards and work remain blocked until credentials are saved.</div>
+		}
 		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
 			@card.Header() {
 				@card.Title() {
@@ -54,7 +57,11 @@ templ settingsContent(d pageData) {
 						</div>
 					</div>
 					<div class="form-actions">
-						@submit("Rotate credentials")
+						if d.natsConfigured {
+							@submit("Rotate credentials")
+						} else {
+							@submit("Save credentials and continue")
+						}
 					</div>
 				</form>
 			}

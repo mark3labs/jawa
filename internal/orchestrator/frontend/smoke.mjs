@@ -151,7 +151,7 @@ async function createCard(title) {
 async function createProject(name) {
  await page.locator('#sidebar-nav').getByRole('button', {name: 'New project'}).click();
  await page.getByLabel('Name', {exact: true}).fill(name);
- await page.getByLabel('Repository URL').fill('https://github.com/example/smoke.git');
+ await page.getByLabel('Repository name').fill('example/smoke');
  await page.getByRole('button', {name: 'Create project', exact: true}).click();
  await page.getByRole('heading', {name, exact: true}).waitFor();
  return new URL(page.url()).searchParams.get('project');
@@ -164,14 +164,15 @@ try {
  await page.getByLabel('Username', {exact: true}).fill('smoke-admin');
  await page.getByLabel('Password', {exact: true}).fill('smoke-test-password-123');
  await page.getByRole('button', {name: 'Create administrator'}).click();
- await page.locator('#board-content').waitFor();
- await screen('/settings', 'settings');
- const settingsStable = await stableDocument();
+ await page.locator('#settings-content').waitFor();
+ assert.equal(new URL(page.url()).pathname, '/settings');
+ assert.equal(await page.getByLabel('Username', {exact: true}).inputValue(), 'worker');
+ await page.getByRole('alert').filter({hasText: 'Complete NATS authentication setup'}).waitFor();
  await page.getByLabel('Username', {exact: true}).fill(process.env.JAWA_SMOKE_AGENT_USER);
  await page.getByLabel('New password').fill(process.env.JAWA_SMOKE_AGENT_PASSWORD);
- await page.getByRole('button', {name: 'Rotate credentials'}).click();
- await page.locator('#notice').filter({hasText: 'rotat'}).waitFor({state: 'visible'});
- await settingsStable();
+ await page.getByRole('button', {name: 'Save credentials and continue'}).click();
+ await page.locator('#board-content').waitFor();
+ await screen('/settings', 'settings');
  assert.equal(await page.locator('#providers').getByText('Not configured', {exact: true}).count(), 2);
  await screen('/board', 'board');
  const projectID = await createProject('Smoke project');
@@ -268,13 +269,13 @@ try {
  // Project draft is outside patch roots as well.
  await page.locator('#sidebar-nav').getByRole('button', {name: 'New project'}).click();
  await page.getByLabel('Name', {exact: true}).fill('Project draft survives SSE');
- await page.getByLabel('Repository URL').fill('https://github.com/example/draft.git');
+ await page.getByLabel('Repository name').fill('example/draft');
  await bridge('/start'); started = true;
  await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'restarted agent');
  await page.locator('#agent-status').getByText('1 agent online').waitFor();
  await expect(page.locator('#project-dialog')).toBeVisible();
  await expect(page.getByLabel('Name', {exact: true})).toHaveValue('Project draft survives SSE');
- await expect(page.getByLabel('Repository URL')).toHaveValue('https://github.com/example/draft.git');
+ await expect(page.getByLabel('Repository name')).toHaveValue('example/draft');
  await page.locator('#project-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
  await page.getByLabel('Filter cards').fill('');
  await sameDocument();
