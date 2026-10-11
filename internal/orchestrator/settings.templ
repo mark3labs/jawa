@@ -16,6 +16,32 @@ templ settingsContent(d pageData) {
 				<p class="meta">Connect agents, review provider access and rotate credentials.</p>
 			</div>
 		</div>
+		@card.Card(card.Props{Class: "panel", ID: "runtime-settings"}) {
+			@card.Header() { @card.Title() { Orchestrator options } @card.Description() { Effective orchestrator settings. Dashboard overrides take precedence over explicit CLI flags and environment defaults; listener changes require restart. } }
+			@card.Content() {
+				<form method="post" action="/settings/orchestrator"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+					<div class="field-grid">
+						@textField("runtime-listen", "listen", "HTTP listen address", dashboardValue(d, "listen", "JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), false)
+						@textField("runtime-nats-listen", "nats-listen", "Embedded NATS listen address", dashboardValue(d, "nats-listen", "JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), false)
+						@textField("runtime-debug", "debug", "Debug logs (true/false)", dashboardValue(d, "debug", "JAWA_ORCHESTRATOR_DEBUG", "false"), false)
+						<div class="field"><label for="runtime-github-token">GitHub read-only token (write-only)</label>@input.Input(input.Props{ID: "runtime-github-token", Name: "github-token", Type: "password", Attributes: templ.Attributes{"autocomplete": "new-password"}})</div>
+						<div class="field"><label for="runtime-forgejo-token">Forgejo read-only token (write-only)</label>@input.Input(input.Props{ID: "runtime-forgejo-token", Name: "forgejo-token", Type: "password", Attributes: templ.Attributes{"autocomplete": "new-password"}})</div>
+						@textField("runtime-allow-no-ci", "allow-no-ci", "Allow missing CI (true/false)", dashboardValue(d, "allow-no-ci", "JAWA_ALLOW_NO_CI", "false"), false)
+					</div>
+					<div class="form-actions">@submit("Save overrides")</div>
+					<p class="muted small">Tokens are never displayed; a non-empty token updates it. Use the dedicated clear controls below. Overrides apply only to the running orchestrator, not standalone agent or serve modes.</p>
+				</form>
+				<form method="post" action="/settings/orchestrator/reset"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+					<button class="btn btn-secondary" type="submit">Reset all dashboard overrides</button>
+				</form>
+				<form method="post" action="/settings/orchestrator"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+					<input type="hidden" name="github-token-clear" value="true"/><button class="btn btn-secondary" type="submit">Clear GitHub token override</button>
+				</form>
+				<form method="post" action="/settings/orchestrator"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+					<input type="hidden" name="forgejo-token-clear" value="true"/><button class="btn btn-secondary" type="submit">Clear Forgejo token override</button>
+				</form>
+			}
+		}
 		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
 			@card.Header() {
 				@card.Title() {
@@ -83,7 +109,7 @@ templ settingsContent(d pageData) {
 			}
 			@card.Content() {
 				<ul class="rows">
-					for _, p := range providerConfigs() {
+					for _, p := range providerConfigs(d.dashboard) {
 						<li class="row">
 							@icon("key")
 							<div class="row-text">

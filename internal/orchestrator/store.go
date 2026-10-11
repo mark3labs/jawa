@@ -249,6 +249,73 @@ func (s *Store) MoveCard(id, status string, position int) error {
 	}
 	return tx.Commit()
 }
+
+// DashboardOverrides returns persisted non-secret orchestrator overrides.
+func (s *Store) DashboardOverrides() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT key,value FROM settings WHERE key LIKE 'dashboard:%'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		values[strings.TrimPrefix(k, "dashboard:")] = v
+	}
+	return values, rows.Err()
+}
+func (s *Store) SetDashboardOverrides(values map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for k, v := range values {
+		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "dashboard:"+k, v); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+func (s *Store) ClearDashboardOverrides() error {
+	_, err := s.db.Exec(`DELETE FROM settings WHERE key LIKE 'dashboard:%'`)
+	return err
+}
+
+func (s *Store) ReplaceDashboardOverrides(values map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.Exec(`DELETE FROM settings WHERE key LIKE 'dashboard:%'`); err != nil {
+		return err
+	}
+	for key, value := range values {
+		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "dashboard:"+key, value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) DeleteDashboardOverrides(keys ...string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, key := range keys {
+		if _, err = tx.Exec(`DELETE FROM settings WHERE key=?`, "dashboard:"+key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) NATSConfig() NATSConfig {
 	var c NATSConfig
 	// One statement provides a consistent snapshot of both public settings.

@@ -67,7 +67,7 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 // action stays visible. The browser's data-ignore-morph on the board protects a
 // drag in progress; the other roots are independently morphable.
 func (a *app) liveSnapshot(r *http.Request, v viewParams) (string, error) {
-	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v)
+	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v, a.runtimeDefaults)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +138,7 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 }
 
 func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects) (string, error) {
-	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v)
+	fragments, err := renderFragments(r.Context(), a.s, a.workflow, CSRFToken(r), v, a.runtimeDefaults)
 	if err != nil {
 		return "", err
 	}
