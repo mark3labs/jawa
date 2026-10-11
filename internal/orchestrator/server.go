@@ -146,7 +146,15 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/projects":
 		var project Project
-		project, err = a.s.CreateProjectDetails(r.FormValue("name"), strings.ToLower(r.FormValue("provider")), r.FormValue("repo"), r.FormValue("base_branch"))
+		provider := strings.ToLower(strings.TrimSpace(r.FormValue("provider")))
+		repo := r.FormValue("repo")
+		if r.Form.Has("repo_name") {
+			repo, err = projectRepositoryURL(provider, r.FormValue("repo_name"), r.FormValue("forgejo_url"))
+			if err != nil {
+				break
+			}
+		}
+		project, err = a.s.CreateProjectDetails(r.FormValue("name"), provider, repo, r.FormValue("base_branch"))
 		if err == nil {
 			fx.goTo = boardPath(project.ID)
 		}
