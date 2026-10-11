@@ -12,7 +12,11 @@ func TestDashboardOverridesPersistAndReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
 	if err := s.SetDashboardOverrides(map[string]string{"listen": "127.0.0.1:9000", "debug": "true"}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,10 +59,10 @@ func TestValidatedListenAddressPort(t *testing.T) {
 func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	a := testApp(t)
 	a.runtimeDefaults = map[string]string{"listen": "127.0.0.1:9001", "nats-listen": "127.0.0.1:4222", "debug": "false", "allow-no-ci": "true"}
-	session, csrf := setupTest(t, a)
+	session, _ := setupTest(t, a)
 	page := request(a, "GET", "/settings", nil, session)
 	status(t, page, 200)
-	csrf = cookie(t, page, "csrf")
+	csrf := cookie(t, page, "csrf")
 	if strings.Contains(page.Body.String(), "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("secret appeared in settings page")
 	}
@@ -132,9 +136,9 @@ func assertSettingsProviderUX(t *testing.T, body string) {
 
 func TestDashboardSettingsClearTokenOverridesIndependently(t *testing.T) {
 	a := testApp(t)
-	session, csrf := setupTest(t, a)
+	session, _ := setupTest(t, a)
 	page := request(a, "GET", "/settings", nil, session)
-	csrf = cookie(t, page, "csrf")
+	csrf := cookie(t, page, "csrf")
 	seed := request(a, "POST", "/settings/orchestrator", url.Values{
 		"_csrf": {csrf.Value}, "listen": {"127.0.0.1:9100"}, "nats-listen": {"127.0.0.1:4223"},
 		"debug": {"false"}, "allow-no-ci": {"true"}, "github-token": {"github-secret"}, "forgejo-token": {"forgejo-secret"},

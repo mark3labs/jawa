@@ -256,7 +256,7 @@ func (s *Store) DashboardOverrides() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := map[string]string{}
 	for rows.Next() {
 		var k, v string

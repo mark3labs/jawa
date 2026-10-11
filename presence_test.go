@@ -65,6 +65,49 @@ func TestNATSPresenceConnectionAndRegistry(t *testing.T) {
 	}
 }
 
+func TestServingPresenceEnabledByDefault(t *testing.T) {
+	for _, enabled := range []string{"", "true", "false"} {
+		t.Run("presence-"+enabled, func(t *testing.T) {
+			clearConfigEnv(t)
+			for _, key := range []string{"NATS_USERNAME", "NATS_PASSWORD", "NATS_TOKEN", "NATS_NKEY_SEED", "JAWA_NATS_PRESENCE_BUCKET"} {
+				t.Setenv(key, "")
+			}
+			t.Setenv("JAWA_NATS_PRESENCE", enabled)
+			s, err := server.NewServer(&server.Options{Port: -1, JetStream: true, StoreDir: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			go s.Start()
+			if !s.ReadyForConnections(5 * time.Second) {
+				t.Fatal("server not ready")
+			}
+			t.Cleanup(s.Shutdown)
+			t.Setenv("NATS_URL", s.ClientURL())
+			t.Setenv("JAWA_NATS_AGENT_ID", "agent-1")
+			called := false
+			cmd := &cobra.Command{Use: "jawa", RunE: func(*cobra.Command, []string) error {
+				called = true
+				want := 1
+				if enabled == "false" {
+					want = 0
+				}
+				if got := s.NumClients(); got != want {
+					t.Fatalf("presence connections = %d, want %d", got, want)
+				}
+				return nil
+			}}
+			configureServing(cmd, bonnie.New())
+			cmd.SetArgs(nil)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !called {
+				t.Fatal("serving command did not run")
+			}
+		})
+	}
+}
+
 func TestPresenceDisabledAndHelpDoNotConnect(t *testing.T) {
 	for _, enabled := range []string{"", "true"} {
 		t.Run("help-"+enabled, func(t *testing.T) {

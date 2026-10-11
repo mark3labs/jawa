@@ -15,7 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// JAWA_NATS_PRESENCE=true opts into JetStream KV agent discovery. All agents
+// JetStream KV agent discovery is enabled by default; JAWA_NATS_PRESENCE=false
+// opts out. All agents
 // in a discovery scope must use the same JAWA_NATS_PRESENCE_BUCKET (default
 // jawa_agents). The bucket has a 30s TTL, refreshed by BONNIE every 10s.
 // JAWA_NATS_CREATE_STREAM also permits bucket creation; otherwise provision it
@@ -30,7 +31,7 @@ import (
 func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	cleanup := func() {}
 	servingFlagsE(cmd, func(name string, cfg natschannel.Config) error {
-		if os.Getenv("JAWA_NATS_PRESENCE") != "true" {
+		if envOr("JAWA_NATS_PRESENCE", "true") != "true" {
 			agent.Configure(bonnie.WithName(name), withNATS(cfg))
 			return nil
 		}

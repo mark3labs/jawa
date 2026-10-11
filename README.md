@@ -80,7 +80,8 @@ upgrading. Generated sqlc queries and regeneration instructions are documented i
 Moving a Todo card to **Building** atomically creates a durable execution attempt
 and outbox task. The orchestrator publishes it to `bonnie.tasks`, consumes BONNIE
 events/results, and shows agent assignment, PR links, blockers, and attempt history.
-Agents appear live through the BONNIE presence API; enable presence on each agent:
+Agents appear live through the BONNIE presence API, enabled by default. Set
+`JAWA_NATS_PRESENCE=false` only to opt out of discovery:
 
 ```sh
 export JAWA_NATS_PRESENCE=true
@@ -239,7 +240,7 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
 | `JAWA_NATS_CREATE_STREAM` | `true` |
 | `JAWA_NATS_CONSUMER` | Optional shared task consumer override |
-| `JAWA_NATS_PRESENCE` | Set `true` to enable BONNIE JetStream KV agent discovery |
+| `JAWA_NATS_PRESENCE` | `true`; set `false` to disable BONNIE JetStream KV agent discovery |
 | `JAWA_NATS_PRESENCE_BUCKET` | `jawa_agents`; use the same bucket for a discovery scope |
 
 The compiled binary also accepts serving flags for the agent name and agent ID:
