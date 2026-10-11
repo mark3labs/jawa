@@ -48,6 +48,8 @@ type PlanningDetail struct {
 	Turns            []PlanningTurn
 	Questions        []string
 	CanApprove       bool
+	CanResume        bool
+	ResumeToken      string
 	InteractionToken string
 	Interactions     []PlanningInteraction
 }
@@ -151,6 +153,11 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 	}
 	active := false
 	for _, t := range ts {
+		if t.Number == ts[len(ts)-1].Number && p.State == "failed" {
+			a := Attempt{TaskID: t.ID, OutcomeJSON: t.OutcomeJson, EventSeq: int(t.EventSeq)}
+			d.ResumeToken = resumeToken(a)
+			d.CanResume = executionFailure(Attempt{TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error})
+		}
 		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
 		active = active || planningTurnActive(t.State)
 	}
@@ -354,6 +361,13 @@ func currentPlanning(tx *sql.Tx, ctx context.Context, id string) (sqlc.PlanningS
 	return p, nil
 }
 func noActivePlanningTurns(tx *sql.Tx, id string) error {
+	var card string
+	if err := tx.QueryRow(`SELECT card_id FROM planning_sessions WHERE id=?`, id).Scan(&card); err != nil {
+		return err
+	}
+	if err := noPendingResume(tx, card); err != nil {
+		return err
+	}
 	var n int
 	err := tx.QueryRow(`SELECT count(*) FROM planning_turns WHERE session_id=? AND state IN ('queued','submitted','running')`, id).Scan(&n)
 	if err != nil {
@@ -464,6 +478,9 @@ func (w *Workflow) CancelPlanning(id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err = noPendingResume(tx, id); err != nil {
+		return err
+	}
 	p, err := currentPlanning(tx, w.ctx, id)
 	if err != nil {
 		return err

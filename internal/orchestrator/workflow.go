@@ -42,6 +42,7 @@ type Workflow struct {
 	verifier      Verifier
 	reports       *nats.Subscription
 	observeReport func(context.Context, client.Target) (client.Status, error)
+	resumeConn    *nats.Conn
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
@@ -72,6 +73,7 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
+	w.resumeConn = conn
 	w.observeReport = c.Status
 	if err := w.subscribeReports(conn); err != nil {
 		cancel()
@@ -285,6 +287,9 @@ func terminalFailure(a Attempt) bool {
 
 // Check all history, not just the latest attempt: these actions never cancel work.
 func noActiveAttempts(tx *sql.Tx, id string) error {
+	if err := noPendingResume(tx, id); err != nil {
+		return err
+	}
 	var active bool
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_attempts WHERE card_id=? AND
 		(state IN ('queued','submitted','running','waiting') OR run_state IN ('queued','submitted','running','waiting','interrupted')))`, id).Scan(&active); err != nil {
@@ -367,6 +372,9 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 
 func (w *Workflow) dispatch() {
 	w.dispatchPlanning()
+	if w.resumeConn != nil {
+		w.dispatchFailedResumes(w.resumeConn)
+	}
 	attempts, err := w.Attempts()
 	if err != nil {
 		return
@@ -413,6 +421,13 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 			return e
 		}
 		return tx.Commit()
+	}
+	blocked, e := resumeDeliveryBlocked(tx, ev.TaskID, true)
+	if e != nil {
+		return e
+	}
+	if blocked {
+		return nil
 	}
 	a, err := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, ev.TaskID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -481,6 +496,13 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 			return e
 		}
 		return tx.Commit()
+	}
+	blocked, e := resumeOutcomeBlocked(tx, out)
+	if e != nil {
+		return e
+	}
+	if blocked {
+		return nil
 	}
 	a, err := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, out.TaskID))
 	if errors.Is(err, sql.ErrNoRows) {

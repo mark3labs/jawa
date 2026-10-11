@@ -155,7 +155,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -233,7 +233,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = a.workflow.MoveCard(r.FormValue("card_id"), "Planning", 0)
 		}
-	case "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel":
+	case "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel":
 		if a.workflow == nil {
 			err = errors.New("workflow unavailable")
 			break
@@ -242,6 +242,12 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/cards/planning/reply":
 			err = a.workflow.ReplyPlanning(cardID, r.FormValue("reply"), r.FormValue("expected_interaction"))
+		case "/cards/planning/resume":
+			if r.FormValue("expected_resume") == "" {
+				err = errors.New("refresh before resuming")
+			} else {
+				err = a.workflow.resumeFailed(cardID, true, r.FormValue("expected_resume"))
+			}
 		case "/cards/planning/retry":
 			err = a.workflow.RetryPlanning(cardID)
 		case "/cards/planning/cancel":
@@ -253,6 +259,16 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				err = errors.New("select a valid plan revision to approve")
 			} else {
 				err = a.workflow.ApprovePlanning(cardID, revision)
+			}
+		}
+	case "/cards/resume":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			if r.FormValue("expected_resume") == "" {
+				err = errors.New("refresh before resuming")
+			} else {
+				err = a.workflow.resumeFailed(r.FormValue("card_id"), false, r.FormValue("expected_resume"))
 			}
 		}
 	case "/cards/retry":

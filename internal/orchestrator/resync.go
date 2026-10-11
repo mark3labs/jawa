@@ -76,6 +76,13 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	blocked, e := resumeDeliveryBlocked(tx, observed.TaskID, true)
+	if e != nil {
+		return e
+	}
+	if blocked {
+		return nil
+	}
 	a, err := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE id=?`, observed.ID))
 	if err == sql.ErrNoRows {
 		return nil

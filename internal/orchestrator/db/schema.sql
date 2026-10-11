@@ -73,3 +73,9 @@ CREATE UNIQUE INDEX planning_pending_interaction ON planning_interactions(task_i
 CREATE TABLE IF NOT EXISTS workflow_cancel_requests (
  id INTEGER PRIMARY KEY, task_id TEXT, agent_id TEXT, run_id TEXT, remote_attempt_id TEXT, turn_id TEXT,
  status TEXT, error TEXT, created_at INTEGER);
+
+CREATE TABLE failed_resumes (
+ id TEXT PRIMARY KEY, task_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+ planning INTEGER NOT NULL, request_json TEXT NOT NULL, previous_outcome TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending', reply_json TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX failed_resume_pending ON failed_resumes(task_id) WHERE status='pending';

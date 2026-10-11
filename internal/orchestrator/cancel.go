@@ -38,6 +38,13 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 	if err := migrateCancellation(w.s); err != nil {
 		return err
 	}
+	var pending bool
+	if err := w.s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, cardID).Scan(&pending); err != nil {
+		return err
+	}
+	if pending {
+		return errors.New("resume is pending confirmation; wait for its owning agent")
+	}
 	a, err := w.latestCancelAttempt(cardID)
 	if err != nil {
 		return err

@@ -104,6 +104,14 @@ templ planningContent(d pageData) {
 							<p class="meta">Wait for a ready plan with all questions answered before approving.</p>
 						}
 						<div class="plan-actions">
+							if detail.CanResume {
+								<p class="meta">Resume keeps this run and its saved context. Retry planning starts a fresh investigation.</p>
+								<form method="post" action="/cards/planning/resume" data-on:submit__prevent="@post('/cards/planning/resume', {contentType:'form'})">
+									@planningFields(d, c)
+									<input type="hidden" name="expected_resume" value={ detail.ResumeToken }/>
+									@submit("Resume failed run")
+								</form>
+							}
 							if detail.Session.State == "failed" {
 								@planningAction(d, c, "/cards/planning/retry", "Retry planning")
 							}
