@@ -20,6 +20,16 @@ import (
 
 // ProviderVerifier independently reads provider state on every invocation. The
 // supplied client supplies transport only; redirects and cookies are disabled.
+func effectiveProviderSetting(overrides map[string]string, dashboardKey, envKey string) string {
+	if value, ok := overrides[dashboardKey]; ok {
+		return value
+	}
+	if envKey == "JAWA_GITHUB_TOKEN" && os.Getenv(envKey) == "" {
+		return os.Getenv("GITHUB_TOKEN")
+	}
+	return os.Getenv(envKey)
+}
+
 func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 	c := http.Client{}
 	if supplied != nil {
@@ -33,6 +43,10 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		defer cancel()
 		if s == nil {
 			return false, errors.New("provider: store required")
+		}
+		overrides, err := s.DashboardOverrides()
+		if err != nil {
+			return false, errors.New("provider: dashboard settings unavailable")
 		}
 		var provider, repo, base string
 		if err := s.db.QueryRowContext(ctx, `SELECT p.provider,p.repo,p.base_branch FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo, &base); err != nil {
@@ -78,13 +92,10 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 			if host != "github.com" {
 				return false, errors.New("provider: only github.com is supported")
 			}
-			token = os.Getenv("JAWA_GITHUB_TOKEN")
-			if token == "" {
-				token = os.Getenv("GITHUB_TOKEN")
-			}
+			token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
 			api = "https://api.github.com"
 		case "forgejo":
-			token = os.Getenv("JAWA_FORGEJO_TOKEN")
+			token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
 			api = "https://" + host + "/api/v1"
 		default:
 			return false, errors.New("provider: unsupported provider")
@@ -92,7 +103,11 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		if strings.TrimSpace(token) == "" {
 			return false, errors.New("provider: credentials missing")
 		}
-		p := providerReader{ctx: ctx, client: &c, token: token, api: api, forgejo: provider == "forgejo"}
+		allowNoCI := os.Getenv("JAWA_ALLOW_NO_CI") == "true"
+		if value, ok := overrides["allow-no-ci"]; ok {
+			allowNoCI = value == "true"
+		}
+		p := providerReader{ctx: ctx, client: &c, token: token, api: api, forgejo: provider == "forgejo", allowNoCI: allowNoCI}
 		root := "/repos/" + owner + "/" + name
 		path := root + "/pulls/" + strconv.Itoa(number)
 		var pr providerPR
@@ -196,6 +211,7 @@ type providerReader struct {
 	client     *http.Client
 	token, api string
 	forgejo    bool
+	allowNoCI  bool
 }
 
 func (p providerReader) read(path string, out any) error {
@@ -373,7 +389,7 @@ func (p providerReader) githubCI(root, base, sha string) error {
 	if len(requirements) == 0 && (!allSuccessful || (len(status.Statuses) > 0 && status.State != "success")) {
 		return errors.New("provider: CI not successful")
 	}
-	if len(passed) == 0 && os.Getenv("JAWA_ALLOW_NO_CI") != "true" {
+	if len(passed) == 0 && !p.allowNoCI {
 		return errors.New("provider: no CI evidence; configure CI or explicitly set JAWA_ALLOW_NO_CI=true")
 	}
 	return nil

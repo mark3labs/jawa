@@ -1,6 +1,8 @@
 package orchestrator
 
 import (
+	"strings"
+
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
@@ -18,6 +20,47 @@ templ settingsContent(d pageData) {
 		</div>
 		if !d.natsConfigured {
 			<div class="notice" role="alert">Complete NATS authentication setup: choose an agent password below. The default username is worker. Projects, cards and work remain blocked until credentials are saved.</div>
+		}
+		@card.Card(card.Props{Class: "panel", ID: "runtime-settings"}) {
+			@card.Header() { @card.Title() { Orchestrator settings } @card.Description() { Dashboard overrides take precedence over explicit CLI flags and environment defaults. Listener changes require restart. } }
+			@card.Content() {
+				<form method="post" action="/settings/orchestrator"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+					<h3>Runtime</h3>
+					<div class="field-grid">
+						@textField("runtime-listen", "listen", "HTTP listen address", dashboardValue(d, "listen", "JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), false)
+						@textField("runtime-nats-listen", "nats-listen", "Embedded NATS listen address", dashboardValue(d, "nats-listen", "JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), false)
+						@textField("runtime-debug", "debug", "Debug logs (true/false)", dashboardValue(d, "debug", "JAWA_ORCHESTRATOR_DEBUG", "false"), false)
+					</div>
+					<h3>Git providers</h3>
+					<p class="muted small">Read-only tokens support pull-request, CI and review verification. Secret values are never displayed; entering a non-empty value replaces the token.</p>
+					<div class="field-grid">
+						for _, p := range providerConfigs(d.dashboard) {
+							<div class="field">
+								<label for={ "runtime-" + strings.ToLower(p.Name) + "-token" }>{ p.Name } read-only token (write-only)</label>
+								@input.Input(input.Props{ID: "runtime-" + strings.ToLower(p.Name) + "-token", Name: strings.ToLower(p.Name) + "-token", Type: "password", Attributes: templ.Attributes{"autocomplete": "new-password"}})
+								<label><input type="checkbox" name={ strings.ToLower(p.Name) + "-token-clear" } value="true"/> Clear saved { p.Name } token override</label>
+								<span class="muted small mono">{ p.Detail }</span>
+								if p.Configured {
+									@badge.Badge(badge.Props{Class: "badge-ok"}) { Configured }
+								} else {
+									@badge.Badge(badge.Props{Variant: badge.VariantOutline}) { Not configured }
+								}
+							</div>
+							if p.Name == "GitHub" {
+								@textField("runtime-allow-no-ci", "allow-no-ci", "Allow missing CI (true/false)", dashboardValue(d, "allow-no-ci", "JAWA_ALLOW_NO_CI", "false"), false)
+							}
+						}
+					</div>
+					<p class="muted small">Cards reach Done only after the pull request, its CI and review feedback pass verification. Done means ready for human review and merge; Jawa never merges for you.</p>
+					<div class="form-actions">@submit("Save")</div>
+				</form>
+				<details class="settings-reset"><summary>Reset settings</summary>
+					<p class="muted small">Reset removes all dashboard overrides and restores values from CLI flags, environment defaults, or built-in defaults. This does not change standalone agent or serve modes.</p>
+					<form method="post" action="/settings/orchestrator/reset"><input type="hidden" name="_csrf" value={ d.csrf }/>@viewFields(d.v)
+						<button class="btn btn-secondary" type="submit">Reset all dashboard overrides</button>
+					</form>
+				</details>
+			}
 		}
 		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
 			@card.Header() {
@@ -90,7 +133,7 @@ templ settingsContent(d pageData) {
 			}
 			@card.Content() {
 				<ul class="rows">
-					for _, p := range providerConfigs() {
+					for _, p := range providerConfigs(d.dashboard) {
 						<li class="row">
 							@icon("key")
 							<div class="row-text">

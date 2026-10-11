@@ -43,6 +43,16 @@ Building / Done board supports drag-and-drop and keyboard moves, persistent orde
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
 
+The **New card** dialog lists open issues from the selected project's repository
+as `#number title`; choosing one stores its issue link. Changing projects clears
+the previous selection. **Refresh issues** retries loading or picks up new issues.
+You can still create a card with **No linked issue** when the list is empty or
+unavailable. The orchestrator needs `JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) with
+repository issue read access for GitHub, or `JAWA_FORGEJO_TOKEN` for Forgejo;
+these credentials stay on the server. Loading is bounded to 20 seconds and 20
+pages of 100 API entries; larger lists report a loading error rather than show
+an incomplete selector.
+
 **Planning is optional:** drag Todo directly to Building for clear tasks, or move
 it to Planning for repository investigation and refinement. Open the planning
 card to read the proposed specification, answer questions, and review versioned
@@ -290,3 +300,20 @@ go run ./cmd/factory-smoke
 
 Pushes publish images to GHCR with branch and commit tags; `master` updates
 `latest`.
+
+### Dashboard orchestrator overrides
+
+The authenticated Settings page saves dashboard overrides for the running
+orchestrator's HTTP/NATS listener addresses, debug logging, GitHub/Forgejo
+read-only provider tokens, and GitHub's `JAWA_ALLOW_NO_CI` opt-in. Dashboard
+values override explicit `orchestrator` CLI flags, which override the
+`JAWA_ORCHESTRATOR_LISTEN`, `JAWA_ORCHESTRATOR_NATS_LISTEN`, and
+`JAWA_ORCHESTRATOR_DEBUG` environment defaults. `JAWA_ORCHESTRATOR_DATA_DIR`
+selects the bootstrap database directory; `--data-dir` overrides it. The data
+directory is needed to load these saved settings, so its selection is not a
+dashboard override. Listener changes take effect after restart; debug logging
+and provider settings resolve immediately, without mutating process environment.
+Provider tokens are write-only in the UI; explicit clear-token controls remove
+the dashboard override and reveal the environment fallback. Reset all removes
+every dashboard override. These settings apply only to the `orchestrator`
+command, not standalone agent/`serve` or administrative subcommands.
