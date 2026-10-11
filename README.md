@@ -26,7 +26,15 @@ and NATS connection lifecycle. Add `--debug` to include routine recovery polling
 and ignored stale/duplicate deliveries. Logs contain execution IDs and states,
 not prompts, raw result payloads, credentials, or remote error text.
 
-Open http://127.0.0.1:8080 and create an admin username/password. Add projects by
+Open http://127.0.0.1:8080 and create an admin username/password. You are then
+prompted in **Settings** to configure NATS authentication: the default agent
+username is `worker`; choose a password of 12–72 bytes and save to continue.
+Until this succeeds, workspace pages return to Settings and project/card actions
+are blocked with a setup alert. Completion persists across restarts. Existing
+installations without a completion marker must confirm their credentials once;
+the initial random bootstrap password does not count as completed setup.
+
+Add projects by
 selecting a provider and entering a repository name (`owner/repo`). GitHub uses
 `https://github.com` automatically. For Forgejo, also enter the instance URL;
 it defaults to `https://codeberg.org` and supports self-hosted HTTP(S) instances,

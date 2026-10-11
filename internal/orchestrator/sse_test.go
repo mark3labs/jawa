@@ -15,6 +15,9 @@ import (
 
 func sseCookies(t *testing.T, a *app) (*http.Cookie, *http.Cookie) {
 	t.Helper()
+	if err := a.rotateNATS(a.s.NATSConfig().URL, "worker", "long-agent-password"); err != nil {
+		t.Fatal(err)
+	}
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	if err := a.issue(w, r); err != nil {
