@@ -70,6 +70,9 @@ page.on('pageerror', e => errors.push(e.message));
 const card = title => page.locator('.task-card').filter({hasText: title});
 const laneCard = (lane, title) => page.locator(`.task-list[data-status="${lane}"] .task-card`).filter({hasText: title});
 const bridge = async path => {
+ // UI/report state can precede channel ACK/cache completion; allow the local
+ // broker to settle before cancelling the real host (still assert shutdown).
+ if (path === '/stop') await page.waitForTimeout(750);
  const response = await page.request.post(control + path, {headers: {Authorization: `Bearer ${process.env.JAWA_SMOKE_CONTROL_TOKEN}`}});
  assert.equal(response.status(), 204, `agent control ${path} failed`);
 };
@@ -405,12 +408,114 @@ try {
  await page.locator('#planning-approve-form input[type="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
- await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL), 'approved plan distinct build');
+ await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL && a.OutcomeJSON), 'approved plan distinct build');
  await bridge('/stop'); started = false;
  await screen(`/board?project=${otherID}`, 'board');
  await action('Resumable planning smoke', 'Delete…');
  await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
  await expect(card('Resumable planning smoke')).toHaveCount(0);
+ // Failed-run Resume must go through an actual UI click, production HTTP,
+ // durable reservation, host control and real KIT continuation in BOTH modes.
+ const snapshot = async id => {
+  const response = await page.request.post(`${control}/resume-snapshot?card=${id}`, {headers: {Authorization: `Bearer ${process.env.JAWA_SMOKE_CONTROL_TOKEN}`}});
+  assert.equal(response.status(), 200, await response.text());
+  return response.json();
+ };
+ const waitSnapshot = async (id, predicate, description) => {
+  const deadline = Date.now() + 25000;
+  while (Date.now() < deadline) {
+   const data = await snapshot(id);
+   if (predicate(data)) return data;
+   await page.waitForTimeout(150);
+  }
+  assert.fail(`Timed out waiting for ${description}`);
+ };
+ for (const mode of ['build', 'planning']) {
+  const title = `Failed resume ${mode} browser`;
+  await screen(boardPath, 'board');
+  await bridge('/start-failing'); started = true;
+  await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'failing offline host');
+  await createCard(title);
+  const id = await card(title).getAttribute('data-card-id');
+  if (mode === 'build') await action(title, 'Start work');
+  else await drag(title, 'Planning');
+  const row = d => mode === 'build' ? d.attempts[0] : d.turns[0];
+  const failed = await waitSnapshot(id, d => row(d)?.state === 'failed' && row(d)?.outcome_json && row(d)?.run_id, `${mode} natural runtime failure`);
+  assert.equal(JSON.parse(row(failed).outcome_json).state, 'failed');
+  assert.equal(failed.reports.length, 0, 'failure cannot be a terminal typed report');
+  await bridge('/stop'); started = false;
+  await bridge(`/seed-resume-context?card=${id}`);
+  const before = await snapshot(id);
+  await bridge(`/start-resume-${mode}`); started = true;
+  await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'healthy restarted same host');
+  const endpoint = mode === 'build' ? '/cards/resume' : '/cards/planning/resume';
+  if (mode === 'planning') await screen(`/planning?card=${id}`, 'planning');
+  const responsePromise = page.waitForResponse(r => new URL(r.url()).pathname === endpoint && r.request().method() === 'POST');
+  if (mode === 'build') await action(title, 'Resume failed run');
+  else await page.getByRole('button', {name: 'Resume failed run', exact: true}).click();
+  const response = await responsePromise;
+  assert.equal(response.status(), 200);
+  assert.match(response.request().postData(), /expected_resume/);
+  const after = await waitSnapshot(id, d => d.resumes.length === 1 && d.resumes[0].status === 'completed' && d.reports.length === 1 && (mode !== 'build' || row(d).error === 'provider: credentials missing'), `${mode} durable resume and typed report`);
+  const previous = row(before), current = row(after);
+  for (const key of ['id','number','task_json','agent_id','run_id','remote_attempt_id', ...(mode === 'build' ? ['task_id'] : ['session_id'])]) {
+   assert.deepEqual(current[key], previous[key], `${mode} changed ${key}`);
+  }
+  assert.equal(after.attempts.length, before.attempts.length);
+  assert.equal(after.turns.length, before.turns.length);
+  assert.equal(after.sessions.length, before.sessions.length);
+  if (mode === 'planning') assert.equal(after.sessions[0].id, before.sessions[0].id);
+  const task = JSON.parse(previous.task_json);
+  assert.equal(after.prompts.length, 2, 'workspace check then typed report, no fresh dispatch');
+  assert.equal(before.workspaceMarker, 'resume-workspace-marker');
+  assert.equal(after.workspaceMarker, before.workspaceMarker, 'real sandbox file survives restart');
+  assert.ok(after.records.some(r => JSON.stringify(r.payload || {}).includes('workspace-preserved') && r.seq > before.records.at(-1).seq), 'resumed shell actually checked saved file');
+  assert.equal(after.prompts[0].split(task.text).length - 1, 1, 'original prompt exactly once');
+  assert.ok(after.prompts[0].includes('browser-saved-context-marker'), 'saved context restored');
+  const users = records => records.filter(r => r.kind === 'message' && r.role === 'user');
+  assert.deepEqual(users(after.records).filter(r => r.text), users(before.records), 'original saved user input unchanged and not duplicated');
+  const addedUsers = users(after.records).filter(r => !users(before.records).some(old => old.seq === r.seq));
+  // BONNIE StartRetry journals its empty continuation input, not the task again.
+  assert.equal(addedUsers.length, 1);
+  assert.deepEqual(addedUsers[0].payload.content, [{type: 'text', data: {text: ''}}]);
+  const bindings = records => records.filter(r => r.kind === 'sandbox');
+  assert.ok(bindings(before.records).length, 'real sandbox binding exists');
+  assert.deepEqual(bindings(after.records).slice(0, bindings(before.records).length), bindings(before.records));
+  assert.deepEqual(bindings(after.records).at(-1).payload, bindings(before.records).at(-1).payload, 'same saved workspace binding');
+  assert.equal(after.records.filter(r => r.ext_type === 'jawa_failed_resume_v1').length, 1);
+  assert.equal(after.records.filter(r => r.ext_type === 'jawa_failed_resume_receipt_v1').length, 1);
+  const receipt = after.records.find(r => r.ext_type === 'jawa_failed_resume_receipt_v1').payload;
+  assert.equal(receipt.status, 'completed');
+  assert.equal(receipt.target.run_id, previous.run_id);
+  if (mode === 'build') {
+   assert.equal(current.pr_url, pr);
+   assert.equal(current.error, 'provider: credentials missing', 'real verifier remains fail closed');
+   await card(title).getByTitle('Open pull request').waitFor();
+  } else {
+   assert.equal(after.sessions[0].state, 'questions');
+   await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
+   await page.getByText('Resume browser API?', {exact: true}).first().waitFor();
+   assert.equal(await page.getByRole('button', {name: 'Resume failed run', exact: true}).count(), 0);
+   // Existing Answer path must still work after failed-run continuation.
+   await page.getByLabel('Reply or request a revision').fill('Use the saved API');
+   await page.getByRole('button', {name: 'Send reply', exact: true}).click();
+   await page.getByRole('heading', {name: 'Resumed browser plan', exact: true}).first().waitFor();
+   const answered = await snapshot(id);
+   assert.equal(answered.turns.length, 1);
+   assert.equal(answered.turns[0].run_id, previous.run_id);
+   assert.equal(answered.sessions[0].revision, 1);
+  }
+  console.log('PASS failed-run browser Resume:', JSON.stringify({mode,card:id,task:previous.task_id || previous.id,run:previous.run_id,remoteAttempt:previous.remote_attempt_id,boardAttempt:previous.number,session:previous.session_id,command:after.resumes[0].id,http:endpoint,receipt:receipt.status,branch:task.text.split('\nBranch: ')[1],samePrompt:true,savedContext:true,sameSandbox:true}));
+  await bridge('/stop'); started = false;
+  if (mode === 'planning') {
+   await page.getByRole('button', {name: 'Cancel planning & return to Todo', exact: true}).click();
+   await page.locator('#planning-content').getByText('Cancelled', {exact: true}).waitFor();
+  }
+  await screen(boardPath, 'board');
+  await action(title, 'Delete…');
+  await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
+  await expect(card(title)).toHaveCount(0);
+ }
  // Modal positioning is explicit: Tailwind's reset must not put dialogs at (0,0).
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {

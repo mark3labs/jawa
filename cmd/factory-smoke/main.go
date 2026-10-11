@@ -30,6 +30,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"jawa/internal/orchestrator"
 	"jawa/internal/reportbridge"
+	"jawa/internal/testmodel"
 
 	"strings"
 )
@@ -209,6 +210,7 @@ func run() (runErr error) {
 	var mu sync.Mutex
 	var stopAgent context.CancelFunc
 	var agentDone chan error
+	var resumeModel *testmodel.Model
 	stop := func() error {
 		if stopAgent == nil {
 			return nil
@@ -236,6 +238,22 @@ func run() (runErr error) {
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		if r.URL.Path == "/resume-snapshot" {
+			writeResumeSnapshot(w, r, dir, resumeModel)
+			return
+		}
+		if r.URL.Path == "/seed-resume-context" {
+			if stopAgent != nil {
+				http.Error(w, "host must be stopped", 400)
+				return
+			}
+			if e := seedResumeContext(r.Context(), dir, r.URL.Query().Get("card")); e != nil {
+				http.Error(w, e.Error(), 500)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		// Seed only the command-owned temporary database, after browser setup and
 		// project creation. Direct SQL avoids rerunning workflow migrations and
 		// represents an old Building card with no attempt, not a fake outcome.
@@ -274,7 +292,7 @@ func run() (runErr error) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if (r.URL.Path != "/start" && r.URL.Path != "/start-planning") || stopAgent != nil {
+		if (r.URL.Path != "/start" && r.URL.Path != "/start-planning" && r.URL.Path != "/start-failing" && r.URL.Path != "/start-resume-build" && r.URL.Path != "/start-resume-planning") || stopAgent != nil {
 			http.Error(w, "invalid control", http.StatusBadRequest)
 			return
 		}
@@ -307,6 +325,16 @@ func run() (runErr error) {
 		if r.URL.Path == "/start-planning" {
 			fixtureModel.planning = &planningScript{}
 		}
+		resumeModel = nil
+		switch r.URL.Path {
+		case "/start-failing":
+			resumeModel = testmodel.New(testmodel.Call("shell", `{"command":"printf resume-workspace-marker > resume-marker.txt"}`))
+		case "/start-resume-build":
+			resumeModel = testmodel.New(testmodel.Call("shell", `{"command":"test \"$(cat resume-marker.txt)\" = resume-workspace-marker && printf workspace-preserved"}`), testmodel.Call("completeTask", fixturePR))
+		case "/start-resume-planning":
+			resumeModel = testmodel.New(testmodel.Call("shell", `{"command":"test \"$(cat resume-marker.txt)\" = resume-workspace-marker && printf workspace-preserved"}`), testmodel.Call("clarify", `{"questions":["Resume browser API?"]}`), testmodel.Call("proposeSpec", `{"spec":"## Resumed browser plan","repo_commit":"`+strings.Repeat("a", 40)+`"}`))
+		}
+		selectedResumeModel := resumeModel
 		var reportRuntime reportbridge.Bridge
 		agent := bonnie.New(
 			bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
@@ -318,6 +346,9 @@ func run() (runErr error) {
 					return &kit.ProviderResult{Model: fixtureModel}, nil
 				})(o)
 				kit.WithModel("smoke/final")(o)
+				if selectedResumeModel != nil {
+					selectedResumeModel.Option()(o)
+				}
 			}),
 			bonnie.WithKitSetup(reportRuntime.Setup),
 			reportRuntime.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true}),
