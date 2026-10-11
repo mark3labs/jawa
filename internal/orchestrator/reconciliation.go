@@ -114,6 +114,13 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) (retErr erro
 	if out.TaskID != taskID || out.RunID != runID || out.AttemptID != remoteAttemptID || out.AgentID == "" || (string(out.State) != "completed" && string(out.State) != "failed") {
 		return errors.New("reconcile: retained outcome must be completed or failed with matching nonempty identities")
 	}
+	reported, err := acceptedReport(tx, taskID)
+	if err != nil {
+		return err
+	}
+	if reported {
+		return errors.New("reconcile: accepted typed report ownership is immutable")
+	}
 	if matches(a, out.AgentID, out.RunID, out.AttemptID) {
 		return errors.New("reconcile: selected execution is already pinned")
 	}

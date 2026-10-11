@@ -10,6 +10,11 @@ import (
 	"embed"
 
 	"github.com/mark3labs/bonnie"
+	tool0 "jawa/tools/clarify"
+	tool1 "jawa/tools/completeTask"
+	tool2 "jawa/tools/proposeSpec"
+	tool3 "jawa/tools/reportBlocker"
+
 	kit "github.com/mark3labs/kit/pkg/kit"
 )
 
@@ -29,6 +34,11 @@ func init() {
 		Instructions: _instructions,
 		Skills:       _skills,
 		ContextFiles: _contextFiles,
-		Tools:        []kit.Tool{},
+		Tools: []kit.Tool{
+			tool0.Tool(),
+			tool1.Tool(),
+			tool2.Tool(),
+			tool3.Tool(),
+		},
 	})
 }

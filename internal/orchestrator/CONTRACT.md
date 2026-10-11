@@ -43,13 +43,13 @@ CHROMIUM_PATH to your Chromium executable if needed. The command uses ephemeral
 loopback ports, private temporary data, production orchestrator startup, and a
 real BONNIE host/NATS channel/presence registry with an offline deterministic Kit
 model. Browser-created cards actually publish to bonnie.tasks, enter running,
-produce results, and remain blocked without provider credentials. The smoke checks
+call actual typed completeTask tools, receive commit-after-transaction report ACKs, and remain blocked without provider credentials. The smoke checks
 live presence/history, rejection of manual Done, pointer drag, keyboard moves,
 filtering, persistence, credentials/login, and agent shutdown/unregistration.
 It makes no paid model calls, pushes no branches, and creates no real PRs.
 
 Provider fixtures and TestWorkflowProviderVerifierToDone cover independent readiness:
-real NATS outcome -> pending CI blocker -> green fixture CI -> verified Done.
+typed report DB commit -> pending CI blocker -> green fixture CI -> verified Done.
 Live model-driven repository edits and live GitHub/Forgejo PR/CI/review cycles are
 not validated by these offline tests.
 

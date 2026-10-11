@@ -27,10 +27,34 @@ and ignored stale/duplicate deliveries. Logs contain execution IDs and states,
 not prompts, raw result payloads, credentials, or remote error text.
 
 Open http://127.0.0.1:8080 and create an admin username/password. Add projects tied
-to GitHub or Forgejo repository URLs, then create cards. The Todo / Building / Done
-board supports drag-and-drop and keyboard moves, persistent ordering, and optional
+to GitHub or Forgejo repository URLs, then create cards. The Todo / Planning /
+Building / Done board supports drag-and-drop and keyboard moves, persistent ordering, and optional
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
+
+**Planning is optional:** drag Todo directly to Building for clear tasks, or move
+it to Planning for repository investigation and refinement. Open the planning
+card to read the proposed specification, answer questions, and review versioned
+plans. **Approve & build** freezes the displayed revision and starts implementation;
+dragging Planning to Building opens that review rather than bypassing approval.
+Replies resume the same durable planning run; retry and cancel are available.
+The original request and discussion remain separate from the approved specification.
+
+Planning uses one durable BONNIE task/run/attempt: `clarify(questions)` waits
+indefinitely for input, and `proposeSpec(spec, repo_commit)` waits for review
+without questions. Replies require the displayed interaction token and persist
+before exact-suspension Answer dispatch; no new task is created on reply.
+Approval freezes the reviewed revision and atomically queues a planning approval
+Answer plus a distinct implementation task. Natural planning completion after
+approval cannot change the build. Typed reports, not natural text, are authoritative;
+there is no parser fallback. Planning does not create PRs or use build verification. **Read-only planning is instructed, not sandbox-enforced
+by the orchestrator:** BONNIE v0.22 has no per-task tool restrictions. Configure
+agent credentials and tools appropriately; shared build-capable agents are not a
+security boundary. See [Planning contract](internal/orchestrator/PLANNING_HANDOFF.md).
+
+Database upgrades use embedded Goose migrations; back up existing databases before
+upgrading. Generated sqlc queries and regeneration instructions are documented in
+[Database tooling](internal/orchestrator/db/README.md).
 
 Moving a Todo card to **Building** atomically creates a durable execution attempt
 and outbox task. The orchestrator publishes it to `bonnie.tasks`, consumes BONNIE
@@ -79,7 +103,8 @@ explicit and audited; it never bypasses provider verification or republishes a t
 ```
 
 Credentials come from `NATS_USERNAME`/`NATS_PASSWORD`. Repeated selection can recheck
-an already-pinned result. A completed report may be bare JSON or one JSON code fence.
+an already-pinned result. Natural-language outcomes cannot establish completion;
+only accepted typed tool reports can supply the PR used for verification.
 Provider-confirmed merged PRs also count as Done, provided repository, branch, base,
 and head identity checks pass. Closed unmerged PRs remain blocked.
 

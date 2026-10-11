@@ -24,11 +24,14 @@ import (
 	"github.com/mark3labs/bonnie"
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
 	presencenats "github.com/mark3labs/bonnie/presence/nats"
-	"github.com/mark3labs/bonnie/runtime"
+
 	"github.com/mark3labs/bonnie/sandbox"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
 	"jawa/internal/orchestrator"
+	"jawa/internal/reportbridge"
+
+	"strings"
 )
 
 const agentID = "factory-smoke-agent"
@@ -36,10 +39,14 @@ const fixturePR = `{"pr_number":1}`
 
 // This is a real Kit provider, not a replacement runtime.Agent or a protocol
 // consumer. Hold the turn open long enough for the browser to observe running.
-type model struct{}
+type model struct{ planning *planningScript }
+type planningScript struct {
+	mu   sync.Mutex
+	step int
+}
 
 func (model) answer(ctx context.Context) error {
-	log.Print("BONNIE Kit model pickup (offline scripted final; no tools)")
+	log.Print("BONNIE Kit model pickup (offline scripted completeTask tool)")
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -47,27 +54,65 @@ func (model) answer(ctx context.Context) error {
 		return nil
 	}
 }
-func (m model) Generate(ctx context.Context, _ fantasy.Call) (*fantasy.Response, error) {
-	if err := m.answer(ctx); err != nil {
-		return nil, err
+func (m model) reply(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	if m.planning == nil {
+		if err := m.answer(ctx); err != nil {
+			return nil, err
+		}
+		return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.ToolCallContent{ToolCallID: "smoke-complete", ToolName: "completeTask", Input: fixturePR}}, FinishReason: fantasy.FinishReasonToolCalls}, nil
 	}
-	return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: fixturePR}}, FinishReason: fantasy.FinishReasonStop}, nil
+	// Old cancelled queued tasks may still be admitted. They must not consume the
+	// current task's fixture script; natural text cannot revive their DB authority.
+	if !strings.Contains(fmt.Sprint(call.Prompt), "Resumable planning smoke") {
+		return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "Cancelled fixture task finished."}}, FinishReason: fantasy.FinishReasonStop}, nil
+	}
+	if strings.Contains(fmt.Sprint(call.Prompt), "Implement the approved specification") {
+		return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.ToolCallContent{ToolCallID: "planning-build-complete", ToolName: "completeTask", Input: fixturePR}}, FinishReason: fantasy.FinishReasonToolCalls}, nil
+	}
+	m.planning.mu.Lock()
+	defer m.planning.mu.Unlock()
+	m.planning.step++
+	name, input := "", ""
+	switch m.planning.step {
+	case 1:
+		name, input = "clarify", `{"questions":["Which API should the plan use?"]}`
+	case 2:
+		name, input = "proposeSpec", `{"spec":"## Draft plan\nUse API v2","repo_commit":"`+strings.Repeat("a", 40)+`"}`
+	case 3:
+		name, input = "proposeSpec", `{"spec":"## Reviewed plan\nUse API v3","repo_commit":"`+strings.Repeat("a", 40)+`"}`
+	case 4:
+		return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "Planning approved and finished."}}, FinishReason: fantasy.FinishReasonStop}, nil
+	case 5:
+		name, input = "completeTask", fixturePR
+	default:
+		return nil, errors.New("smoke: planning script exhausted")
+	}
+	return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.ToolCallContent{ToolCallID: fmt.Sprintf("planning-%d", m.planning.step), ToolName: name, Input: input}}, FinishReason: fantasy.FinishReasonToolCalls}, nil
 }
-func (m model) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamResponse, error) {
-	if err := m.answer(ctx); err != nil {
+func (m model) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	return m.reply(ctx, call)
+}
+func (m model) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	response, err := m.reply(ctx, call)
+	if err != nil {
 		return nil, err
 	}
 	return iter.Seq[fantasy.StreamPart](func(yield func(fantasy.StreamPart) bool) {
-		for _, part := range []fantasy.StreamPart{
-			{Type: fantasy.StreamPartTypeTextStart, ID: "final"},
-			{Type: fantasy.StreamPartTypeTextDelta, ID: "final", Delta: fixturePR},
-			{Type: fantasy.StreamPartTypeTextEnd, ID: "final"},
-			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonStop},
-		} {
-			if !yield(part) {
-				return
+		for _, content := range response.Content {
+			switch c := content.(type) {
+			case fantasy.ToolCallContent:
+				if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolCall, ID: c.ToolCallID, ToolCallName: c.ToolName, ToolCallInput: c.Input}) {
+					return
+				}
+			case fantasy.TextContent:
+				for _, part := range []fantasy.StreamPart{{Type: fantasy.StreamPartTypeTextStart, ID: "text"}, {Type: fantasy.StreamPartTypeTextDelta, ID: "text", Delta: c.Text}, {Type: fantasy.StreamPartTypeTextEnd, ID: "text"}} {
+					if !yield(part) {
+						return
+					}
+				}
 			}
 		}
+		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, FinishReason: response.FinishReason})
 	}), nil
 }
 func (model) GenerateObject(context.Context, fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
@@ -229,7 +274,7 @@ func run() (runErr error) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.URL.Path != "/start" || stopAgent != nil {
+		if (r.URL.Path != "/start" && r.URL.Path != "/start-planning") || stopAgent != nil {
 			http.Error(w, "invalid control", http.StatusBadRequest)
 			return
 		}
@@ -258,6 +303,11 @@ func run() (runErr error) {
 			http.Error(w, "observer failed", http.StatusInternalServerError)
 			return
 		}
+		fixtureModel := model{}
+		if r.URL.Path == "/start-planning" {
+			fixtureModel.planning = &planningScript{}
+		}
+		var reportRuntime reportbridge.Bridge
 		agent := bonnie.New(
 			bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
 			bonnie.WithJournal(filepath.Join(dir, "agent")), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""),
@@ -265,13 +315,12 @@ func run() (runErr error) {
 			bonnie.WithKit(func(o *kit.Options) {
 				o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
 				kit.WithProvider("smoke", func(context.Context, *kit.ProviderConfig, string) (*kit.ProviderResult, error) {
-					return &kit.ProviderResult{Model: model{}}, nil
+					return &kit.ProviderResult{Model: fixtureModel}, nil
 				})(o)
 				kit.WithModel("smoke/final")(o)
 			}),
-			bonnie.WithChannel(func(runner *runtime.Runner) (bonnie.Channel, error) {
-				return natschannel.New(runner, natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true})
-			}),
+			bonnie.WithKitSetup(reportRuntime.Setup),
+			reportRuntime.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true}),
 			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}),
 		)
 		stopAgent = wcancel

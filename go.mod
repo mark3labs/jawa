@@ -10,11 +10,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/bonnie v0.22.1
 	github.com/mark3labs/kit v0.126.0
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/nats-io/nats-server/v2 v2.15.1
 	github.com/nats-io/nats.go v1.53.1
 	github.com/nats-io/nkeys v0.4.16
+	github.com/pressly/goose/v3 v3.26.0
 	github.com/spf13/cobra v1.10.2
 	github.com/subosito/gotenv v1.6.0
+	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.60.1
 )
@@ -48,6 +51,7 @@ require (
 	github.com/aws/smithy-go v1.28.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.6.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -85,6 +89,7 @@ require (
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
 	github.com/googleapis/gax-go/v2 v2.26.2 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/indaco/herald v0.13.0 // indirect
@@ -98,6 +103,7 @@ require (
 	github.com/mark3labs/mcp-go v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
+	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
@@ -117,6 +123,7 @@ require (
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/sahilm/fuzzy v0.1.3 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
+	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -129,7 +136,6 @@ require (
 	github.com/traefik/yaegi v0.16.1 // indirect
 	github.com/xo/terminfo v1.2.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	github.com/yuin/goldmark v1.8.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 // indirect
@@ -137,6 +143,7 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20261007192929-f45ad48fbe92 // indirect
 	golang.org/x/image v0.46.0 // indirect

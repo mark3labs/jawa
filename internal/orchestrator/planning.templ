@@ -1,0 +1,143 @@
+package orchestrator
+
+import "strconv"
+
+templ planningContent(d pageData) {
+	<div id="planning-content" class="view planning-view">
+		if c, ok := selectedCard(d.cards, d.v.Card); ok {
+			<div class="view-head">
+				<div class="view-title"><div><p class="meta">{ cardKey(d.projects, c) } · { c.Status }</p><h1>{ c.Title }</h1></div></div>
+				<a class="btn" href={ templ.SafeURL(boardPath(c.ProjectID)) }>Back to board</a>
+			</div>
+			<section class="planning-section" aria-label="Original description">
+				<h2>Original description</h2>
+				if c.Description != "" {
+					@planningMarkdownText(c.Description)
+				} else {
+					<p class="meta">No description provided.</p>
+				}
+			</section>
+			if detail, exists := d.planning[c.ID]; exists {
+				<section class="planning-section" aria-label="Proposed plan">
+					<h2>Planning <span class={ "chip", "tone-" + planningTone(detail.Session.State) }>{ planningLabel(detail.Session.State) }</span></h2>
+
+					if detail.Session.Spec != "" {
+                        <h3>Proposed plan · Revision { strconv.Itoa(detail.Session.Revision) }</h3>
+						@planningMarkdownText(detail.Session.Spec)
+					} else {
+						<p class="meta">The planner has not proposed a plan yet.</p>
+					}
+					if detail.Session.ApprovedRevision > 0 {
+						<p class="meta">Approved revision { strconv.Itoa(detail.Session.ApprovedRevision) } · Frozen for implementation</p>
+					}
+					if detail.Session.Error != "" {
+						<p class="plan-text tone-failed" role="status">{ detail.Session.Error }</p>
+					}
+					if len(detail.Questions) > 0 {
+						<h3>Questions</h3>
+						<ul>
+							for _, question := range detail.Questions {
+								<li>@planningMarkdownText(question)</li>
+							}
+						</ul>
+					}
+					if len(detail.Revisions) > 0 {
+						<details><summary>Revision history</summary>
+							for _, revision := range detail.Revisions {
+								<article class="plan-message">
+									<h3>Revision { strconv.Itoa(revision.Number) }</h3>
+									@planningMarkdownText(revision.Spec)
+									for _, question := range revision.Questions {
+										@planningMarkdownText(question)
+									}
+								</article>
+							}
+						</details>
+					}
+				</section>
+				<section class="planning-section" aria-label="Planning discussion">
+					<h2>Discussion</h2>
+					for _, message := range detail.Messages {
+						<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
+					}
+					if c.Status == "Planning" && planningCanReply(detail) {
+						<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+							@planningFields(d, c)
+                            <input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
+							<div class="field"><label for="planning-reply">Reply or request a revision</label><textarea id="planning-reply" name="reply" required maxlength="65536"></textarea></div>
+							@submit("Send reply")
+						</form>
+					}
+				</section>
+				if len(detail.Interactions) > 0 {
+                    <section class="planning-section" aria-label="Planning reports">
+                        <h2>Planning reports</h2>
+                        <ul>
+                            for _, interaction := range detail.Interactions {
+                                <li><span class="meta">{ interaction.Kind }</span> · { planningInteractionLabel(interaction.Status) }</li>
+                            }
+                        </ul>
+                    </section>
+                }
+				if c.Status == "Planning" {
+					<section id="approve-plan" class="planning-section" aria-label="Approve plan">
+						<h2>Approve &amp; build</h2>
+						<p class="meta">Approval freezes the selected plan and starts implementation. Only the current ready revision can be approved; stale selections are rejected by the server.</p>
+						if detail.CanApprove {
+							<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})">
+								@planningFields(d, c)
+								<div class="field"><label for="plan-revision">Plan revision to approve</label>
+									<select id="plan-revision" name="expected_revision" required>
+										<option value="">Select the revision you reviewed</option>
+										for _, revision := range detail.Revisions {
+											<option value={ strconv.Itoa(revision.Number) }>{ "Revision " + strconv.Itoa(revision.Number) }</option>
+										}
+									</select>
+								</div>
+								<label class="meta"><input type="checkbox" required/> I reviewed this revision and want to start building.</label>
+								<div class="plan-actions">@submit("Approve & build")</div>
+							</form>
+						} else {
+							<p class="meta">Wait for a ready plan with all questions answered before approving.</p>
+						}
+						<div class="plan-actions">
+							if detail.Session.State == "failed" {
+								@planningAction(d, c, "/cards/planning/retry", "Retry planning")
+							}
+							@planningAction(d, c, "/cards/planning/cancel", "Cancel planning & return to Todo")
+						</div>
+					</section>
+				}
+			} else if c.Status == "Todo" {
+				<section class="planning-section"><h2>Plan before building</h2><p class="meta">Investigate the repository, discuss questions, and review a versioned plan. Planning is optional; you can still move Todo directly to Building.</p><div class="plan-actions">@planningAction(d, c, "/cards/plan", "Start planning")</div></section>
+			} else {
+				<section class="planning-section"><p class="meta">This card has no planning session.</p><a class="btn" href={ templ.SafeURL(runsForCardPath(c.ID)) }>View runs</a></section>
+			}
+		} else {
+			<h1>Card not found</h1><p class="meta">Choose a card from the board to review its plan.</p><a class="btn" href="/board">Back to board</a>
+		}
+	</div>
+}
+
+templ planningFields(d pageData, c Card) {
+	<input type="hidden" name="_csrf" value={ d.csrf }/>
+	@viewFields(d.v)
+	<input type="hidden" name="card_id" value={ c.ID }/>
+}
+
+templ planningAction(d pageData, c Card, route, title string) {
+	<form method="post" action={ route } data-on:submit__prevent={ "@post('" + route + "', {contentType:'form'})" }>
+		@planningFields(d, c)
+		@submit(title)
+	</form>
+}
+
+// Every planning surface uses the same sanitized Markdown boundary.
+templ planningMarkdownText(source string) {
+	<div class="planning-markdown">@templ.Raw(renderPlanningMarkdown(source))</div>
+}
+
+// Discussion content is readable Markdown persisted from structured reports.
+templ planningDiscussionMessage(message PlanningMessage) {
+ @planningMarkdownText(message.Content)
+}

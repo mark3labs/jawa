@@ -119,6 +119,9 @@ templ laneIcon(status string) {
 		switch status {
 			case "Todo":
 				<circle cx="12" cy="12" r="8" stroke-dasharray="3.2 3.2"></circle>
+			case "Planning":
+				<circle cx="12" cy="12" r="8"></circle>
+				<path d="M9 9h6M9 12h6M9 15h3"></path>
 			case "Building":
 				<circle cx="12" cy="12" r="8"></circle>
 				<path d="M12 7a5 5 0 0 1 0 10z" fill="currentColor" stroke="none"></path>
@@ -177,6 +180,8 @@ templ viewFields(v viewParams) {
 
 func viewLabel(v viewKind) string {
 	switch v {
+	case viewPlanning:
+		return "Planning"
 	case viewRuns:
 		return "Runs"
 	case viewAgents:
@@ -225,6 +230,8 @@ templ appPage(d pageData) {
 					<main class="content" id="content">
 						@notification("", "")
 						switch d.v.View {
+							case viewPlanning:
+								@planningContent(d)
 							case viewRuns:
 								@runsContent(d)
 							case viewAgents:

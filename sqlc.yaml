@@ -1,0 +1,12 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/orchestrator/db/schema.sql"
+    queries: "internal/orchestrator/db/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/orchestrator/db/sqlc"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_interface: true

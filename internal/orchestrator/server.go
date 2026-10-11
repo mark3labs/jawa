@@ -124,7 +124,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/settings/nats":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats":
 	default:
 		http.NotFound(w, r)
 		return
@@ -171,7 +171,47 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.workflow == nil {
 			err = errors.New("workflow is unavailable")
 		} else {
-			err = a.workflow.MoveCard(r.FormValue("card_id"), r.FormValue("status"), pos)
+			cardID, status := r.FormValue("card_id"), r.FormValue("status")
+			if status == "Building" {
+				cards, loadErr := a.s.Cards("")
+				if loadErr != nil {
+					err = loadErr
+					break
+				}
+				if card, ok := selectedCard(cards, cardID); ok && card.Status == "Planning" {
+					err = errors.New("review and approve a plan revision before building")
+					break
+				}
+			}
+			err = a.workflow.MoveCard(cardID, status, pos)
+		}
+	case "/cards/plan":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.MoveCard(r.FormValue("card_id"), "Planning", 0)
+		}
+	case "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/approve", "/cards/planning/cancel":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+			break
+		}
+		cardID := r.FormValue("card_id")
+		switch r.URL.Path {
+		case "/cards/planning/reply":
+			err = a.workflow.ReplyPlanning(cardID, r.FormValue("reply"), r.FormValue("expected_interaction"))
+		case "/cards/planning/retry":
+			err = a.workflow.RetryPlanning(cardID)
+		case "/cards/planning/cancel":
+			err = a.workflow.CancelPlanning(cardID)
+		case "/cards/planning/approve":
+			// Never substitute the latest revision: approval is a user-visible CAS.
+			revision, parseErr := strconv.Atoi(r.FormValue("expected_revision"))
+			if parseErr != nil || revision < 1 {
+				err = errors.New("select a valid plan revision to approve")
+			} else {
+				err = a.workflow.ApprovePlanning(cardID, revision)
+			}
 		}
 	case "/cards/retry":
 		if a.workflow == nil {

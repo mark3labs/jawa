@@ -237,7 +237,7 @@ try {
   assert.ok(attempt.RunID && attempt.RemoteAttemptID && attempt.OutcomeJSON);
   assert.equal(attempt.RunState, 'completed');
   assert.equal(attempt.PRURL, pr);
-  assert.equal(JSON.parse(attempt.Result).pr_number, 1);
+  assert.equal(JSON.parse(attempt.Result).payload.pr_number, 1);
   assert.equal(attempt.Ready, false);
   assert.equal(attempt.Number, 1);
   assert.ok(JSON.parse(attempt.TaskJSON).text.split('\nBranch: ')[1].endsWith(`-${attempt.CardID.slice(0,6)}-a1`));
@@ -290,7 +290,7 @@ try {
  const run = page.locator('details.run');
  await run.locator('summary').click();
  await run.locator('.card-note').filter({hasText: 'provider: credentials missing'}).waitFor();
- assert.equal(JSON.parse(await run.locator('.result').textContent()).pr_number, 1);
+ assert.equal(JSON.parse(await run.locator('.result').textContent()).payload.pr_number, 1);
  assert.equal(await run.locator('.run-pr a').getAttribute('href'), pr);
  await run.getByText(JSON.parse(data.attempts.find(a=>a.CardID===firstID).TaskJSON).text.split('\nBranch: ')[1], {exact: true}).waitFor();
  const runID = await run.getAttribute('id');
@@ -361,6 +361,55 @@ try {
  await screen(`/board?project=${otherID}`, 'board');
  await expect(page.locator('.task-card')).toHaveCount(1);
  await expect(card('First smoke card')).toHaveCount(0);
+ // Planning drag starts a durable queued session even with the agent offline.
+ await createCard('Planning smoke card');
+ const planningID = await card('Planning smoke card').getAttribute('data-card-id');
+ await drag('Planning smoke card', 'Planning');
+ await expect(card('Planning smoke card').getByText('Queued', {exact: true})).toBeVisible();
+ // Dropping into Building opens review instead of starting unapproved work.
+ await drag('Planning smoke card', 'Building', false);
+ await page.locator('#planning-content').waitFor();
+ assert.equal(new URL(page.url()).searchParams.get('card'), planningID);
+ await page.getByRole('heading', {name: 'Original description'}).waitFor();
+ assert.equal(await page.locator('#planning-approve-form').count(), 0, 'queued plans cannot be approved');
+ assert.equal(await page.locator('#board-content').count(), 0);
+ await page.waitForFunction(() => window.smokeSSE.frames.includes('id="planning-content"'));
+ await page.getByRole('button', {name: 'Cancel planning & return to Todo', exact: true}).click();
+ await page.locator('#planning-content').getByText('Cancelled', {exact: true}).waitFor();
+ await page.getByRole('link', {name: 'Back to board', exact: true}).click();
+ await laneCard('Todo', 'Planning smoke card').waitFor();
+ await action('Planning smoke card', 'Delete…');
+ await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
+ await expect(card('Planning smoke card')).toHaveCount(0);
+ // Exercise the full planning tool suspension cycle with the real backend ACK.
+ await createCard('Resumable planning smoke');
+ const resumableID = await card('Resumable planning smoke').getAttribute('data-card-id');
+ await drag('Resumable planning smoke', 'Planning');
+ await screen(`/planning?card=${resumableID}`, 'planning');
+ await bridge('/start-planning'); started = true;
+ await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
+ assert.equal(await page.getByRole('heading', {name: /Proposed plan/}).count(), 0, 'clarify must not fabricate a plan');
+ assert.equal(await page.locator('#planning-approve-form').count(), 0);
+ const questionToken = await page.locator('input[name="expected_interaction"]').inputValue();
+ assert.ok(questionToken);
+ await page.getByLabel('Reply or request a revision').fill('API v2');
+ await page.getByRole('button', {name: 'Send reply', exact: true}).click();
+ await page.getByRole('heading', {name: 'Draft plan', exact: true}).first().waitFor();
+ await page.locator('#planning-approve-form').waitFor();
+ assert.notEqual(await page.locator('input[name="expected_interaction"]').inputValue(), questionToken);
+ await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
+ await page.getByRole('button', {name: 'Send reply', exact: true}).click();
+ await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
+ await page.getByLabel('Plan revision to approve').selectOption('2');
+ await page.locator('#planning-approve-form input[type="checkbox"]').check();
+ await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
+ await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
+ await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL), 'approved plan distinct build');
+ await bridge('/stop'); started = false;
+ await screen(`/board?project=${otherID}`, 'board');
+ await action('Resumable planning smoke', 'Delete…');
+ await page.getByRole('button', {name: 'Delete permanently', exact: true}).click();
+ await expect(card('Resumable planning smoke')).toHaveCount(0);
  // Modal positioning is explicit: Tailwind's reset must not put dialogs at (0,0).
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {
@@ -416,7 +465,7 @@ try {
  await expect(page.locator('details.run')).toHaveCount(3);
  assert.deepEqual(browserActivityRequests, [], 'browser must never poll /activity including re-login');
  assert.deepEqual(errors, [], 'no browser errors');
- console.log('PASS: four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
+ console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
 } finally {
  if (started) await bridge('/stop').catch(() => {});
  await browser.close();

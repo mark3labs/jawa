@@ -1,10 +1,10 @@
 package orchestrator
 
 import (
+	"context"
 	"crypto/subtle"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"regexp"
@@ -41,41 +41,7 @@ func OpenStore(path string) (*Store, error) {
 	if _, err = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;`); err != nil {
 		return fail(err)
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return fail(err)
-	}
-	// Rollback is best-effort; after Commit it returns sql.ErrTxDone.
-	defer func() { _ = tx.Rollback() }()
-	fail = func(err error) (*Store, error) { _ = tx.Rollback(); _ = db.Close(); return nil, err }
-	_, err = tx.Exec(`
- CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL DEFAULT 'admin', password_hash TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, provider TEXT NOT NULL DEFAULT '', repo TEXT NOT NULL DEFAULT '', base_branch TEXT NOT NULL DEFAULT '');
- CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN ('Todo','Building','Done')), position INTEGER NOT NULL CHECK(position>=0), created_at INTEGER NOT NULL, issue_url TEXT NOT NULL DEFAULT '');
- CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`)
-	if err != nil {
-		return fail(err)
-	}
-	// Inspect the schema rather than suppressing all ALTER TABLE errors.
-	for _, m := range []struct{ table, column, definition string }{
-		{"admin", "username", "TEXT NOT NULL DEFAULT 'admin'"},
-		{"projects", "provider", "TEXT NOT NULL DEFAULT ''"},
-		{"projects", "repo", "TEXT NOT NULL DEFAULT ''"},
-		{"projects", "base_branch", "TEXT NOT NULL DEFAULT ''"},
-		{"cards", "issue_url", "TEXT NOT NULL DEFAULT ''"},
-	} {
-		var n int
-		if err = tx.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name=?`, m.table, m.column).Scan(&n); err != nil {
-			return fail(err)
-		}
-		if n == 0 {
-			if _, err = tx.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", m.table, m.column, m.definition)); err != nil {
-				return fail(err)
-			}
-		}
-	}
-	if err = tx.Commit(); err != nil {
+	if err = migrateDatabase(db); err != nil {
 		return fail(err)
 	}
 	if path != ":memory:" && !strings.HasPrefix(path, "file:") && path != "" {
@@ -215,32 +181,10 @@ func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, err
 	return c, nil
 }
 func (s *Store) Cards(project string) ([]Card, error) {
-	q := `SELECT id,project_id,title,description,status,position,created_at,issue_url FROM cards`
-	var args []any
-	if project != "" {
-		q += ` WHERE project_id=?`
-		args = append(args, project)
-	}
-	q += ` ORDER BY CASE status WHEN 'Todo' THEN 0 WHEN 'Building' THEN 1 ELSE 2 END,position,created_at,id`
-	rows, err := s.db.Query(q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	out := []Card{}
-	for rows.Next() {
-		var c Card
-		var ts int64
-		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Title, &c.Description, &c.Status, &c.Position, &ts, &c.IssueURL); err != nil {
-			return nil, err
-		}
-		c.CreatedAt = time.Unix(ts, 0).UTC()
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return s.queryCards(context.Background(), project)
 }
 func (s *Store) MoveCard(id, status string, position int) error {
-	if status != "Todo" && status != "Building" && status != "Done" {
+	if status != "Todo" && status != "Planning" && status != "Building" && status != "Done" {
 		return errors.New("invalid status")
 	}
 	if position < 0 {
@@ -258,6 +202,10 @@ func (s *Store) MoveCard(id, status string, position int) error {
 			return errors.New("card not found")
 		}
 		return err
+	}
+	// Planning must never be entered/exited without the workflow transaction.
+	if (status == "Planning" || source == "Planning") && source != status {
+		return errors.New("planning transitions require workflow")
 	}
 	// Rebuild both affected lanes in their stable order. Excluding the moving
 	// card first makes position mean its final zero-based index in all cases.
