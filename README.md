@@ -175,7 +175,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.22.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.22.1
 bonnie chat
 ```
 

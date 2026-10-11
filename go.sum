@@ -189,8 +189,8 @@ github.com/landlock-lsm/go-landlock v0.10.1 h1:MkvuYeTgGRpOnROAO9V2gV3C5lctFr6O0
 github.com/landlock-lsm/go-landlock v0.10.1/go.mod h1:mn5GSi81Jf7yMs5WSi+SUi4sUeNLUGVdbT4Id6wXNQw=
 github.com/lucasb-eyer/go-colorful v1.4.1 h1:1EO+WB73+EH8EVbzlrG3KLAfEypQWVHIBqlTf+2hNss=
 github.com/lucasb-eyer/go-colorful v1.4.1/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
-github.com/mark3labs/bonnie v0.22.0 h1:Vhm+4gptOD2jjP5ngFSQ8FLrG/3SOacuAOi/uTkPYOw=
-github.com/mark3labs/bonnie v0.22.0/go.mod h1:lK8s1iH1xgYdYP+jEMvAa4zJ7xlWcYwvhYqjtTIYUOw=
+github.com/mark3labs/bonnie v0.22.1 h1:BfgIxT0ZryCil2u7e+ZQGgI12poCElPc5KBQINLI+Ho=
+github.com/mark3labs/bonnie v0.22.1/go.mod h1:lK8s1iH1xgYdYP+jEMvAa4zJ7xlWcYwvhYqjtTIYUOw=
 github.com/mark3labs/kit v0.126.0 h1:gSsezi6tBRILml/PWjwhzqxWI/gZnXeLnUxOQ/MBTnM=
 github.com/mark3labs/kit v0.126.0/go.mod h1:DyBrKMmwuk2bxZKM7bxhNZy9Aiggku+teJ7aGrUTulE=
 github.com/mark3labs/mcp-go v1.2.0 h1:ivQVs9Eb6Cs1ufChpfMCF9+dPrDC6ZxFBKqLwcxp1a4=

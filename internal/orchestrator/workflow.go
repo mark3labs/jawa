@@ -79,8 +79,8 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 		return nil, err
 	}
 	w.wg.Add(4)
-	go w.loop(func() error { return c.Consume(ctx, w.result) })
-	go w.loop(func() error { return c.ConsumeEvents(ctx, w.event) })
+	go w.consumerLoop("results", func() error { return c.Consume(ctx, w.result) })
+	go w.consumerLoop("events", func() error { return c.ConsumeEvents(ctx, w.event) })
 	go w.loop(func() error { w.dispatch(); return nil })
 	go func() {
 		defer w.wg.Done()
@@ -99,11 +99,17 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	return w, nil
 }
 
-func (w *Workflow) loop(f func() error) {
+func (w *Workflow) loop(f func() error) { w.consumerLoop("dispatch", f) }
+
+func (w *Workflow) consumerLoop(consumer string, f func() error) {
 	defer w.wg.Done()
+	var lastWarning time.Time
 	for w.ctx.Err() == nil {
 		if err := f(); err != nil && w.ctx.Err() == nil {
-			w.log().Warn("Workflow consumer failed; retrying")
+			if time.Since(lastWarning) >= 30*time.Second {
+				w.log().Warn("Workflow consumer failed; retrying", "consumer", consumer, "category", consumerErrorCategory(err))
+				lastWarning = time.Now()
+			}
 		}
 		select {
 		case <-w.ctx.Done():
