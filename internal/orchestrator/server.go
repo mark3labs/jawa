@@ -51,6 +51,7 @@ type loginAttempts struct {
 }
 type app struct {
 	s               *Store
+	issueClient     *http.Client
 	logger          *log.Logger
 	debugDefault    bool
 	runtimeDefaults map[string]string
@@ -92,7 +93,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.authed(r) {
-		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || datastarRequest(r) {
+		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || r.URL.Path == "/projects/issues" || datastarRequest(r) {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
@@ -124,6 +125,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			a.snapshot(w, r, false, mutationEffects{})
 		}
+		return
+	}
+	if r.URL.Path == "/projects/issues" {
+		a.projectIssues(w, r)
 		return
 	}
 	switch r.URL.Path {

@@ -6,7 +6,8 @@
   "scripts": {
     "build": "sh ./build.sh",
     "dev": "esbuild src/app.js --bundle --outfile=../assets/app.js --watch",
-    "test:smoke": "node smoke.mjs"
+    "test:smoke": "node smoke.mjs",
+    "test:issues": "node issues.mjs"
   },
   "dependencies": {
     "sortablejs": "^1.15.6"
