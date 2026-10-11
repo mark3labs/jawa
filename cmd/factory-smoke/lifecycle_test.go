@@ -56,7 +56,13 @@ func TestLifecycleSmoke(t *testing.T) {
 			t.Fatal(e)
 		}
 		var reports reportbridge.Bridge
-		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithKit(func(o *kit.Options) {
+		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithCompletionHook(bonnie.CompletionPolicy{
+			NewHook: func(context.Context, bonnie.RunScope) (bonnie.CompletionHook, error) {
+				return func(context.Context, bonnie.CompletionCandidate) (bonnie.CompletionFeedback, error) {
+					return bonnie.CompletionFeedback{}, nil
+				}, nil
+			},
+		}), bonnie.WithKit(func(o *kit.Options) {
 			o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
 			kit.WithProvider("smoke", func(context.Context, *kit.ProviderConfig, string) (*kit.ProviderResult, error) {
 				return &kit.ProviderResult{Model: model{}}, nil
@@ -199,7 +205,13 @@ func TestLifecycleReconnectSmoke(t *testing.T) {
 			t.Fatal(e)
 		}
 		var reports reportbridge.Bridge
-		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithKit(func(o *kit.Options) {
+		a := bonnie.New(bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false), bonnie.WithJournal(journal), bonnie.WithInstructions(""), bonnie.WithSkills(""), bonnie.WithContextFiles(""), bonnie.WithSandbox(sandbox.Local(sandbox.WithLocalRoot(work))), bonnie.WithoutHumanInput(), bonnie.WithCompletionHook(bonnie.CompletionPolicy{
+			NewHook: func(context.Context, bonnie.RunScope) (bonnie.CompletionHook, error) {
+				return func(context.Context, bonnie.CompletionCandidate) (bonnie.CompletionFeedback, error) {
+					return bonnie.CompletionFeedback{}, nil
+				}, nil
+			},
+		}), bonnie.WithKit(func(o *kit.Options) {
 			o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.Quiet = true, true, true, true, true, true
 			kit.WithProvider("smoke", func(context.Context, *kit.ProviderConfig, string) (*kit.ProviderResult, error) {
 				return &kit.ProviderResult{Model: model{}}, nil
