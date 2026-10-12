@@ -449,10 +449,8 @@ try {
   await bridge(`/start-resume-${mode}`); started = true;
   await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'healthy restarted same host');
   const endpoint = mode === 'build' ? '/cards/resume' : '/cards/planning/resume';
-  if (mode === 'planning') await screen(`/planning?card=${id}`, 'planning');
   const responsePromise = page.waitForResponse(r => new URL(r.url()).pathname === endpoint && r.request().method() === 'POST');
-  if (mode === 'build') await action(title, 'Resume failed run');
-  else await page.getByRole('button', {name: 'Resume failed run', exact: true}).click();
+  await action(title, 'Resume failed run');
   const response = await responsePromise;
   assert.equal(response.status(), 200);
   assert.match(response.request().postData(), /expected_resume/);

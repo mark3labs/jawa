@@ -420,9 +420,10 @@ command, not standalone agent/`serve` or administrative subcommands.
 
 ### Continue after an execution failure
 
-Build and planning failures can offer **Resume failed run**, preserving the same
-run, saved context and branch. **Retry attempt / Retry planning** still starts fresh
-work. Explicit blockers, completed/cancelled runs and ambiguous ownership cannot
+Planning, Building and Fix card menus can offer **Resume failed run** for eligible
+execution failures; the planning detail action remains available. Resume preserves
+the same run, saved context and branch, including the original Fix repair branch,
+PR assignment and context. **Retry attempt / Retry planning** still starts fresh work. Explicit blockers, completed/cancelled runs and ambiguous ownership cannot
 be resumed. See [failed-run recovery](internal/orchestrator/FAILED_RESUME.md) for
 agent compatibility, pending-command safety and operational limitations.
 
