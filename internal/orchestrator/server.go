@@ -155,7 +155,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -270,6 +270,12 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			} else {
 				err = a.workflow.resumeFailed(r.FormValue("card_id"), false, r.FormValue("expected_resume"))
 			}
+		}
+	case "/cards/fix":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.FixCard(r.FormValue("card_id"), r.FormValue("message"))
 		}
 	case "/cards/retry":
 		if a.workflow == nil {
@@ -771,7 +777,7 @@ func Command() *cobra.Command {
 				logger.Error("Failed to close workflow", "err", closeErr)
 			}
 		}()
-		workflow.SetVerifier(ProviderVerifier(s, nil))
+		workflow.SetProviderChecks(ProviderVerifier(s, nil), ProviderConflictChecker(s, nil))
 		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

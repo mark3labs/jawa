@@ -61,7 +61,7 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) (retErr erro
 	if err = tx.QueryRow(`SELECT max(number) FROM workflow_attempts WHERE card_id=?`, a.CardID).Scan(&latest); err != nil {
 		return err
 	}
-	if a.Ready || status != "Building" || latest != a.Number {
+	if a.Ready || (status != "Building" && status != "Fix") || latest != a.Number {
 		return errors.New("reconcile: requires latest unready attempt on a Building card")
 	}
 	// Select the most recently received terminal report for this execution. A
@@ -167,7 +167,7 @@ func (w *Workflow) RecoverResults(ctx context.Context, conn *nats.Conn) (retErr 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := w.s.db.QueryContext(ctx, `SELECT a.task_id FROM workflow_attempts a JOIN cards c ON c.id=a.card_id WHERE c.status='Building' AND a.ready=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
+	rows, err := w.s.db.QueryContext(ctx, `SELECT a.task_id FROM workflow_attempts a JOIN cards c ON c.id=a.card_id WHERE c.status IN ('Building','Fix') AND a.ready=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
 	if err != nil {
 		return err
 	}

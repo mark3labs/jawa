@@ -37,6 +37,7 @@ func Migrate(ctx context.Context, database *sql.DB) (err error) {
 		goose.WithGoMigrations(
 			goose.NewGoMigration(2, &goose.GoFunc{RunTx: upgradeLegacyColumns}, nil),
 			goose.NewGoMigration(4, &goose.GoFunc{RunTx: addPlanningStatus}, nil),
+			goose.NewGoMigration(9, &goose.GoFunc{RunTx: addFixStatus}, nil),
 		))
 	if err != nil {
 		return err
@@ -67,6 +68,21 @@ func upgradeLegacyColumns(ctx context.Context, tx *sql.Tx) error {
 }
 
 func addPlanningStatus(ctx context.Context, tx *sql.Tx) error {
+	return rebuildCardStatuses(ctx, tx, "'Todo','Planning','Building','Done'")
+}
+
+func addFixStatus(ctx context.Context, tx *sql.Tx) error {
+	if err := rebuildCardStatuses(ctx, tx, "'Todo','Planning','Building','Fix','Done'"); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `ALTER TABLE workflow_attempts ADD COLUMN branch TEXT NOT NULL DEFAULT '';
+ALTER TABLE workflow_attempts ADD COLUMN repair_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE workflow_attempts ADD COLUMN repair_pr_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE workflow_attempts ADD COLUMN repair_source_number INTEGER NOT NULL DEFAULT 0;`)
+	return err
+}
+
+func rebuildCardStatuses(ctx context.Context, tx *sql.Tx, statuses string) error {
 	// Save explicit indexes and triggers; implicit PK indexes are recreated by DDL.
 	rows, err := tx.QueryContext(ctx, `SELECT sql FROM sqlite_schema WHERE tbl_name='cards' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name`)
 	if err != nil {
@@ -90,16 +106,16 @@ func addPlanningStatus(ctx context.Context, tx *sql.Tx) error {
 	}
 	// Do NOT rename the old table: SQLite would rewrite child FK targets. Copy,
 	// drop, then rename the replacement while enforcement is disabled instead.
-	_, err = tx.ExecContext(ctx, `CREATE TABLE cards_planning_upgrade (
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE cards_planning_upgrade (
  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
  title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
- status TEXT NOT NULL CHECK(status IN ('Todo','Planning','Building','Done')),
+ status TEXT NOT NULL CHECK(status IN (%s)),
  position INTEGER NOT NULL CHECK(position>=0), created_at INTEGER NOT NULL,
  issue_url TEXT NOT NULL DEFAULT '');
  INSERT INTO cards_planning_upgrade(id,project_id,title,description,status,position,created_at,issue_url)
  SELECT id,project_id,title,description,status,position,created_at,issue_url FROM cards;
  DROP TABLE cards;
- ALTER TABLE cards_planning_upgrade RENAME TO cards;`)
+ ALTER TABLE cards_planning_upgrade RENAME TO cards;`, statuses))
 	if err != nil {
 		return err
 	}

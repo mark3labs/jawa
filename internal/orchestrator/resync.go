@@ -23,7 +23,7 @@ func (w *Workflow) resyncRuns(conn *nats.Conn) {
 	}
 	ctx, cancel := context.WithTimeout(w.ctx, 5*time.Second)
 	defer cancel()
-	rows, err := w.s.db.QueryContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts a WHERE a.card_id IN (SELECT id FROM cards WHERE status='Building') AND a.ready=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
+	rows, err := w.s.db.QueryContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts a WHERE a.card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND a.ready=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
 	if err != nil {
 		w.log().Warn("workflow resync attempt query failed", "category", "storage")
 		return
@@ -101,7 +101,7 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 		return nil
 	}
 	var current bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
 		return err
 	}
 	if !current {

@@ -41,75 +41,23 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 	return func(ctx context.Context, a Attempt) (bool, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		if s == nil {
-			return false, errors.New("provider: store required")
+		p, root, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
+		if err != nil {
+			return false, err
+		}
+		expected, err := assignedBranch(a)
+		if err != nil {
+			return false, err
 		}
 		overrides, err := s.DashboardOverrides()
 		if err != nil {
 			return false, errors.New("provider: dashboard settings unavailable")
 		}
-		var provider, repo, base string
-		if err := s.db.QueryRowContext(ctx, `SELECT p.provider,p.repo,p.base_branch FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo, &base); err != nil {
-			return false, errors.New("provider: project unavailable")
-		}
-		var task client.Task
-		if json.Unmarshal([]byte(a.TaskJSON), &task) != nil || task.TaskID != a.TaskID || a.TaskID == "" {
-			return false, errors.New("provider: invalid immutable task")
-		}
-		// Parse the fixed trailing workflow fields, not user-controlled title/description.
-		tail := "\nRepository: " + repo + "\nBase branch: " + base + "\nProvider: " + provider + "\nIssue: "
-		pos := strings.LastIndex(task.Text, tail)
-		if pos < 0 {
-			return false, errors.New("provider: task/project configuration mismatch")
-		}
-		expected, branchErr := assignedBranch(a)
-		if branchErr != nil {
-			return false, fmt.Errorf("provider: %w", branchErr)
-		}
-		host, owner, name, err := providerRepository(repo)
-		if err != nil {
-			return false, err
-		}
-		u, err := url.Parse(a.PRURL)
-		if err != nil || u.Scheme != "https" || u.User != nil || u.Host != host || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
-			return false, errors.New("provider: PR URL does not match configured host")
-		}
-		kind := "pull"
-		if provider == "forgejo" {
-			kind = "pulls"
-		}
-		prefix := "/" + owner + "/" + name + "/" + kind + "/"
-		if !strings.HasPrefix(u.Path, prefix) {
-			return false, errors.New("provider: PR repository mismatch")
-		}
-		number, err := strconv.Atoi(strings.TrimPrefix(u.Path, prefix))
-		if err != nil || number < 1 || u.Path != prefix+strconv.Itoa(number) {
-			return false, errors.New("provider: invalid PR number")
-		}
-		token, api := "", ""
-		switch provider {
-		case "github":
-			if host != "github.com" {
-				return false, errors.New("provider: only github.com is supported")
-			}
-			token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
-			api = "https://api.github.com"
-		case "forgejo":
-			token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
-			api = "https://" + host + "/api/v1"
-		default:
-			return false, errors.New("provider: unsupported provider")
-		}
-		if strings.TrimSpace(token) == "" {
-			return false, errors.New("provider: credentials missing")
-		}
 		allowNoCI := os.Getenv("JAWA_ALLOW_NO_CI") == "true"
 		if value, ok := overrides["allow-no-ci"]; ok {
 			allowNoCI = value == "true"
 		}
-		p := providerReader{ctx: ctx, client: &c, token: token, api: api, forgejo: provider == "forgejo", allowNoCI: allowNoCI}
-		root := "/repos/" + owner + "/" + name
-		path := root + "/pulls/" + strconv.Itoa(number)
+		p.allowNoCI = allowNoCI
 		var pr providerPR
 		if err = p.read(path, &pr); err != nil {
 			return false, err
@@ -121,7 +69,7 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		if pr.Merged {
 			// A provider-confirmed merge is a terminal outcome; open-PR CI/review
 			// gates no longer apply. Identity is still checked and re-read below.
-		} else if provider == "forgejo" {
+		} else if p.forgejo {
 			if err = p.forgejoCI(root, base, sha); err != nil {
 				return false, err
 			}
@@ -154,6 +102,79 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 	}
 }
 
+// providerTarget validates immutable assignment and configured repository before any request.
+func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (providerReader, string, string, string, string, string, int, error) {
+	if s == nil {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: store required")
+	}
+	overrides, err := s.DashboardOverrides()
+	if err != nil {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: dashboard settings unavailable")
+	}
+	var provider, repo, base string
+	if err := s.db.QueryRowContext(ctx, `SELECT p.provider,p.repo,p.base_branch FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo, &base); err != nil {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: project unavailable")
+	}
+	var task client.Task
+	if json.Unmarshal([]byte(a.TaskJSON), &task) != nil || task.TaskID != a.TaskID || a.TaskID == "" {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: invalid immutable task")
+	}
+	// Parse the fixed trailing workflow fields, not user-controlled title/description.
+	tail := "\nRepository: " + repo + "\nBase branch: " + base + "\nProvider: " + provider + "\nIssue: "
+	pos := strings.LastIndex(task.Text, tail)
+	if pos < 0 {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: task/project configuration mismatch")
+	}
+	if a.RepairPRURL != "" && a.PRURL != a.RepairPRURL {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: repair PR mismatch")
+	}
+	_, branchErr := assignedBranch(a)
+	if branchErr != nil {
+		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", branchErr)
+	}
+	host, owner, name, err := providerRepository(repo)
+	if err != nil {
+		return providerReader{}, "", "", "", "", "", 0, err
+	}
+	u, err := url.Parse(a.PRURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Host != host || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR URL does not match configured host")
+	}
+	kind := "pull"
+	if provider == "forgejo" {
+		kind = "pulls"
+	}
+	prefix := "/" + owner + "/" + name + "/" + kind + "/"
+	if !strings.HasPrefix(u.Path, prefix) {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR repository mismatch")
+	}
+	number, err := strconv.Atoi(strings.TrimPrefix(u.Path, prefix))
+	if err != nil || number < 1 || u.Path != prefix+strconv.Itoa(number) {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: invalid PR number")
+	}
+	token, api := "", ""
+	switch provider {
+	case "github":
+		if host != "github.com" {
+			return providerReader{}, "", "", "", "", "", 0, errors.New("provider: only github.com is supported")
+		}
+		token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
+		api = "https://api.github.com"
+	case "forgejo":
+		token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
+		api = "https://" + host + "/api/v1"
+	default:
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: unsupported provider")
+	}
+	if strings.TrimSpace(token) == "" {
+		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: credentials missing")
+	}
+	p := providerReader{ctx: ctx, client: c, token: token, api: api, forgejo: provider == "forgejo", allowNoCI: false}
+	root := "/repos/" + owner + "/" + name
+	path := root + "/pulls/" + strconv.Itoa(number)
+	return p, root, path, owner, name, base, number, nil
+}
+
 var providerPart = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 var providerSHA = regexp.MustCompile(`^[a-fA-F0-9]{40,64}$`)
 
@@ -177,12 +198,13 @@ func providerRepository(raw string) (host, owner, name string, err error) {
 }
 
 type providerPR struct {
-	Number    int
-	State     string
-	Draft     bool
-	Merged    bool
-	Mergeable *bool
-	Head      struct {
+	Number         int
+	State          string
+	Draft          bool
+	Merged         bool
+	MergeableState string `json:"mergeable_state"`
+	Mergeable      *bool
+	Head           struct {
 		Ref, SHA string
 		Repo     struct {
 			FullName string `json:"full_name"`
@@ -196,8 +218,12 @@ type providerPR struct {
 	}
 }
 
+func (p providerPR) identityMatches(repo, base, branch string, number int) bool {
+	return p.Number == number && p.Base.Ref == base && p.Base.Repo.FullName == repo && p.Head.Repo.FullName == repo && p.Head.Ref == branch && providerSHA.MatchString(p.Head.SHA)
+}
+
 func (p providerPR) matches(repo, base, branch string, number int) error {
-	identityOK := p.Number == number && p.Base.Ref == base && p.Base.Repo.FullName == repo && p.Head.Repo.FullName == repo && p.Head.Ref == branch && providerSHA.MatchString(p.Head.SHA)
+	identityOK := p.identityMatches(repo, base, branch, number)
 	mergedOK := p.Merged && p.State == "closed"
 	openOK := !p.Merged && p.State == "open" && !p.Draft && p.Mergeable != nil && *p.Mergeable
 	if !identityOK || (!mergedOK && !openOK) {

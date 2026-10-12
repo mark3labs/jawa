@@ -101,7 +101,7 @@ func (w *Workflow) latestCancelAttempt(cardID string) (Attempt, error) {
 }
 func (w *Workflow) checkCancelLatest(a Attempt) error {
 	var building bool
-	if err := w.s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building')`, a.CardID).Scan(&building); err != nil {
+	if err := w.s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix'))`, a.CardID).Scan(&building); err != nil {
 		return err
 	}
 	current, err := w.latestCancelAttempt(a.CardID)

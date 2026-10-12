@@ -94,6 +94,12 @@ func TestLegacyHistoryPreserved(t *testing.T) {
 				t.Fatalf("credentials %s %s: %v", hash, username, err)
 			}
 			execTest(t, database, `UPDATE cards SET status='Planning',title='updated' WHERE id='c'`)
+			execTest(t, database, `UPDATE cards SET status='Fix' WHERE id='c'`)
+			var branch, message, pr string
+			var source int
+			if err := database.QueryRow(`SELECT branch,repair_message,repair_pr_url,repair_source_number FROM workflow_attempts WHERE id='a'`).Scan(&branch, &message, &pr, &source); err != nil || branch != "" || message != "" || pr != "" || source != 0 {
+				t.Fatalf("legacy repair defaults: %q %q %q %d %v", branch, message, pr, source, err)
+			}
 			var title string
 			if err := database.QueryRow(`SELECT value FROM settings WHERE key='last_title'`).Scan(&title); err != nil || title != "updated" {
 				t.Fatalf("trigger: %s %v", title, err)
@@ -226,7 +232,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 8 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 10 {
 		t.Fatal(version, err)
 	}
 }

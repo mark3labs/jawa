@@ -253,7 +253,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.012em; }
 /* Board ------------------------------------------------------------------- */
 jawa-board, jawa-menu, jawa-time, jawa-copy { display: block; }
 jawa-menu, jawa-time, jawa-copy { display: inline-block; }
-.lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.lanes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .lane { display: flex; flex-direction: column; min-width: 0; }
 .lane-head { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 2px; }
 .lane-head h2 { font-size: 13px; font-weight: 600; }
@@ -643,3 +643,11 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
   .nav { min-width: 0; width: 100%; }
   .nav-item .nav-text { min-width: 0; }
 }
+
+/* Repairs share the board warning palette, distinct from verified readiness. */
+.lane-Fix .lane-ic { color: var(--amber); }
+.card-conflict { border-top: 1px solid var(--amber); margin-top: 10px; padding-top: 10px; color: var(--amber); }
+.card-conflict p { margin: 0 0 8px; font-size: 12px; }
+#fix-message { width: 100%; margin-top: 8px; }
+
+.btn.conflict-fix { color: var(--amber); border-color: var(--amber); }

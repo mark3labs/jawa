@@ -339,3 +339,33 @@ run, saved context and branch. **Retry attempt / Retry planning** still starts f
 work. Explicit blockers, completed/cancelled runs and ambiguous ownership cannot
 be resumed. See [failed-run recovery](internal/orchestrator/FAILED_RESUME.md) for
 agent compatibility, pending-command safety and operational limitations.
+
+### Repair an existing pull request
+
+The board's **Fix** lane contains repairs to existing pull requests. On a card
+in **Ready for review**, choose **Send to Fix…**, enter a required fix message,
+and confirm **Send to Fix**. Dragging a verified card from Ready for review to
+Fix opens the same dialog with an empty message; cancelling or pressing Escape
+leaves the card and its position unchanged. A Done card without a verified pull
+request cannot be sent to Fix.
+
+A provider check reporting a merge conflict adds a warning and **Fix Merge Conflict** action with a prefilled message you can edit. Unknown or failed
+checks are not displayed as conflicts. Checks never automatically move a card
+or start a repair. The agent repairs the original branch and existing PR; it
+must not create a replacement PR or merge it. Failed or blocked repairs can be
+retried from the Fix card's action menu, preserving the repair assignment.
+
+The authenticated, CSRF-protected `POST /cards/fix` endpoint accepts `card_id`
+and a nonblank `message`. It returns the normal board redirect for native form
+requests or finite Datastar SSE patches for enhanced requests. On failure the
+repair dialog stays open with its draft; on success it closes and clears.
+
+Regenerate the dashboard after editing templates or frontend sources:
+
+```sh
+templ generate  # use the github.com/a-h/templ version pinned in go.mod
+cd internal/orchestrator/frontend
+npm ci
+npm run build
+npm run test:fix  # requires Chromium; CHROMIUM_PATH overrides its location
+```
