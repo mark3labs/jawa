@@ -118,7 +118,7 @@ func TestPRRefreshBusyAndCancelled(t *testing.T) {
 func TestPRCheckPresentation(t *testing.T) {
 	c := Card{ID: "done", ProjectID: "project", Status: "Done"}
 	attempts := []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/18"}}
-	labels := map[string]string{"checking": "Checking PR status", "clear": "No merge conflicts detected", "conflict": "Pull request has merge conflicts.", "unknown": "PR merge status is unknown", "error": "PR check failed", "merged": "Pull request is merged", "closed": "closed without merging", "": "not been checked yet"}
+	labels := map[string]string{"checking": "Checking PR status", "clear": "No merge conflicts detected", "conflict": "Pull request has merge conflicts.", "unknown": "PR merge status is unknown", "error": "PR check failed", "merged": "Last checked", "closed": "closed without merging", "": "not been checked yet"}
 	for state, label := range labels {
 		t.Run(state, func(t *testing.T) {
 			check := PRCheck{State: state}

@@ -37,8 +37,31 @@ func TestArchiveRoutesAndViews(t *testing.T) {
 	}
 }
 
+func TestMergedReplacesReadyBadge(t *testing.T) {
+	c := Card{ID: "abc", Status: "Done"}
+	for _, state := range []string{"merged", "clear", "conflict", "error"} {
+		t.Run(state, func(t *testing.T) {
+			d := pageData{
+				attempts: []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/1"}},
+				prChecks: map[string]PRCheck{c.ID: {State: state}}}
+			var out bytes.Buffer
+			if err := taskCard(d, c).Render(t.Context(), &out); err != nil {
+				t.Fatal(err)
+			}
+			body := out.String()
+			if state == "merged" {
+				if strings.Count(body, ">Merged</span>") != 1 || strings.Contains(body, "Ready for review") {
+					t.Fatalf("merged should replace ready exactly once: %s", body)
+				}
+			} else if !strings.Contains(body, "Ready for review") || strings.Contains(body, ">Merged</span>") {
+				t.Fatalf("non-merged check replaced historical readiness: %s", body)
+			}
+		})
+	}
+}
+
 func TestCardPRBadges(t *testing.T) {
-	for state, label := range map[string]string{"conflict": "Merge Conflict", "merged": "Merged", "error": "Checks Failed"} {
+	for state, label := range map[string]string{"conflict": "Merge Conflict", "error": "Checks Failed"} {
 		t.Run(state, func(t *testing.T) {
 			c := Card{ID: "abc"}
 			d := pageData{prChecks: map[string]PRCheck{c.ID: {State: state}}}
