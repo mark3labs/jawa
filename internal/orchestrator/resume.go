@@ -28,7 +28,7 @@ func (w *Workflow) ResumeFailedPlanning(id string) error { return w.resumeFailed
 
 // Bind rendered actions to this failure and journal generation.
 func resumeToken(a Attempt) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s\n%d\n%s", a.TaskID, a.EventSeq, a.OutcomeJSON))))
+	return fmt.Sprintf("%x", sha256.Sum256(fmt.Appendf(nil, "%s\n%d\n%s", a.TaskID, a.EventSeq, a.OutcomeJSON)))
 }
 
 // Reserve before sending control. Unconfirmed delivery blocks competing work
