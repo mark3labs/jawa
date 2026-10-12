@@ -1,11 +1,13 @@
 # Resume failed run
 
-Build and Fix card menus and failed planning details offer **Resume failed run** separately
+Planning, Building and Fix card menus offer **Resume failed run** for eligible failures;
+failed planning details retain the same action. It is separate
 from fresh **Retry attempt / Retry planning**. Resume keeps the task ID, board
 attempt/planning turn, remote attempt, RunID, saved conversation/context and assigned
 branch. It does not publish the original task again, allocate a worktree, or append
 the original prompt again. Retry retains its existing fresh-attempt behavior
-(including a new build branch).
+(including a new build branch). Fix continuation preserves the original repair
+branch, PR assignment and repair context.
 
 Eligibility is intentionally narrow: latest execution on its current Building, Fix or
 Planning card, a versioned natural `failed` outcome with complete pinned ownership,
