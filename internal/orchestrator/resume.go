@@ -33,6 +33,10 @@ func resumeToken(a Attempt) string {
 // Reserve before sending control. Unconfirmed delivery blocks competing work
 // across process restart; it is not permission for a blind fresh task.
 func (w *Workflow) resumeFailed(id string, planning bool, expected string) error {
+	return w.reserveFailedResume(id, planning, expected, false, time.Now())
+}
+
+func (w *Workflow) reserveFailedResume(id string, planning bool, expected string, automatic bool, clock time.Time) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -77,8 +81,8 @@ func (w *Workflow) resumeFailed(id string, planning bool, expected string) error
 		if err = tx.QueryRow(`SELECT status FROM cards WHERE id=?`, id).Scan(&lane); err != nil {
 			return err
 		}
-		if lane != "Building" {
-			return errors.New("resume requires Building")
+		if lane != "Building" && lane != "Fix" {
+			return errors.New("resume requires Building or Fix")
 		}
 		if err = noActiveAttempts(tx, id); err != nil {
 			return err
@@ -111,6 +115,26 @@ func (w *Workflow) resumeFailed(id string, planning bool, expected string) error
 	if conflict {
 		return errors.New("ambiguous execution ownership; reconcile before retrying")
 	}
+	if automatic {
+		enabled, e := autoResumeEnabled(tx)
+		if e != nil {
+			return e
+		}
+		if !enabled {
+			return errors.New("automatic resume disabled")
+		}
+		var token, state string
+		var due, count int64
+		if e = tx.QueryRow(`SELECT failure_token,state,due_at FROM auto_resumes WHERE task_id=?`, a.TaskID).Scan(&token, &state, &due); e != nil {
+			return e
+		}
+		if e = tx.QueryRow(`SELECT count(*) FROM failed_resumes WHERE task_id=? AND automatic=1`, a.TaskID).Scan(&count); e != nil {
+			return e
+		}
+		if state != "scheduled" || token != resumeToken(a) || due > clock.UnixMilli() || count >= 5 {
+			return errors.New("automatic schedule changed or not due")
+		}
+	}
 	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
 	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 	defer cancel()
@@ -120,8 +144,11 @@ func (w *Workflow) resumeFailed(id string, planning bool, expected string) error
 	}
 	req := reportprotocol.FailedResume{Version: 1, ID: uuid.NewString(), Target: target, Seq: status.Seq, TurnID: status.TurnID}
 	raw, _ := json.Marshal(req)
-	now := time.Now().UnixMilli()
-	if _, err = tx.Exec(`INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES(?,?,?,?,?,?,?)`, req.ID, a.TaskID, id, planning, raw, a.OutcomeJSON, now); err != nil {
+	now := clock.UnixMilli()
+	if _, err = tx.Exec(`INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at,automatic) VALUES(?,?,?,?,?,?,?,?)`, req.ID, a.TaskID, id, planning, raw, a.OutcomeJSON, now, automatic); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE auto_resumes SET state='reserved' WHERE task_id=?`, a.TaskID); err != nil {
 		return err
 	}
 	if planning {
@@ -178,8 +205,8 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	}
 	defer func() { _ = tx.Rollback() }()
 	var task, previous, requestJSON string
-	var planning bool
-	err = tx.QueryRow(`SELECT task_id,previous_outcome,planning,request_json FROM failed_resumes WHERE id=? AND status='pending'`, id).Scan(&task, &previous, &planning, &requestJSON)
+	var planning, automatic bool
+	err = tx.QueryRow(`SELECT task_id,previous_outcome,planning,request_json,automatic FROM failed_resumes WHERE id=? AND status='pending'`, id).Scan(&task, &previous, &planning, &requestJSON, &automatic)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -237,6 +264,29 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	}
 	if err != nil {
 		return err
+	}
+	if reply.Status == "completed" {
+		if _, err = tx.Exec(`DELETE FROM auto_resumes WHERE task_id=? AND state='reserved'`, task); err != nil {
+			return err
+		}
+	}
+	if automatic && reply.Status == "rejected" {
+		var a Attempt
+		if planning {
+			t, e := sqlc.New(tx).GetPlanningTurn(w.ctx, task)
+			if e != nil {
+				return e
+			}
+			a = Attempt{TaskID: t.ID, EventSeq: int(t.EventSeq), OutcomeJSON: t.OutcomeJson}
+		} else {
+			a, err = scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, task))
+			if err != nil {
+				return err
+			}
+		}
+		if _, err = tx.Exec(`UPDATE auto_resumes SET state='stopped',failure_token=? WHERE task_id=?`, resumeToken(a), task); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

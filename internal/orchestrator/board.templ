@@ -155,6 +155,10 @@ templ cardChips(d pageData, c Card) {
 }
 
 templ cardNote(d pageData, c Card) {
+ if note := d.automaticResumeNote(c); note != "" {
+ <p class="muted small" role="status">{ note }</p>
+ }
+
 	if canAction(c, d.attempts, "fix") {
 		@cardPRStatus(d, c)
 	}

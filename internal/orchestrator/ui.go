@@ -23,6 +23,7 @@ var uiAssets embed.FS
 
 // uiSnapshot is shared by full pages and SSE, so both show the same guards.
 type uiSnapshot struct {
+	autoResumes    map[string]autoResumeStatus
 	projects       []Project
 	cards          []Card
 	agents         []presence.Record
@@ -52,6 +53,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	}
 	if !snap.natsConfigured {
 		snap.nats.Username = "worker"
+	}
+	if snap.autoResumes, err = s.autoResumeStatuses(); err != nil {
+		return snap, err
 	}
 	if snap.projects, err = s.Projects(); err != nil {
 		return snap, fmt.Errorf("load projects: %w", err)
@@ -223,7 +227,7 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	case "start":
 		return c.Status == "Building" && legacy && !active
 	case "resume":
-		return c.Status == "Building" && !legacy && !active && executionFailure(latest[0])
+		return (c.Status == "Building" || c.Status == "Fix") && !legacy && !active && executionFailure(latest[0])
 	case "retry":
 		return (c.Status == "Building" || c.Status == "Fix") && terminal && !active
 	case "fix":
@@ -363,4 +367,43 @@ func prCheckLabel(check PRCheck) string {
 	default:
 		return "PR status has not been checked yet."
 	}
+}
+
+func (d pageData) automaticResumeNote(c Card) string {
+	var a Attempt
+	if c.Status == "Planning" {
+		detail, ok := d.planning[c.ID]
+		if !ok || detail.Session.State != "failed" || len(detail.Turns) == 0 {
+			return ""
+		}
+		t := detail.Turns[len(detail.Turns)-1]
+		status, ok := d.autoResumes[t.ID]
+		if !ok || !detail.CanResume || status.token != detail.ResumeToken {
+			return ""
+		}
+		return automaticResumeStatusNote(status)
+	} else {
+		latest := latestAttempt(c.ID, d.attempts)
+		if (c.Status != "Building" && c.Status != "Fix") || len(latest) == 0 || !executionFailure(latest[0]) {
+			return ""
+		}
+		a = latest[0]
+	}
+	status, ok := d.autoResumes[a.TaskID]
+	if !ok || status.token != resumeToken(a) {
+		return ""
+	}
+	return automaticResumeStatusNote(status)
+}
+
+func automaticResumeStatusNote(status autoResumeStatus) string {
+	switch status.state {
+	case "scheduled":
+		return fmt.Sprintf("Automatic resume %d/5 scheduled for %s", status.count+1, time.UnixMilli(status.due).UTC().Format(time.RFC3339))
+	case "exhausted":
+		return "Automatic resume budget exhausted (5/5). Manual resume or fresh Retry remains available when safe."
+	case "stopped":
+		return "Automatic resume stopped after host rejection. Manual recovery remains available when safe."
+	}
+	return ""
 }

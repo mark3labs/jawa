@@ -22,13 +22,16 @@ import (
 // No model/network provider: an exhausted real KIT provider fails, then the
 // same SQLite run is restored on a new host and continues with a healthy model.
 func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
-	for _, planning := range []bool{false, true} {
-		name := "build"
-		if planning {
-			name = "planning"
-		}
+	for _, mode := range []string{"build", "planning", "auto-build", "auto-planning", "auto-fix"} {
+		planning := strings.Contains(mode, "planning")
+		automatic := strings.HasPrefix(mode, "auto-")
+		repair := mode == "auto-fix"
+		name := mode
 		t.Run(name, func(t *testing.T) {
 			s, nc := workflowFixture(t)
+			if err := s.SetDashboardOverrides(map[string]string{"auto-resume-failed-runs": "false"}); err != nil {
+				t.Fatal(err)
+			}
 			card := workflowCard(t, s)
 			w, err := NewWorkflow(t.Context(), s, nc)
 			if err != nil {
@@ -90,6 +93,16 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				}
 				return false
 			})
+			if repair {
+				// Seed an existing immutable repair assignment on the failed execution.
+				// The same continuation path must preserve it without allocating new work.
+				if _, err = s.db.Exec(`UPDATE cards SET status='Fix' WHERE id=?`, card.ID); err != nil {
+					t.Fatal(err)
+				}
+				if _, err = s.db.Exec(`UPDATE workflow_attempts SET branch='repair-branch',repair_message='repair-message',repair_pr_url='https://github.com/example/repo/pull/7',repair_source_number=1 WHERE task_id=?`, task); err != nil {
+					t.Fatal(err)
+				}
+			}
 			// Additional saved context must survive process restart and continuation.
 			contextJSON := []byte(`{"context":["saved-context-marker"]}`)
 			if _, err = journal.Append(t.Context(), runtime.Record{RunID: run, Kind: runtime.RecordContext, Payload: contextJSON, Text: "saved-context-marker"}); err != nil {
@@ -114,23 +127,35 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if planning {
 				action = w.ResumeFailedPlanning
 			}
-			var wg sync.WaitGroup
-			results := make(chan error, 2)
-			gate := make(chan struct{})
-			for range 2 {
-				wg.Go(func() { <-gate; results <- action(card.ID) })
-			}
-			close(gate)
-			wg.Wait()
-			close(results)
-			successes := 0
-			for e := range results {
-				if e == nil {
-					successes++
+			if automatic {
+				if err = s.SetDashboardOverrides(map[string]string{"auto-resume-failed-runs": "true"}); err != nil {
+					t.Fatal(err)
 				}
-			}
-			if successes != 1 {
-				t.Fatalf("concurrent resume successes=%d", successes)
+				now := time.Now()
+				if err = w.discoverAutoResumes(now); err != nil {
+					t.Fatal(err)
+				}
+				w.autoResumePass(now.Add(81 * time.Second))
+			} else {
+				var wg sync.WaitGroup
+				results := make(chan error, 2)
+				gate := make(chan struct{})
+				for range 2 {
+					wg.Go(func() { <-gate; results <- action(card.ID) })
+				}
+				close(gate)
+				wg.Wait()
+				close(results)
+				successes := 0
+				for e := range results {
+					if e == nil {
+						successes++
+					}
+				}
+				if successes != 1 {
+					t.Fatalf("concurrent resume successes=%d", successes)
+				}
+
 			}
 			waitWorkflow(t, func() bool {
 				var n int
@@ -178,6 +203,12 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 					t.Fatal("build identity/branch/report changed", a, e)
 				}
 			}
+			if repair {
+				a, e := w.CardResult(card.ID)
+				if e != nil || a.Branch != "repair-branch" || a.RepairMessage != "repair-message" || a.RepairPRURL != "https://github.com/example/repo/pull/7" {
+					t.Fatal("repair assignment lost", a, e)
+				}
+			}
 			// Old terminal outcome and event cannot undo the new typed state.
 			var previous string
 			_ = s.db.QueryRow(`SELECT previous_outcome FROM failed_resumes WHERE task_id=?`, task).Scan(&previous)
@@ -199,6 +230,21 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if e != nil || duplicate.Status != "completed" || len(healthy.Requests()) != 1 {
 				t.Fatal("restart dedup lost", duplicate, e)
 			}
+			if planning && automatic {
+				detail := planningDetails(t, w, card.ID)
+				if err = w.ReplyPlanning(card.ID, "Use API v2", detail.InteractionToken); err != nil {
+					t.Fatal(err)
+				}
+				var count int
+				if err = s.db.QueryRow(`SELECT count(*) FROM failed_resumes WHERE task_id=? AND automatic=1`, task).Scan(&count); err != nil || count != 1 {
+					t.Fatal("Answer reset automatic budget", count, err)
+				}
+				next := planningDetails(t, w, card.ID)
+				if len(next.Turns) != 1 || next.Turns[0].ID != task {
+					t.Fatal("Answer replaced task budget", next)
+				}
+			}
+
 		})
 	}
 }

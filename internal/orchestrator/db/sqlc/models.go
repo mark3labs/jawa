@@ -14,6 +14,16 @@ type Admin struct {
 	PasswordHash string `json:"password_hash"`
 }
 
+type AutoResume struct {
+	TaskID       string `json:"task_id"`
+	CardID       string `json:"card_id"`
+	Planning     int64  `json:"planning"`
+	FailureToken string `json:"failure_token"`
+	DueAt        int64  `json:"due_at"`
+	NextCheckAt  int64  `json:"next_check_at"`
+	State        string `json:"state"`
+}
+
 type Card struct {
 	ID          string `json:"id"`
 	ProjectID   string `json:"project_id"`
@@ -36,6 +46,7 @@ type FailedResume struct {
 	Status          string `json:"status"`
 	ReplyJson       string `json:"reply_json"`
 	CreatedAt       int64  `json:"created_at"`
+	Automatic       int64  `json:"automatic"`
 }
 
 type PlanningDelivery struct {
