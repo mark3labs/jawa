@@ -91,7 +91,9 @@ func TestSessionStoreRestartAndExpiry(t *testing.T) {
 	a := &app{s: s}
 	w := httptest.NewRecorder()
 	if err := a.issue(w, httptest.NewRequest("POST", "/login", nil)); err != nil {
-		s.Close()
+		if closeErr := s.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
 		t.Fatal(err)
 	}
 	session := cookie(t, w, "session")
@@ -103,7 +105,11 @@ func TestSessionStoreRestartAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	a = &app{s: s}
 	r := httptest.NewRequest("GET", "/board", nil)
 	if a.authed(r) {
