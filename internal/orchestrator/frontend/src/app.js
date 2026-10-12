@@ -2,7 +2,7 @@
 // API, bundled with Datastar in datastar-rocket.js) owns the behaviors below.
 // Components render in the light DOM so server-rendered markup stays the source
 // of truth and live SSE morphs keep working.
-import {rocket} from './datastar-rocket.js';
+import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
 import {setupIssueSelector} from './issue-selector.js';
 
@@ -225,12 +225,24 @@ rocket('jawa-shortcuts', {
   },
 });
 
+// Refresh state outlives board/form replacements; only finite refresh POSTs own it.
+const pendingRefreshes = new Set();
+mergePaths([['prRefreshing', false]]);
+document.addEventListener('datastar-fetch', event => {
+  const {type, el} = event.detail;
+  if (!el?.matches?.('form.pr-refresh-form')) return;
+  if (type === 'started') pendingRefreshes.add(el);
+  else if (type === 'finished') pendingRefreshes.delete(el);
+  else return;
+  mergePaths([['prRefreshing', pendingRefreshes.size > 0]]);
+});
+
 // Submit feedback and form hygiene for every Datastar form request. Dialogs are
 // closed by server signals; this only locks the submit button while in flight
 // and clears a form once the server reports success (no error notice showing).
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
-  if (!el?.matches?.('form')) return;
+  if (!el?.matches?.('form') || el.matches('.pr-refresh-form')) return;
   const buttons = el.querySelectorAll('button[type="submit"]');
   if (type === 'started') {
     el.dataset.pending = '';

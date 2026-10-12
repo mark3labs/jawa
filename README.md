@@ -455,6 +455,9 @@ repair dialog stays open with its draft; on success it closes and clears.
 
 The **Refresh ready PRs** button at the top of **Ready for review** checks
 all eligible cards in that project, rather than adding a refresh button to each card.
+While the request is pending, the button shows **Refreshing ready PRs…** and a
+loading indicator and prevents another submission. It becomes available again
+when the request finishes, even if cards remain queued for background checking.
 This action bypasses the normal one-minute polling cooldown; it does not rerun
 CI, move cards, merge pull requests, or start repairs.
 
