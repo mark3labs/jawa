@@ -175,3 +175,28 @@ func TestPRRefreshBoardQueueCounts(t *testing.T) {
 		t.Fatal("queued work missing from response")
 	}
 }
+
+func TestPRRefreshFormFeedback(t *testing.T) {
+	var out bytes.Buffer
+	d := pageData{csrf: "test-csrf", v: viewParams{View: "board", Project: "project"}}
+	if err := prRefreshForm(d, "project", "", "Refresh ready PRs").Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		`method="post" action="/prs/refresh"`, `name="_csrf" value="test-csrf"`,
+		`name="project_id" value="project"`, `name="card_id" value=""`,
+		`name="view" value="board"`, `name="project" value="project"`,
+		`data-attr:disabled="$prRefreshing"`, `data-attr:aria-busy="$prRefreshing ? 'true' : 'false'"`,
+		`data-show="!$prRefreshing">Refresh ready PRs</span>`,
+		`style="display: none" data-show="$prRefreshing"`,
+		`class="pr-refresh-spinner" aria-hidden="true"`, `Refreshing ready PRs…`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in %s", want, body)
+		}
+	}
+	if strings.Contains(body, "data-indicator") || strings.Contains(body, "data-signals") {
+		t.Fatal("patched form must not own request state")
+	}
+}

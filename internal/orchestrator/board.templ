@@ -285,12 +285,18 @@ templ menuDisabled(label, ic, reason string) {
 
 // Refresh forms work natively and use finite SSE when Datastar is available.
 templ prRefreshForm(d pageData, projectID, cardID, label string) {
-	<form class="pr-refresh-form" method="post" action="/prs/refresh" data-signals:pr-refreshing="false" data-indicator:pr-refreshing data-on:submit__prevent="@post('/prs/refresh', {contentType:'form'})">
+	<form class="pr-refresh-form" method="post" action="/prs/refresh" data-on:submit__prevent="@post('/prs/refresh', {contentType:'form'})">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		<input type="hidden" name="project_id" value={ projectID }/>
 		<input type="hidden" name="card_id" value={ cardID }/>
 		@viewFields(d.v)
-		<button type="submit" class="btn small" data-attr:disabled="$prRefreshing" data-attr:aria-busy="$prRefreshing ? 'true' : 'false'">{ label }</button>
+		<button type="submit" class="btn small" data-attr:disabled="$prRefreshing" data-attr:aria-busy="$prRefreshing ? 'true' : 'false'">
+			<span data-show="!$prRefreshing">{ label }</span>
+			<span class="pr-refresh-pending" style="display: none" data-show="$prRefreshing">
+				<span class="pr-refresh-spinner" aria-hidden="true"></span>
+				Refreshing ready PRs…
+			</span>
+		</button>
 	</form>
 }
 
