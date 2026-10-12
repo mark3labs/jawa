@@ -22,6 +22,25 @@ func TestCardVisualFixture(t *testing.T) {
 		d.prChecks[id] = PRCheck{State: state, CheckedAt: now}
 	}
 	d.cards = append(d.cards, Card{ID: "b1", ProjectID: p.ID, Title: "Improve card spacing and controls", Description: "Keep actions quiet and let the task content breathe.", Status: "Building", CreatedAt: now})
+
+	d.planning = map[string]PlanningDetail{}
+	for _, fixture := range []struct {
+		id, status, title string
+		archived          bool
+	}{
+		{"todo", "Todo", "A new task", false},
+		{"planner", "Planning", "Investigate the reusable cards", false},
+		{"fixer", "Fix", "Repair the existing pull request", false},
+		{"archived-planner", "Planning", "Archived active planning work", true},
+	} {
+		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: p.ID, Status: fixture.status, Title: fixture.title, Description: "Deterministic shared-card fixture", CreatedAt: now, Archived: fixture.archived})
+		if fixture.status == "Planning" {
+			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "running", UpdatedAt: now}, Turns: []PlanningTurn{{Number: 1, State: "running", AgentID: "planner-" + strings.Repeat("long-identity-", 20), UpdatedAt: now}}}
+		} else if fixture.status == "Fix" {
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", AgentID: "fix-agent", UpdatedAt: now})
+		}
+	}
+	d.attempts = append(d.attempts, Attempt{CardID: "b1", Number: 1, State: "running", AgentID: "builder-agent", UpdatedAt: now})
 	var out bytes.Buffer
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
@@ -45,7 +64,6 @@ func TestCardVisualFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		d.v.View = viewArchive
-		d.cards[len(d.cards)-1].Archived = true
 		out.Reset()
 		if err := appPage(d).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)

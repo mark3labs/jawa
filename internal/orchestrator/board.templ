@@ -117,25 +117,15 @@ templ cardChips(d pageData, c Card) {
 		</span>
 	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
-		<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
-			@toneIcon(runTone(la[0]))
-			if d.prChecks[c.ID].State == "merged" && la[0].Ready {
-				<span>Merged</span>
-			} else {
-				<span>{ runLabel(la[0]) }</span>
-			}
-		</a>
-		if pr := safeActivityURL(la[0].PRURL); pr != "" {
-			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
-				@icon("pr")
-				<span>PR</span>
+		if c.Status != "Planning" {
+			<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
+				@toneIcon(runTone(la[0]))
+				if d.prChecks[c.ID].State == "merged" && la[0].Ready {
+					<span>Merged</span>
+				} else {
+					<span>{ runLabel(la[0]) }</span>
+				}
 			</a>
-		}
-		if la[0].AgentID != "" && attemptActive(la[0]) {
-			<span class="chip plain" title="Assigned agent">
-				@icon("agents")
-				<span>{ la[0].AgentID }</span>
-			</span>
 		}
 	} else if c.Status == "Building" || c.Status == "Fix" {
 		<span class="chip tone-queued">
@@ -143,27 +133,45 @@ templ cardChips(d pageData, c Card) {
 			<span>Not started</span>
 		</span>
 	}
+	@assignedAgent(d.cardAgent(c))
+	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
+		if pr := safeActivityURL(la[0].PRURL); pr != "" {
+			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
+				@icon("pr")
+				<span>PR</span>
+			</a>
+		}
+	}
 	if iss := safeActivityURL(c.IssueURL); iss != "" {
 		<a class="chip" href={ templ.SafeURL(iss) } target="_blank" rel="noopener noreferrer" title="Open linked issue">
 			@icon("issue")
 			<span>Issue</span>
 		</a>
 	}
+	{{ updated := d.cardActivity(c) }}
 	<span class="chip-time">
-		<jawa-time datetime={ timeAttr(cardUpdated(c, d.attempts)) }>{ relativeTime(cardUpdated(c, d.attempts), d.now) }</jawa-time>
+		<jawa-time datetime={ timeAttr(updated) }>{ relativeTime(updated, d.now) }</jawa-time>
 	</span>
 }
 
-templ cardNote(d pageData, c Card) {
- if note := d.automaticResumeNote(c); note != "" {
- <p class="muted small" role="status">{ note }</p>
- }
+templ assignedAgent(agentID string) {
+	if agentID != "" {
+		<span class="chip plain" title="Assigned agent">
+			@icon("agents")
+			<span>{ agentID }</span>
+		</span>
+	}
+}
 
+templ cardNote(d pageData, c Card) {
+	if note := d.automaticResumeNote(c); note != "" {
+		<p class="muted small" role="status">{ note }</p>
+	}
 	if canAction(c, d.attempts, "fix") {
 		@cardPRStatus(d, c)
 	}
-	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 && la[0].Error != "" && !attemptActive(la[0]) && runTone(la[0]) != "ready" {
-		<p class={ "card-note", "tone-" + runTone(la[0]) }>{ la[0].Error }</p>
+	if note, tone := d.cardDiagnostic(c); note != "" {
+		<p class={ "card-note", "tone-" + tone }>{ note }</p>
 	}
 }
 
