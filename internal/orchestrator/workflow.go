@@ -47,6 +47,9 @@ type Workflow struct {
 	observeReport    func(context.Context, client.Target) (client.Status, error)
 	resumeConn       *nats.Conn
 	resumeStaleAfter time.Duration
+	// Owned by the single dispatch loop: next owner Status check per pending
+	// resume. In-memory only; a restart re-checks stale commands once.
+	resumeChecks map[string]time.Time
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {

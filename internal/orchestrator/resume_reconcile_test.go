@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -246,6 +247,8 @@ func TestResumeReconcileStaleDispatch(t *testing.T) {
 					if !strings.Contains(logs.String(), "Failed to apply resume receipt") || !strings.Contains(logs.String(), req.ID) {
 						t.Fatalf("missing receipt error log: %s", logs.String())
 					}
+					// Simulate the bounded re-check window elapsing.
+					clear(w.resumeChecks)
 					w.dispatchFailedResumes(nc)
 					later := <-commands
 					if later != expected {
@@ -266,6 +269,76 @@ func TestResumeReconcileStaleDispatch(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestResumeStaleCheckThrottled(t *testing.T) {
+	for _, scenario := range []string{"active", "unreachable"} {
+		t.Run(scenario, func(t *testing.T) {
+			w, nc, _, req, _ := reconcileResumeFixture(t, false, false)
+			if _, err := w.s.db.Exec(`UPDATE failed_resumes SET created_at=? WHERE id=?`, time.Now().Add(-time.Hour).UnixMilli(), req.ID); err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			w.logger = log.NewWithOptions(&logs, log.Options{Level: log.InfoLevel})
+			var mu sync.Mutex
+			queries := 0
+			if scenario == "active" {
+				sub, err := nc.Subscribe("bonnie.queries.agent", func(m *nats.Msg) {
+					mu.Lock()
+					queries++
+					mu.Unlock()
+					raw, _ := json.Marshal(client.Status{Version: 1, Target: req.Target, State: runtime.RunRunning, Active: true, TurnID: req.TurnID, Seq: req.Seq + 10})
+					_ = m.Respond(raw)
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = sub.Unsubscribe() })
+			}
+			var sent []reportprotocol.FailedResume
+			sub, err := nc.Subscribe(reportprotocol.ResumeSubject("bonnie", req.Target.AgentID), func(m *nats.Msg) {
+				var got reportprotocol.FailedResume
+				_ = json.Unmarshal(m.Data, &got)
+				mu.Lock()
+				sent = append(sent, got)
+				mu.Unlock()
+				raw, _ := json.Marshal(reportprotocol.FailedResumeReply{Version: 1, ID: got.ID, Target: got.Target, Status: "pending"})
+				_ = m.Respond(raw)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = sub.Unsubscribe() })
+			if err = nc.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			for range 5 {
+				w.dispatchFailedResumes(nc)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(sent) != 5 {
+				t.Fatalf("retransmissions = %d, want 5", len(sent))
+			}
+			for _, got := range sent {
+				if got.Reconcile {
+					t.Fatal("reconcile requested without a confirmed idle failure")
+				}
+			}
+			warnings := strings.Count(logs.String(), "Resume remains pending")
+			switch scenario {
+			case "active":
+				// An active owner is progress: one query, no warning.
+				if queries != 1 || warnings != 0 {
+					t.Fatalf("active owner: queries=%d warnings=%d, want 1/0\n%s", queries, warnings, logs.String())
+				}
+			case "unreachable":
+				if warnings != 1 {
+					t.Fatalf("unreachable owner warnings = %d, want 1\n%s", warnings, logs.String())
+				}
+			}
+		})
 	}
 }
 

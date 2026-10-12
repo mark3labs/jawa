@@ -72,6 +72,10 @@ Pending build/fix and planning badges show **Resuming…**, not Running.
 duration (default `5m`, for example `30s` or `10m`); invalid values fail workflow
 startup. This is not an execution deadline: active and unreachable owners remain
 pending. After the threshold, the orchestrator queries the exact owning agent.
+An active owner counts as progress and defers the next check by a full threshold
+(logged at debug only); unconfirmed owners are re-checked and warned about at
+most every `min(threshold, 30s)`. Checks are scheduled in memory, so a restart
+re-checks each stale command once.
 For a confirmed idle failed run it sends the same command with `reconcile: true`.
 The updated host durably fences unseen commands without executing them, or
 supersedes an invalid completed receipt with an ambiguous receipt. Only that host
