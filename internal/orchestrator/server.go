@@ -156,7 +156,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -274,6 +274,12 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			} else {
 				err = a.workflow.resumeFailed(r.FormValue("card_id"), false, r.FormValue("expected_resume"))
 			}
+		}
+	case "/cards/mark-merged":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.MarkPRMerged(r.Context(), r.FormValue("card_id"), r.FormValue("expected_attempt_id"), r.FormValue("expected_pr_url"))
 		}
 	case "/cards/fix":
 		if a.workflow == nil {

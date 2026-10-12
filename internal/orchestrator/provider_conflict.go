@@ -7,12 +7,15 @@ import (
 	"time"
 )
 
-// PRCheck is current provider evidence, not a change to historical readiness.
+// PRCheck is effective display status, not a change to historical readiness.
+// Manual markers have their own timestamp and never fabricate provider evidence.
 // Only State == "conflict" is a confirmed merge conflict. Unknown and error
 // must never be rendered as conflicts. CheckedAt lets callers show freshness.
 type PRCheck struct {
 	AttemptID, PRURL, State, HeadSHA, BaseSHA, Error string
 	CheckedAt                                        time.Time
+	Manual                                           bool
+	MarkedAt                                         time.Time
 }
 
 type ConflictChecker func(context.Context, Attempt) (PRCheck, error)
@@ -49,16 +52,16 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if err = p.read(path, &pr); err != nil {
 			return result, err
 		}
-		if !pr.identityMatches(owner+"/"+name, base, branch, number) {
+		if !pr.checkIdentityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
 		result.HeadSHA, result.BaseSHA = pr.Head.SHA, pr.Base.SHA
 		result.State = pr.conflictState(p.forgejo)
-		if result.State != "conflict" && result.State != "clear" {
+		if result.State != "conflict" && result.State != "clear" && result.State != "merged" {
 			return result, nil
 		}
 		// Confirm both sides of the merge; a moving base can invalidate a clear too.
-		if !providerSHA.MatchString(pr.Base.SHA) {
+		if result.State != "merged" && !providerSHA.MatchString(pr.Base.SHA) {
 			result.State = "unknown"
 			return result, nil
 		}
@@ -66,10 +69,14 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if err = p.read(path, &latest); err != nil {
 			return result, err
 		}
-		if !latest.identityMatches(owner+"/"+name, base, branch, number) {
+		if !latest.checkIdentityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
-		if latest.Head.SHA != pr.Head.SHA || latest.Base.SHA != pr.Base.SHA || latest.conflictState(p.forgejo) != result.State {
+		if latest.conflictState(p.forgejo) == "merged" && (result.State != "merged" || latest.Head.SHA == pr.Head.SHA) {
+			result.State, result.HeadSHA, result.BaseSHA = "merged", latest.Head.SHA, latest.Base.SHA
+			return result, nil
+		}
+		if result.State == "merged" || latest.Head.SHA != pr.Head.SHA || latest.Base.SHA != pr.Base.SHA || latest.conflictState(p.forgejo) != result.State {
 			result.State = "unknown"
 		}
 		return result, nil
@@ -93,4 +100,13 @@ func (p providerPR) conflictState(forgejo bool) string {
 		return "conflict"
 	}
 	return "unknown"
+}
+
+// Only terminal display detection tolerates a deleted head repository. Readiness
+// verification and open PR checks retain their stricter identity validator.
+func (p providerPR) checkIdentityMatches(repo, base, branch string, number int) bool {
+	if p.Merged && p.State == "closed" {
+		return p.Number == number && p.Base.Ref == base && p.Base.Repo.FullName == repo && (p.Head.Repo.FullName == "" || p.Head.Repo.FullName == repo) && p.Head.Ref == branch && providerSHA.MatchString(p.Head.SHA)
+	}
+	return p.identityMatches(repo, base, branch, number)
 }

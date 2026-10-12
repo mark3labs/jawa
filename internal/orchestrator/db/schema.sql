@@ -102,3 +102,7 @@ CREATE TABLE auto_resumes (
  due_at INTEGER NOT NULL, next_check_at INTEGER NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('scheduled','reserved','stopped','exhausted')));
 CREATE INDEX auto_resume_due ON auto_resumes(state,next_check_at,task_id);
+CREATE TABLE workflow_pr_merge_overrides (
+ attempt_id TEXT PRIMARY KEY REFERENCES workflow_attempts(id) ON DELETE CASCADE,
+ pr_url TEXT NOT NULL, provider TEXT NOT NULL, repo TEXT NOT NULL,
+ base_branch TEXT NOT NULL, marked_at INTEGER NOT NULL);

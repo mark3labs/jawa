@@ -232,7 +232,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 13 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 14 {
 		t.Fatal(version, err)
 	}
 }
@@ -256,7 +256,8 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  ALTER TABLE cards DROP COLUMN archived;
  DROP TABLE auto_resumes;
  ALTER TABLE failed_resumes DROP COLUMN automatic;
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13)`)
+ DROP TABLE workflow_pr_merge_overrides;
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +284,8 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 		t.Fatal(err)
 	}
 	execTest(t, database, `DROP TABLE auto_resumes; ALTER TABLE failed_resumes DROP COLUMN automatic;
- DELETE FROM goose_db_version WHERE version_id=13;
+ DROP TABLE workflow_pr_merge_overrides;
+ DELETE FROM goose_db_version WHERE version_id IN (13,14);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
