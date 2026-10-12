@@ -142,12 +142,18 @@ func (w *Workflow) autoResumePass(now time.Time) {
 	var batch []due
 	for rows.Next() {
 		var d due
-		if rows.Scan(&d.task, &d.card, &d.planning, &d.token) != nil {
+		if err = rows.Scan(&d.task, &d.card, &d.planning, &d.token); err != nil {
 			break
 		}
 		batch = append(batch, d)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	_ = rows.Close()
+	if err != nil {
+		return
+	}
 	for _, d := range batch {
 		if w.ctx.Err() != nil {
 			return
