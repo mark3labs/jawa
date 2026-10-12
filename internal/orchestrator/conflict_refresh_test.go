@@ -73,7 +73,7 @@ func TestRefreshPRChecksQueuesWholeBoard(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT project_id FROM cards WHERE id=?`, a.CardID).Scan(&project); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		card, err := s.CreateCard(project, fmt.Sprint(i), "")
 		if err != nil {
 			t.Fatal(err)

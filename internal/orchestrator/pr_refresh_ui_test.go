@@ -125,7 +125,7 @@ func TestPRCheckPresentation(t *testing.T) {
 			if state != "checking" && state != "" {
 				check.CheckedAt = time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 			}
-			d := pageData{uiSnapshot: uiSnapshot{attempts: attempts, prChecks: map[string]PRCheck{c.ID: check}}}
+			d := pageData{attempts: attempts, prChecks: map[string]PRCheck{c.ID: check}}
 			var out bytes.Buffer
 			if err := cardNote(d, c).Render(t.Context(), &out); err != nil {
 				t.Fatal(err)
@@ -144,7 +144,7 @@ func TestPRCheckPresentation(t *testing.T) {
 	}
 	for _, card := range []Card{{ID: c.ID, Status: "Fix"}, {ID: "legacy", Status: "Done"}} {
 		var out bytes.Buffer
-		d := pageData{uiSnapshot: uiSnapshot{attempts: attempts}}
+		d := pageData{attempts: attempts}
 		if err := cardNote(d, card).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestPRRefreshBoardQueueCounts(t *testing.T) {
 	session, csrf := setupTest(t, a)
 	first := workflowCard(t, a.s)
 	repairDone(t, a.workflow, first)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		c, err := a.s.CreateCard(first.ProjectID, "Another ready PR", "")
 		if err != nil {
 			t.Fatal(err)

@@ -130,7 +130,7 @@ only accepted typed tool reports can supply the PR used for verification.
 Provider-confirmed merged PRs also count as Done, provided repository, branch, base,
 and head identity checks pass. Closed unmerged PRs remain blocked.
 
-The UI separates **Board** (one project at a time), **Runs**, **Agents**, and
+The UI separates **Board** (one project at a time), **Archive**, **Runs**, **Agents**, and
 **Settings** into bookmarkable views. It uses templ and prebuilt shadcn-templ
 components, with a dark Jawa-inspired robe-brown/sand/amber palette, compact
 cards, keyboard-accessible action menus, and self-hosted Inter typography.
@@ -141,6 +141,13 @@ timestamps, clipboard controls, and keyboard shortcuts. No production CDN is use
 On phones the board stacks its lanes; tablets use two columns, with visible card
 actions and touch-sized controls. Runs retain their agent, attempt, PR and update
 information in a compact card layout. Card menus allow moves without dragging.
+
+Every card has an **Archive** button beside its actions menu. Archived cards are
+hidden from Board and appear in the searchable `/archive` view. **Restore** returns
+a card to its existing workflow lane. Archiving changes visibility only: it does
+not cancel active planning/builds or delete plans, runs, PR links, or history.
+Merge Conflict, Merged, and Checks Failed PR status evidence uses compact badges;
+Checks Failed indicates a provider status-check failure, not a claim about CI results.
 
 Jawa can be installed as a **PWA** using your browser's install command (on iOS,
 Safari **Share → Add to Home Screen**). Serve it over HTTPS for mobile installation;

@@ -232,7 +232,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 11 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 12 {
 		t.Fatal(version, err)
 	}
 }
@@ -253,7 +253,8 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
 	}
 	execTest(t, database, strings.Split(string(legacy), "-- +goose Down")[0])
 	execTest(t, database, `INSERT INTO workflow_pr_checks VALUES('a','url','github','repo','main','conflict','head','',123);
- DELETE FROM goose_db_version WHERE version_id=11`)
+ ALTER TABLE cards DROP COLUMN archived;
+ DELETE FROM goose_db_version WHERE version_id IN (11,12)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}

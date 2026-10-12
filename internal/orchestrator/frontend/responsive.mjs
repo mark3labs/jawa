@@ -72,7 +72,7 @@ try {
       if (view === 'board') {
         if (await page.locator('.lanes').count()) {
           const columns = await page.locator('.lanes').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-          assert.equal(columns, width <= 600 ? 1 : width < 1400 ? 2 : 4);
+          assert.equal(columns, width <= 600 ? 1 : width < 1400 ? 2 : 5);
         }
         for (const id of ['project-dialog', 'card-dialog', 'delete-dialog', 'cancel-dialog']) {
           await page.evaluate(id => document.getElementById(id).showModal(), id);
@@ -119,6 +119,22 @@ try {
       }
     }
   }
+  // Archive/restore a real card through Datastar, then verify archive filtering.
+  await page.goto(base + boardPath);
+  const archivedCard = page.locator('.task-card').first();
+  const cardID = await archivedCard.getAttribute('id');
+  await archivedCard.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.locator(`#${cardID}`).waitFor({ state: 'detached' });
+  await page.goto(base + '/archive');
+  await page.locator(`#${cardID}`).waitFor();
+  await page.getByRole('textbox', { name: 'Filter cards', exact: true }).fill('no-match-for-archive-test');
+  await page.locator(`#${cardID}`).waitFor({ state: 'hidden' });
+  await page.getByRole('textbox', { name: 'Filter cards', exact: true }).fill('');
+  await page.locator(`#${cardID}`).getByRole('button', { name: 'Restore', exact: true }).click();
+  await page.locator(`#${cardID}`).waitFor({ state: 'detached' });
+  await page.goto(base + boardPath);
+  await page.locator(`#${cardID}`).waitFor();
+
   // Fine-pointer mobile must still have generous targets and visible actions.
   const fine = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await context.storageState() });
   const finePage = await fine.newPage();

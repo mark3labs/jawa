@@ -10,7 +10,7 @@ import (
 )
 
 const getCard = `-- name: GetCard :one
-SELECT id, project_id, title, description, status, position, created_at, issue_url FROM cards WHERE id = ?
+SELECT id, project_id, title, description, status, position, created_at, issue_url, archived FROM cards WHERE id = ?
 `
 
 func (q *Queries) GetCard(ctx context.Context, id string) (Card, error) {
@@ -25,6 +25,7 @@ func (q *Queries) GetCard(ctx context.Context, id string) (Card, error) {
 		&i.Position,
 		&i.CreatedAt,
 		&i.IssueUrl,
+		&i.Archived,
 	)
 	return i, err
 }
@@ -112,7 +113,7 @@ func (q *Queries) ListCardLane(ctx context.Context, arg ListCardLaneParams) ([]s
 }
 
 const listCards = `-- name: ListCards :many
-SELECT id, project_id, title, description, status, position, created_at, issue_url FROM cards
+SELECT id, project_id, title, description, status, position, created_at, issue_url, archived FROM cards
 WHERE (?1 = '' OR project_id = ?1)
 ORDER BY CASE status WHEN 'Todo' THEN 0 WHEN 'Planning' THEN 1 WHEN 'Building' THEN 2 ELSE 3 END,
 position, created_at, id
@@ -136,6 +137,7 @@ func (q *Queries) ListCards(ctx context.Context, projectID interface{}) ([]Card,
 			&i.Position,
 			&i.CreatedAt,
 			&i.IssueUrl,
+			&i.Archived,
 		); err != nil {
 			return nil, err
 		}
@@ -164,6 +166,23 @@ func (q *Queries) NextCardPosition(ctx context.Context, arg NextCardPositionPara
 	var position int64
 	err := row.Scan(&position)
 	return position, err
+}
+
+const setCardArchived = `-- name: SetCardArchived :execrows
+UPDATE cards SET archived = ? WHERE id = ?
+`
+
+type SetCardArchivedParams struct {
+	Archived int64  `json:"archived"`
+	ID       string `json:"id"`
+}
+
+func (q *Queries) SetCardArchived(ctx context.Context, arg SetCardArchivedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setCardArchived, arg.Archived, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateCardLane = `-- name: UpdateCardLane :execrows

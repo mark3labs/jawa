@@ -155,7 +155,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -296,6 +296,8 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = a.workflow.DeleteCard(r.FormValue("card_id"))
 		}
+	case "/cards/archive", "/cards/restore":
+		err = a.s.SetCardArchived(r.FormValue("card_id"), r.URL.Path == "/cards/archive")
 	case "/cards/cancel":
 		if a.workflow == nil {
 			err = errors.New("workflow unavailable")

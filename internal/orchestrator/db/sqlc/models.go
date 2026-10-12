@@ -23,6 +23,7 @@ type Card struct {
 	Position    int64  `json:"position"`
 	CreatedAt   int64  `json:"created_at"`
 	IssueUrl    string `json:"issue_url"`
+	Archived    int64  `json:"archived"`
 }
 
 type FailedResume struct {

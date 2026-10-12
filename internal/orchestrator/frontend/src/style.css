@@ -661,3 +661,10 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .pr-evidence code { overflow-wrap: anywhere; }
 .pr-refresh-form { display: inline-flex; max-width: 100%; }
 .card-pr-status .btn { margin-bottom: 4px; }
+
+/* Quiet header controls keep lifecycle actions separate from status evidence. */
+.card-tools { display: flex; align-items: center; gap: 6px; }
+.card-tools form { margin: 0; }
+.archive-action { color: var(--text-3); }
+.archive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+.archive-grid .task-card { margin: 0; }

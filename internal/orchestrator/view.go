@@ -19,6 +19,7 @@ type viewKind string
 
 const (
 	viewBoard    viewKind = "board"
+	viewArchive  viewKind = "archive"
 	viewPlanning viewKind = "planning"
 	viewRuns     viewKind = "runs"
 	viewAgents   viewKind = "agents"
@@ -42,6 +43,8 @@ type viewParams struct {
 
 func viewFromPath(path string) (viewKind, bool) {
 	switch strings.TrimSuffix(path, "/") {
+	case "/archive":
+		return viewArchive, true
 	case "/board":
 		return viewBoard, true
 	case "/planning":
@@ -71,7 +74,7 @@ func parseViewParams(r *http.Request, kind viewKind) viewParams {
 	if kind == "" {
 		p.View = viewBoard
 		switch v := viewKind(r.FormValue("view")); v {
-		case viewRuns, viewAgents, viewSettings, viewPlanning:
+		case viewArchive, viewRuns, viewAgents, viewSettings, viewPlanning:
 			p.View = v
 		}
 	}
@@ -84,7 +87,7 @@ func parseViewParams(r *http.Request, kind viewKind) viewParams {
 // Path is the canonical, bookmarkable URL of this view.
 func (v viewParams) Path() string {
 	q := url.Values{}
-	if v.Project != "" && v.View == viewBoard {
+	if v.Project != "" && (v.View == viewBoard || v.View == viewArchive) {
 		q.Set("project", v.Project)
 	}
 	if v.View == viewRuns || v.View == viewPlanning {
@@ -303,7 +306,7 @@ func projectByID(projects []Project, id string) (Project, bool) {
 func buildingCount(cards []Card, projectID string) int {
 	n := 0
 	for _, c := range cards {
-		if c.ProjectID == projectID && c.Status == "Building" {
+		if !c.Archived && c.ProjectID == projectID && c.Status == "Building" {
 			n++
 		}
 	}
@@ -313,7 +316,7 @@ func buildingCount(cards []Card, projectID string) int {
 func cardsIn(cards []Card, projectID, status string) []Card {
 	var out []Card
 	for _, c := range cards {
-		if c.ProjectID == projectID && c.Status == status {
+		if !c.Archived && c.ProjectID == projectID && c.Status == status {
 			out = append(out, c)
 		}
 	}

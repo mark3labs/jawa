@@ -20,8 +20,17 @@ func (s *Store) queryCards(ctx context.Context, project string) ([]Card, error) 
 	return cards, nil
 }
 
+func (s *Store) setCardArchived(ctx context.Context, id string, archived bool) (int64, error) {
+	var flag int64
+	if archived {
+		flag = 1
+	}
+	return sqlc.New(s.db).SetCardArchived(ctx, sqlc.SetCardArchivedParams{ID: id, Archived: flag})
+}
+
 func cardFromQuery(row sqlc.Card) Card {
 	return Card{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title,
 		Description: row.Description, Status: row.Status, Position: int(row.Position),
+		Archived:  row.Archived != 0,
 		CreatedAt: time.Unix(row.CreatedAt, 0).UTC(), IssueURL: row.IssueUrl}
 }
