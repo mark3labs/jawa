@@ -88,8 +88,9 @@ CREATE TABLE workflow_pr_checks (
  provider TEXT NOT NULL,
  repo TEXT NOT NULL,
  base_branch TEXT NOT NULL,
- state TEXT NOT NULL CHECK(state IN ('conflict','clear','unknown','error','merged','closed')),
+ state TEXT NOT NULL CHECK(state IN ('conflict','clear','unknown','error','merged','closed','checking')),
  head_sha TEXT NOT NULL DEFAULT '',
+ base_sha TEXT NOT NULL DEFAULT '',
  error TEXT NOT NULL DEFAULT '',
  checked_at INTEGER NOT NULL
 );

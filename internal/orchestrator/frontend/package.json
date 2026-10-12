@@ -10,7 +10,8 @@
     "test:issues": "node issues.mjs",
     "test:fix": "node fix.mjs",
     "test:responsive": "node responsive.mjs",
-    "test:pwa": "node pwa.mjs"
+    "test:pwa": "node pwa.mjs",
+    "test:pr-refresh": "node pr-refresh.mjs"
   },
   "dependencies": {
     "sortablejs": "^1.15.6"

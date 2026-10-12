@@ -11,8 +11,8 @@ import (
 // Only State == "conflict" is a confirmed merge conflict. Unknown and error
 // must never be rendered as conflicts. CheckedAt lets callers show freshness.
 type PRCheck struct {
-	AttemptID, PRURL, State, HeadSHA, Error string
-	CheckedAt                               time.Time
+	AttemptID, PRURL, State, HeadSHA, BaseSHA, Error string
+	CheckedAt                                        time.Time
 }
 
 type ConflictChecker func(context.Context, Attempt) (PRCheck, error)
@@ -31,7 +31,7 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		defer func() {
 			result.CheckedAt = time.Now().UTC()
 			if checkErr != nil {
-				result.State, result.HeadSHA, result.Error = "error", "", "provider check failed"
+				result.State, result.HeadSHA, result.BaseSHA, result.Error = "error", "", "", "provider check failed"
 			}
 		}()
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -52,12 +52,16 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if !pr.identityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
-		result.HeadSHA = pr.Head.SHA
+		result.HeadSHA, result.BaseSHA = pr.Head.SHA, pr.Base.SHA
 		result.State = pr.conflictState(p.forgejo)
-		if result.State != "conflict" {
+		if result.State != "conflict" && result.State != "clear" {
 			return result, nil
 		}
-		// Confirm on the same head; don't persist transient or stale conflict evidence.
+		// Confirm both sides of the merge; a moving base can invalidate a clear too.
+		if !providerSHA.MatchString(pr.Base.SHA) {
+			result.State = "unknown"
+			return result, nil
+		}
 		var latest providerPR
 		if err = p.read(path, &latest); err != nil {
 			return result, err
@@ -65,7 +69,7 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if !latest.identityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
-		if latest.Head.SHA != pr.Head.SHA || latest.conflictState(p.forgejo) != "conflict" {
+		if latest.Head.SHA != pr.Head.SHA || latest.Base.SHA != pr.Base.SHA || latest.conflictState(p.forgejo) != result.State {
 			result.State = "unknown"
 		}
 		return result, nil

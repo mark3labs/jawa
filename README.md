@@ -360,12 +360,41 @@ and a nonblank `message`. It returns the normal board redirect for native form
 requests or finite Datastar SSE patches for enhanced requests. On failure the
 repair dialog stays open with its draft; on success it closes and clears.
 
+### Refresh pull request status
+
+Verified cards in **Ready for review** have a **Check PR now** button. The
+board's **Refresh PR status** button checks all eligible cards in that project.
+These actions bypass the normal one-minute polling cooldown; they do not rerun
+CI, move cards, merge pull requests, or start repairs.
+
+Current merge evidence appears separately from the historical ready badge:
+checking (queued or in progress), no merge conflicts detected, confirmed
+conflict, unknown, check failed, merged, or closed without merging. Cards with
+no applicable evidence say they have not been checked yet. Completed checks
+show an explicit UTC timestamp and optional head/base revision evidence.
+Checking cards await fresh evidence; unknown and failed checks never imply clear.
+“No merge conflicts detected” is not a guarantee that every merge gate passes.
+
+The authenticated, CSRF-protected `POST /prs/refresh` endpoint accepts
+`project_id` and optional `card_id` (empty means the whole project). It checks
+at most 16 cards within 30 seconds and durably queues the remainder for background
+polling. Enhanced requests return finite Datastar SSE board patches with
+**targeted / checked / queued** counts; native forms redirect back to their view.
+The server gives this route a bounded 35-second request/write window. Concurrent
+checks return busy; an unavailable checker returns unavailable. Provider errors
+are shown as failed checks, not successful clear evidence. Interrupted batches
+leave unfinished cards checking for background polling, including after restart.
+A failed enhanced request refreshes current evidence when possible and retains
+an actionable error notice; request cancellation may require the next live
+snapshot or page reload to display the queued state.
+
 Regenerate the dashboard after editing templates or frontend sources:
 
 ```sh
-templ generate  # use the github.com/a-h/templ version pinned in go.mod
+go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate
 cd internal/orchestrator/frontend
 npm ci
 npm run build
 npm run test:fix  # requires Chromium; CHROMIUM_PATH overrides its location
+npm run test:pr-refresh
 ```

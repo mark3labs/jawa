@@ -232,7 +232,43 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 10 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 11 {
 		t.Fatal(version, err)
+	}
+}
+
+func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	ctx := context.Background()
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Done',0,1);
+ INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
+ DROP TABLE workflow_pr_checks`)
+	legacy, err := fs.ReadFile(migrations, "migrations/00010_pr_checks.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, strings.Split(string(legacy), "-- +goose Down")[0])
+	execTest(t, database, `INSERT INTO workflow_pr_checks VALUES('a','url','github','repo','main','conflict','head','',123);
+ DELETE FROM goose_db_version WHERE version_id=11`)
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	var state, head, base string
+	var checked int64
+	if err := database.QueryRow(`SELECT state,head_sha,base_sha,checked_at FROM workflow_pr_checks WHERE attempt_id='a'`).Scan(&state, &head, &base, &checked); err != nil || state != "conflict" || head != "head" || base != "" || checked != 123 {
+		t.Fatalf("%s %s %s %d %v", state, head, base, checked, err)
+	}
+	execTest(t, database, `UPDATE workflow_pr_checks SET state='checking',base_sha='base',checked_at=0`)
+	if _, err := database.Exec(`UPDATE workflow_pr_checks SET state='invalid'`); err == nil {
+		t.Fatal("invalid state accepted")
+	}
+	execTest(t, database, `DELETE FROM cards WHERE id='c'`)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM workflow_pr_checks`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cascade %d %v", count, err)
 	}
 }

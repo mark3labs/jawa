@@ -340,3 +340,25 @@ const conflictFixMessage = "Resolve merge conflicts with the current base branch
 func fixDialogAction(cardID, message string) string {
 	return "$fixCard = " + strconv.Quote(cardID) + "; $fixMessage = " + strconv.Quote(message) + "; $fixOpen = true"
 }
+
+// PR check evidence is independent of the historical ready badge.
+func prCheckLabel(check PRCheck) string {
+	switch check.State {
+	case "checking":
+		return "Checking PR status… (queued or in progress)"
+	case "clear":
+		return "No merge conflicts detected."
+	case "conflict":
+		return "Pull request has merge conflicts."
+	case "unknown":
+		return "PR merge status is unknown. Try checking again."
+	case "error":
+		return "PR check failed. Try checking again."
+	case "merged":
+		return "Pull request is merged."
+	case "closed":
+		return "Pull request is closed without merging."
+	default:
+		return "PR status has not been checked yet."
+	}
+}
