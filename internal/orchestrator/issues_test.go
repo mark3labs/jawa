@@ -192,3 +192,17 @@ func TestProjectIssuesEndpoint(t *testing.T) {
 		t.Fatalf("unsafe error: %s", w.Body.String())
 	}
 }
+
+func TestListProjectIssuesCommandCredentials(t *testing.T) {
+	t.Setenv("JAWA_GITHUB_TOKEN", "env-token")
+	c := &http.Client{Transport: providerTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Authorization") != "Bearer cli-token" {
+			t.Fatal("command credential ignored")
+		}
+		return issueResponse(`[]`), nil
+	})}
+	_, err := listProjectIssues(t.Context(), Project{Provider: "github", Repo: "https://github.com/acme/repo"}, c, map[string]string{"github-token": "cli-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

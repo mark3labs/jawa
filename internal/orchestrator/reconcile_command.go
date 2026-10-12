@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,7 +13,8 @@ import (
 // ReconcileCommand explicitly authorizes selection of one retained execution.
 // It does not start dispatch, subscribe to results, or modify broker consumers.
 func ReconcileCommand() *cobra.Command {
-	var dir, task, run, attempt, broker string
+	var dir, task, run, attempt, broker, username, password string
+	providerDefaults := map[string]string{}
 	cmd := &cobra.Command{
 		Use:   "reconcile",
 		Short: "Reconcile a retained execution and independently verify PR readiness",
@@ -30,7 +30,7 @@ func ReconcileCommand() *cobra.Command {
 			if err := cmd.Context().Err(); err != nil {
 				return err
 			}
-			conn, err := nats.Connect(broker, nats.UserInfo(os.Getenv("NATS_USERNAME"), os.Getenv("NATS_PASSWORD")), nats.NoReconnect())
+			conn, err := nats.Connect(broker, nats.UserInfo(username, password), nats.NoReconnect())
 			if err != nil {
 				// URLs and broker errors can contain credentials; never echo them.
 				return errors.New("reconcile: unable to connect to NATS; check URL and credentials")
@@ -41,6 +41,8 @@ func ReconcileCommand() *cobra.Command {
 				return errors.New("reconcile: unable to open store")
 			}
 			defer func() { _ = s.Close() }()
+			readProviderFlags(cmd, providerDefaults)
+			s.runtimeDefaults = providerDefaults
 			w := &Workflow{s: s, ctx: cmd.Context()}
 			if err = migrateWorkflow(s); err != nil {
 				return errors.New("reconcile: unable to migrate workflow")
@@ -82,10 +84,13 @@ func ReconcileCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&dir, "data-dir", "", "Persistent data directory (required)")
+	cmd.Flags().StringVar(&dir, "data-dir", orchestratorEnv("JAWA_ORCHESTRATOR_DATA_DIR", ""), "Persistent data directory (required)")
 	cmd.Flags().StringVar(&task, "task", "", "Task identity to reconcile (required)")
 	cmd.Flags().StringVar(&run, "run", "", "Retained run identity to select (required)")
 	cmd.Flags().StringVar(&attempt, "attempt", "", "Retained remote attempt identity to select (required)")
-	cmd.Flags().StringVar(&broker, "nats-url", "", "NATS URL (required; credentials from NATS_USERNAME/NATS_PASSWORD)")
+	secretFlag(cmd, &broker, "nats-url", "NATS_URL", "")
+	secretFlag(cmd, &username, "nats-username", "NATS_USERNAME", "")
+	secretFlag(cmd, &password, "nats-password", "NATS_PASSWORD", "")
+	providerFlags(cmd, providerDefaults)
 	return cmd
 }

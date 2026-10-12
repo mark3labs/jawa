@@ -395,19 +395,19 @@ func dashboardValue(d pageData, key, env, fallback string) string {
 	return fallback
 }
 
-func providerConfigs(overrides map[string]string) []providerConfig {
-	has := func(keys ...string) bool {
-		for _, k := range keys {
-			if strings.TrimSpace(os.Getenv(k)) != "" {
-				return true
-			}
+func providerConfigs(overrides map[string]string, defaults ...map[string]string) []providerConfig {
+	values := map[string]string{}
+	if len(defaults) > 0 {
+		for k, v := range defaults[0] {
+			values[k] = v
 		}
-		return false
 	}
-	configured := map[string]bool{"GitHub": overrides["github-token"] != "", "Forgejo": overrides["forgejo-token"] != ""}
+	for k, v := range overrides {
+		values[k] = v
+	}
 	return []providerConfig{
-		{"GitHub", "JAWA_GITHUB_TOKEN or GITHUB_TOKEN", configured["GitHub"] || has("JAWA_GITHUB_TOKEN", "GITHUB_TOKEN")},
-		{"Forgejo", "JAWA_FORGEJO_TOKEN", configured["Forgejo"] || has("JAWA_FORGEJO_TOKEN")},
+		{"GitHub", "--github-token / JAWA_GITHUB_TOKEN or GITHUB_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "github-token", "JAWA_GITHUB_TOKEN")) != ""},
+		{"Forgejo", "--forgejo-token / JAWA_FORGEJO_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "forgejo-token", "JAWA_FORGEJO_TOKEN")) != ""},
 	}
 }
 

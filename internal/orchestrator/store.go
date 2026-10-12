@@ -28,7 +28,24 @@ type Card struct {
 
 // NATSConfig deliberately exposes no password or password hash.
 type NATSConfig struct{ URL, Username string }
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// runtimeDefaults are command-local and never persisted to dashboard settings.
+	runtimeDefaults map[string]string
+}
+
+func (s *Store) providerSettings() (map[string]string, error) {
+	values, err := s.DashboardOverrides()
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range s.runtimeDefaults {
+		if _, ok := values[key]; !ok {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
 
 func OpenStore(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)

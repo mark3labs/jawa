@@ -34,7 +34,7 @@ templ settingsContent(d pageData) {
 					<h3>Git providers</h3>
 					<p class="muted small">Read-only tokens support pull-request, CI and review verification. Secret values are never displayed; entering a non-empty value replaces the token.</p>
 					<div class="field-grid">
-						for _, p := range providerConfigs(d.dashboard) {
+						for _, p := range providerConfigs(d.dashboard, d.defaults) {
 							<div class="field">
 								<label for={ "runtime-" + strings.ToLower(p.Name) + "-token" }>{ p.Name } read-only token (write-only)</label>
 								@input.Input(input.Props{ID: "runtime-" + strings.ToLower(p.Name) + "-token", Name: strings.ToLower(p.Name) + "-token", Type: "password", Attributes: templ.Attributes{"autocomplete": "new-password"}})
@@ -133,7 +133,7 @@ templ settingsContent(d pageData) {
 			}
 			@card.Content() {
 				<ul class="rows">
-					for _, p := range providerConfigs(d.dashboard) {
+					for _, p := range providerConfigs(d.dashboard, d.defaults) {
 						<li class="row">
 							@icon("key")
 							<div class="row-text">

@@ -41,33 +41,27 @@ func run() error {
 	if err := loadEnvFile(".env"); err != nil {
 		return err
 	}
-	defaultRoot := os.Getenv("JAWA_NATS_ROOT_SUBJECT")
-	if defaultRoot == "" {
-		defaultRoot = "bonnie"
+	cfg, err := parseFlags(os.Args[1:], os.Getenv)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
 	}
-	id := flag.String("id", "", "Task ID (reuse only for the same task)")
-	text := flag.String("text", "", "Task instructions")
-	root := flag.String("root", defaultRoot, "NATS root subject")
-	agent := flag.String("agent", "", "Target agent ID; empty uses the shared queue")
-	timeout := flag.Duration("timeout", 30*time.Minute, "Maximum time to wait; does not cancel the agent")
-	flag.Parse()
+	if err != nil {
+		return err
+	}
+	id, text, root, agent, timeout := &cfg.id, &cfg.text, &cfg.root, &cfg.agent, &cfg.timeout
 	if *text == "" {
 		return errors.New("-text is required")
 	}
 	if *id == "" {
 		*id = uuid.NewString()
 	}
-	url := os.Getenv("NATS_URL")
-	if url == "" {
-		url = "nats://127.0.0.1:4222"
-	}
 	opts := []gonats.Option{gonats.Name("jawa-submit"), gonats.Timeout(10 * time.Second)}
-	if user := os.Getenv("NATS_USERNAME"); user != "" {
-		opts = append(opts, gonats.UserInfo(user, os.Getenv("NATS_PASSWORD")))
+	if cfg.username != "" {
+		opts = append(opts, gonats.UserInfo(cfg.username, cfg.password))
 	}
-	nc, err := gonats.Connect(url, opts...)
+	nc, err := gonats.Connect(cfg.url, opts...)
 	if err != nil {
-		return fmt.Errorf("connect: %w", err)
+		return errors.New("connect: unable to connect to NATS; check URL and credentials")
 	}
 	defer nc.Close()
 	// Unique readers avoid competing with another application's consumers.

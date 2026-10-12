@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,10 +20,14 @@ type projectIssue struct {
 
 // listProjectIssues uses only configured repository coordinates, never API-supplied
 // issue or pagination URLs. The supplied client provides transport, not policy.
-func listProjectIssues(ctx context.Context, project Project, supplied *http.Client) ([]projectIssue, error) {
+func listProjectIssues(ctx context.Context, project Project, supplied *http.Client, settings ...map[string]string) ([]projectIssue, error) {
 	host, owner, name, err := providerRepository(project.Repo)
 	if err != nil {
 		return nil, err
+	}
+	overrides := map[string]string{}
+	if len(settings) > 0 {
+		overrides = settings[0]
 	}
 	var api, token, auth, pageSize string
 	switch project.Provider {
@@ -33,13 +36,10 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 			return nil, errors.New("issues: only github.com is supported")
 		}
 		api, auth, pageSize = "https://api.github.com", "Bearer ", "per_page=100"
-		token = os.Getenv("JAWA_GITHUB_TOKEN")
-		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN")
-		}
+		token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
 	case "forgejo":
 		api, auth, pageSize = "https://"+host+"/api/v1", "token ", "limit=100&type=issues"
-		token = os.Getenv("JAWA_FORGEJO_TOKEN")
+		token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
 	default:
 		return nil, errors.New("issues: unsupported provider")
 	}
@@ -128,7 +128,12 @@ func (a *app) projectIssues(w http.ResponseWriter, r *http.Request) {
 		if project.ID != r.URL.Query().Get("project_id") {
 			continue
 		}
-		issues, err := listProjectIssues(r.Context(), project, a.issueClient)
+		settings, err := a.s.providerSettings()
+		if err != nil {
+			http.Error(w, "Unable to load provider settings.", http.StatusInternalServerError)
+			return
+		}
+		issues, err := listProjectIssues(r.Context(), project, a.issueClient, settings)
 		if err != nil {
 			http.Error(w, "Unable to load project issues.", http.StatusBadGateway)
 			return

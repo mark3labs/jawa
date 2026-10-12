@@ -677,13 +677,14 @@ func (a *app) rotateNATS(url, user, pass string) error {
 func Command() *cobra.Command {
 	var dir, listen, natsListen string
 	var debug bool
+	providerDefaults := map[string]string{}
 	cmd := &cobra.Command{Use: "orchestrator", Short: "Run the local orchestrator", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logger := log.NewWithOptions(cmd.ErrOrStderr(), log.Options{ReportTimestamp: true, Prefix: "orchestrator"})
 		if debug {
 			logger.SetLevel(log.DebugLevel)
 		}
 		logger.Info("Starting orchestrator")
-		runtimeDefaults := map[string]string{"listen": listen, "nats-listen": natsListen, "debug": strconv.FormatBool(debug), "allow-no-ci": strconv.FormatBool(orchestratorEnv("JAWA_ALLOW_NO_CI", "false") == "true")}
+		runtimeDefaults := map[string]string{"listen": listen, "nats-listen": natsListen, "debug": strconv.FormatBool(debug), "allow-no-ci": cmd.Flags().Lookup("allow-no-ci").Value.String()}
 		for _, key := range []string{"debug", "listen", "nats-listen"} {
 			if cmd.Flags().Changed(key) {
 				runtimeDefaults[key] = cmd.Flags().Lookup(key).Value.String()
@@ -704,6 +705,11 @@ func Command() *cobra.Command {
 		s, err := OpenStore(filepath.Join(dir, "orchestrator.db"))
 		if err != nil {
 			return err
+		}
+		readProviderFlags(cmd, providerDefaults)
+		s.runtimeDefaults = providerDefaults
+		for k, v := range providerDefaults {
+			runtimeDefaults[k] = v
 		}
 		defer func() {
 			if closeErr := s.Close(); closeErr != nil {
@@ -827,6 +833,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "data-dir", orchestratorEnv("JAWA_ORCHESTRATOR_DATA_DIR", ""), "Persistent data directory")
 	cmd.Flags().StringVar(&listen, "listen", orchestratorEnv("JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", orchestratorEnv("JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), "Authenticated embedded NATS listen address")
+	providerFlags(cmd, providerDefaults)
 	cmd.AddCommand(ReconcileCommand())
 	return cmd
 }

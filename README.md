@@ -169,6 +169,48 @@ Keep HTTP and NATS on loopback unless protected by appropriate TLS and network
 controls. There is no native orchestrator TLS configuration yet. Keep the data
 directory private and back it up; do not share it with agent workspaces.
 
+## Agent CLI configuration
+
+The default command and `jawa serve` accept the same flags. Flags override
+`.env`/exported environment defaults; exported environment values override `.env`.
+Model selection already uses BONNIE's built-in `--model` flag:
+
+```sh
+jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
+```
+
+| Environment variable | Equivalent flag |
+| --- | --- |
+| `JAWA_MODEL` | `--model` |
+| `JAWA_HTTP_ADDR` | `--addr` |
+| `JAWA_NAME` | `--name` |
+| `NATS_URL` | `--nats-url` |
+| `NATS_USERNAME`, `NATS_PASSWORD` | `--nats-username`, `--nats-password` |
+| `NATS_TOKEN`, `NATS_NKEY_SEED` | `--nats-token`, `--nats-nkey-seed` |
+| `JAWA_NATS_AGENT_ID` | `--nats-agent-id` |
+| `JAWA_NATS_ROOT_SUBJECT` | `--nats-root-subject` |
+| `JAWA_NATS_CONSUMER` | `--nats-consumer` |
+| `JAWA_NATS_CREATE_STREAM` | `--nats-create-stream` |
+| `JAWA_NATS_PRESENCE` | `--nats-presence` |
+| `JAWA_NATS_PRESENCE_BUCKET` | `--nats-presence-bucket` |
+| `JAWA_SANDBOX_ROOT` | `--sandbox-root` |
+| `JAWA_SANDBOX_IMAGE` | `--sandbox-image` |
+| `GITHUB_TOKEN` | `--github-token` |
+
+Use `--provider-api-key` to override the selected model provider's credential
+(e.g. `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) and
+`--provider-url` to override its endpoint. Provider-specific authentication
+settings such as cloud credential chains remain managed by the provider SDK.
+Use `--nats-presence=false` or `--nats-create-stream=false` to disable booleans.
+Explicit empty credential flags clear their environment defaults; when switching
+NATS authentication methods, clear any conflicting environment-sourced credentials.
+Prefer environment variables for secrets: CLI arguments can appear in shell
+history and process listings. Secret defaults are omitted from help.
+
+Orchestrator flags and their dashboard precedence are documented in
+[`internal/orchestrator/CLI.md`](internal/orchestrator/CLI.md); task submission
+flags are documented in [`cmd/submit/CLI.md`](cmd/submit/CLI.md).
+
 ## Run both services with Docker Compose
 
 [`compose.example.yaml`](compose.example.yaml) runs the orchestrator and one

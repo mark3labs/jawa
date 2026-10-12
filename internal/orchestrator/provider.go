@@ -49,7 +49,7 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 		if err != nil {
 			return false, err
 		}
-		overrides, err := s.DashboardOverrides()
+		overrides, err := s.providerSettings()
 		if err != nil {
 			return false, errors.New("provider: dashboard settings unavailable")
 		}
@@ -107,7 +107,7 @@ func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (p
 	if s == nil {
 		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: store required")
 	}
-	overrides, err := s.DashboardOverrides()
+	overrides, err := s.providerSettings()
 	if err != nil {
 		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: dashboard settings unavailable")
 	}

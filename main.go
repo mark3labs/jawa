@@ -51,8 +51,6 @@ func main() {
 				}
 			}
 		}),
-		bonnie.WithSandboxEnv(codingEnv()),
-		bonnie.WithSandboxes(codingSandboxes()...),
 		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
 		bonnie.WithRunSandboxCleanup(sandboxCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
@@ -89,10 +87,26 @@ func servingFlags(root *cobra.Command, apply func(string, natschannel.Config)) {
 }
 
 func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) error) {
-	cfg := natsConfig()
+	cfg := natsAuthConfig(natsConfig())
 	name := envOr("JAWA_NAME", "jawa")
 	root.Flags().StringVar(&name, "name", name, "agent display name")
 	root.Flags().StringVar(&cfg.AgentID, "nats-agent-id", cfg.AgentID, "unique, stable NATS agent ID (required)")
+	root.Flags().StringVar(&cfg.RootSubject, "nats-root-subject", cfg.RootSubject, "NATS subject prefix (JAWA_NATS_ROOT_SUBJECT)")
+	root.Flags().StringVar(&cfg.Consumer, "nats-consumer", cfg.Consumer, "shared task consumer (JAWA_NATS_CONSUMER)")
+	root.Flags().BoolVar(&cfg.CreateStream, "nats-create-stream", cfg.CreateStream, "allow JetStream stream and presence bucket creation (JAWA_NATS_CREATE_STREAM)")
+	for _, spec := range []struct {
+		name, env string
+		target    *string
+	}{
+		{"nats-url", "NATS_URL", &cfg.URL},
+		{"nats-username", "NATS_USERNAME", &cfg.Username},
+		{"nats-password", "NATS_PASSWORD", &cfg.Password},
+		{"nats-token", "NATS_TOKEN", &cfg.Token},
+		{"nats-nkey-seed", "NATS_NKEY_SEED", &cfg.NKeySeed},
+	} {
+		root.Flags().StringVar(spec.target, spec.name, *spec.target, "NATS connection setting ("+spec.env+"); prefer environment for secrets")
+		root.Flags().Lookup(spec.name).DefValue = ""
+	}
 	previous := root.PreRunE
 	root.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if previous != nil {
@@ -105,10 +119,14 @@ func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) e
 }
 
 func codingSandboxes() []sandbox.Provider {
+	return codingSandboxesWith(envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"), envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest"))
+}
+
+func codingSandboxesWith(root, image string) []sandbox.Provider {
 	return []sandbox.Provider{
-		sandbox.Local(sandbox.WithLocalRoot(envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"))),
+		sandbox.Local(sandbox.WithLocalRoot(root)),
 		sandbox.Microsandbox(
-			sandbox.WithMicrosandboxImage(envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")),
+			sandbox.WithMicrosandboxImage(image),
 			sandbox.WithMicrosandboxMemory(4096),
 			sandbox.WithMicrosandboxCPUs(2),
 		),
@@ -135,13 +153,6 @@ func natsConfig() natschannel.Config {
 		CreateStream:  envOr("JAWA_NATS_CREATE_STREAM", "true") == "true",
 		TargetedTasks: true,
 	}
-}
-
-// Work around v0.14.0 WithNATS returning a typed nil on validation failure.
-// A genuinely nil interface lets BONNIE report the error instead of panicking
-// when it attempts to shut down the channel that was never constructed.
-func withNATS(cfg natschannel.Config) bonnie.Option {
-	return trustedReports.Channel(natsAuthConfig(cfg))
 }
 
 // Lightpanda uses local stdio transport; KIT manages the MCP subprocess.

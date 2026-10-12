@@ -10,6 +10,7 @@ import (
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
 	presencenats "github.com/mark3labs/bonnie/presence/nats"
 	"github.com/mark3labs/bonnie/runtime"
+	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 	"github.com/spf13/cobra"
@@ -30,17 +31,44 @@ import (
 // a defer around Serve (which may os.Exit). Help and other commands never dial.
 func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	cleanup := func() {}
+	// Providers are installed after parsing so workspace/image flags take effect.
+	if flag := cmd.Flags().Lookup("sandbox"); flag != nil {
+		flag.Usage = "sandbox backend (local, microsandbox); default local"
+	}
+	presence := envOr("JAWA_NATS_PRESENCE", "true") == "true"
+	bucket := envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents")
+	root := envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces")
+	image := envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")
+	token := os.Getenv("GITHUB_TOKEN")
+	apiKey, providerURL := "", ""
+	cmd.Flags().BoolVar(&presence, "nats-presence", presence, "announce agent through JetStream KV (JAWA_NATS_PRESENCE)")
+	cmd.Flags().StringVar(&bucket, "nats-presence-bucket", bucket, "discovery bucket (JAWA_NATS_PRESENCE_BUCKET)")
+	cmd.Flags().StringVar(&root, "sandbox-root", root, "local workspace root (JAWA_SANDBOX_ROOT)")
+	cmd.Flags().StringVar(&image, "sandbox-image", image, "microsandbox guest image (JAWA_SANDBOX_IMAGE)")
+	cmd.Flags().StringVar(&token, "github-token", token, "GitHub credential for coding commands (GITHUB_TOKEN); prefer environment")
+	cmd.Flags().Lookup("github-token").DefValue = ""
+	cmd.Flags().StringVar(&apiKey, "provider-api-key", "", "override model provider credential; prefer provider environment variables")
+	cmd.Flags().StringVar(&providerURL, "provider-url", "", "override model provider endpoint")
 	servingFlagsE(cmd, func(name string, cfg natschannel.Config) error {
-		if envOr("JAWA_NATS_PRESENCE", "true") != "true" {
-			agent.Configure(bonnie.WithName(name), withNATS(cfg))
+		env := codingEnv()
+		delete(env, "GITHUB_TOKEN")
+		if token != "" {
+			env["GITHUB_TOKEN"] = token
+		}
+		agent.Configure(bonnie.WithSandboxes(codingSandboxesWith(root, image)...), bonnie.WithSandboxEnv(env), bonnie.WithKit(func(o *kit.Options) {
+			o.ProviderAPIKey = apiKey
+			o.ProviderURL = providerURL
+		}))
+		if !presence {
+			agent.Configure(bonnie.WithName(name), trustedReports.Channel(cfg))
 			return nil
 		}
-		shared, pc, closeConn, err := openNATSPresence(cmd.Context(), cfg)
+		shared, pc, closeConn, err := openNATSPresenceWithBucket(cmd.Context(), cfg, bucket)
 		if err != nil {
 			return err
 		}
 		cleanup = closeConn
-		agent.Configure(bonnie.WithName(name), withNATS(shared), bonnie.WithPresence(pc))
+		agent.Configure(bonnie.WithName(name), trustedReports.Channel(shared), bonnie.WithPresence(pc))
 		return nil
 	})
 	run := cmd.RunE
@@ -65,7 +93,11 @@ func natsAuthConfig(c natschannel.Config) natschannel.Config {
 }
 
 func openNATSPresence(ctx context.Context, cfg natschannel.Config) (natschannel.Config, bonnie.PresenceConfig, func(), error) {
-	c := natsAuthConfig(cfg)
+	return openNATSPresenceWithBucket(ctx, natsAuthConfig(cfg), envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents"))
+}
+
+func openNATSPresenceWithBucket(ctx context.Context, cfg natschannel.Config, bucket string) (natschannel.Config, bonnie.PresenceConfig, func(), error) {
+	c := cfg
 	// Reuse BONNIE's validation before dialing (including conflicting auth,
 	// URL credentials, agent ID and subject validation). New does not connect.
 	if _, err := natschannel.New(&runtime.Runner{}, c); err != nil {
@@ -116,7 +148,7 @@ func openNATSPresence(ctx context.Context, cfg natschannel.Config) (natschannel.
 		c.URL, c.NKeySeed, c.Token, c.Username, c.Password = "", "", "", "", ""
 	}
 	store, err := presencenats.New(ctx, c.Conn, presencenats.Config{
-		Bucket: envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents"),
+		Bucket: bucket,
 		TTL:    30 * time.Second, Create: c.CreateStream,
 	})
 	if err != nil {
