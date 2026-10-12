@@ -162,6 +162,43 @@ Keep HTTP and NATS on loopback unless protected by appropriate TLS and network
 controls. There is no native orchestrator TLS configuration yet. Keep the data
 directory private and back it up; do not share it with agent workspaces.
 
+## Run both services with Docker Compose
+
+[`compose.example.yaml`](compose.example.yaml) runs the orchestrator and one
+agent as separate containers using `ghcr.io/mark3labs/jawa:latest`. Each has its
+own persistent volume. Only the dashboard is published, on host loopback;
+the agent connects to embedded NATS over the Compose network.
+
+1. Copy `.env.example` to `.env` if you do not already have one. Set your
+   `OPENCODE_API_KEY` (or adapt the agent environment for another model provider)
+   and `GITHUB_TOKEN`. Set `NATS_USERNAME=worker` and choose a `NATS_PASSWORD`
+   of 12–72 bytes. The sample overrides `NATS_URL` to reach the orchestrator.
+2. Start only the orchestrator:
+
+   ```sh
+   docker compose -f compose.example.yaml up -d orchestrator
+   ```
+
+3. Open http://127.0.0.1:8080, create an admin account, then complete **Settings**
+   using the same NATS username/password as `.env`. The orchestrator does not
+   provision these credentials from the agent's environment variables.
+4. Start the agent:
+
+   ```sh
+   docker compose -f compose.example.yaml up -d agent
+   docker compose -f compose.example.yaml logs -f agent
+   ```
+
+After initial setup, `docker compose -f compose.example.yaml up -d` starts both
+services. `depends_on` controls startup order, not NATS readiness; if the agent
+starts before NATS is ready, its restart policy retries the process. After
+changing agent credentials in `.env`, run `up -d agent` again to recreate it.
+Stop with `docker compose -f compose.example.yaml down`; do not add `-v` unless
+you intend to delete both services' persistent data. Run trusted tasks only:
+agent coding commands can access its environment and filesystem. For remote
+dashboard access, use an authenticated TLS reverse proxy or SSH tunnel rather
+than exposing these ports directly.
+
 ## Run with Docker
 
 Configure your environment:

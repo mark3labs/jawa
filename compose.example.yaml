@@ -1,0 +1,49 @@
+# Start the orchestrator first and complete dashboard setup before starting
+# the agent. See README.md, "Run both services with Docker Compose".
+services:
+  orchestrator:
+    image: ghcr.io/mark3labs/jawa:latest
+    init: true
+    restart: unless-stopped
+    command:
+      - orchestrator
+      - --data-dir
+      - /data
+      - --listen
+      - 0.0.0.0:8080
+      - --nats-listen
+      - 0.0.0.0:4222
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      JAWA_GITHUB_TOKEN: "${JAWA_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+      JAWA_FORGEJO_TOKEN: "${JAWA_FORGEJO_TOKEN:-}"
+    volumes:
+      - orchestrator-data:/data
+
+  agent:
+    image: ghcr.io/mark3labs/jawa:latest
+    init: true
+    restart: unless-stopped
+    command: ["serve"]
+    depends_on:
+      - orchestrator
+    environment:
+      # Use Compose DNS, not localhost or the NATS_URL in your host .env.
+      NATS_URL: nats://orchestrator:4222
+      # These must match the credentials saved in dashboard Settings.
+      NATS_USERNAME: "${NATS_USERNAME:-worker}"
+      NATS_PASSWORD: "${NATS_PASSWORD:-}"
+      JAWA_NATS_AGENT_ID: "${JAWA_NATS_AGENT_ID:-jawa-1}"
+      JAWA_MODEL: "${JAWA_MODEL:-opencode/glm-5.3-flash}"
+      OPENCODE_API_KEY: "${OPENCODE_API_KEY:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+    volumes:
+      - agent-data:/data
+    # The agent's unauthenticated HTTP API is intentionally not host-published.
+
+# Compose provides a private network for communication between the services.
+# NATS is not published to the host. Never share these two data volumes.
+volumes:
+  orchestrator-data:
+  agent-data:
