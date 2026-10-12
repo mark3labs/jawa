@@ -212,24 +212,23 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 	if threshold <= 0 {
 		threshold = 5 * time.Minute
 	}
+	// Forget schedules for commands that are no longer pending.
+	pending := make(map[string]bool, len(commands))
+	for _, c := range commands {
+		pending[c.id] = true
+	}
+	for id := range w.resumeChecks {
+		if !pending[id] {
+			delete(w.resumeChecks, id)
+		}
+	}
 	for _, c := range commands {
 		var req reportprotocol.FailedResume
 		if json.Unmarshal([]byte(c.raw), &req) != nil {
 			w.log().Error("Invalid pending resume command", "resume_id", c.id)
 			continue
 		}
-		if time.Since(time.UnixMilli(c.created)) >= threshold {
-			w.log().Warn("Resume remains pending; checking owning agent", "resume_id", c.id, "task_id", req.Target.TaskID)
-			if w.client != nil {
-				ctx, cancel := context.WithTimeout(w.ctx, time.Second)
-				status, e := w.client.Status(ctx, req.Target)
-				cancel()
-				// Absence and transport failures are not proof of safe abandonment.
-				if e == nil && status.Error == "" && status.Target == req.Target && !status.Active && status.State == runtime.RunFailed {
-					req.Reconcile = true
-				}
-			}
-		}
+		req.Reconcile = w.resumeNeedsReconcile(c.id, req.Target, time.UnixMilli(c.created), threshold)
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 		reply, e := reportprotocol.ResumeFailed(ctx, conn, "bonnie", req)
 		cancel()
@@ -245,6 +244,50 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 		}
 	}
 }
+
+// Staleness is measured from the last observed progress, not reservation age:
+// an active owner counts as progress and defers the next check by a full
+// threshold. Unconfirmed owners are re-queried at a bounded rate. Only a
+// confirmed idle failed run requests the host-side fence.
+func (w *Workflow) resumeNeedsReconcile(id string, target client.Target, created time.Time, threshold time.Duration) bool {
+	now := time.Now()
+	if now.Sub(created) < threshold {
+		return false
+	}
+	if next, ok := w.resumeChecks[id]; ok && now.Before(next) {
+		return false
+	}
+	if w.resumeChecks == nil {
+		w.resumeChecks = map[string]time.Time{}
+	}
+	retry := min(threshold, 30*time.Second)
+	if w.client == nil {
+		w.resumeChecks[id] = now.Add(retry)
+		w.log().Warn("Resume remains pending; owning agent unavailable", "resume_id", id, "task_id", target.TaskID)
+		return false
+	}
+	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+	status, e := w.client.Status(ctx, target)
+	cancel()
+	confirmed := e == nil && status.Error == "" && status.Target == target
+	switch {
+	case confirmed && status.Active:
+		w.resumeChecks[id] = now.Add(threshold)
+		w.log().Debug("Resume pending; owning agent still running", "resume_id", id, "task_id", target.TaskID, "seq", status.Seq)
+		return false
+	case confirmed && status.State == runtime.RunFailed:
+		// If the fence is not yet durable the next attempt re-confirms first.
+		w.resumeChecks[id] = now.Add(retry)
+		w.log().Warn("Resume stalled on idle failed run; reconciling", "resume_id", id, "task_id", target.TaskID)
+		return true
+	default:
+		// Absence and transport failures are not proof of safe abandonment.
+		w.resumeChecks[id] = now.Add(retry)
+		w.log().Warn("Resume remains pending; owning agent unconfirmed", "resume_id", id, "task_id", target.TaskID, "state", status.State)
+		return false
+	}
+}
+
 func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResumeReply) error {
 	tx, err := w.s.writeTx()
 	if err != nil {
