@@ -48,11 +48,11 @@ templ boardContent(d pageData) {
 									</button>
 								}
 							</header>
-							if status == "Done" {
-								<div class="lane-actions">
+							<div class="lane-actions">
+								if status == "Done" {
 									@prRefreshForm(d, p.ID, "", "Refresh ready PRs")
-								</div>
-							}
+								}
+							</div>
 							<div id={ "lane-" + p.ID + "-" + status } class="task-list" data-status={ status }>
 								for _, c := range cardsIn(d.cards, p.ID, status) {
 									@taskCard(d, c)

@@ -34,6 +34,9 @@ func TestCardVisualFixture(t *testing.T) {
 	if strings.Count(out.String(), `action="/prs/refresh"`) != 1 || !strings.Contains(out.String(), "Refresh ready PRs") {
 		t.Fatal("expected one column-level refresh action")
 	}
+	if strings.Count(out.String(), `class="lane-actions"`) != 5 {
+		t.Fatal("expected an action row in every lane to align task lists")
+	}
 	if strings.Contains(out.String(), "Check PR now") {
 		t.Fatal("per-card refresh button remains")
 	}

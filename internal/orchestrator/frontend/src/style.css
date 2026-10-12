@@ -658,7 +658,14 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .card-pr-status.card-conflict { border-color: var(--amber); color: var(--amber); }
 .pr-evidence { color: var(--text-3); }
 .card-pr-status .pr-checked-at { margin-top: 6px; color: var(--text-4); font-size: 10.5px; line-height: 1.4; }
-.lane-actions { padding: 4px 0 10px; }
+/* Reserve the refresh row in every lane so task lists share a baseline. */
+.lane-actions { min-height: 44px; padding: 4px 0 10px; }
+@media (pointer: coarse), (max-width: 860px) {
+  .lane-actions { min-height: 58px; }
+}
+@media (max-width: 600px) {
+  .lane-actions:empty { display: none; }
+}
 .pr-evidence { margin-bottom: 8px; }
 .pr-evidence code { overflow-wrap: anywhere; }
 .pr-refresh-form { display: inline-flex; max-width: 100%; }
