@@ -22,10 +22,10 @@ import (
 // No model/network provider: an exhausted real KIT provider fails, then the
 // same SQLite run is restored on a new host and continues with a healthy model.
 func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
-	for _, mode := range []string{"build", "planning", "auto-build", "auto-planning", "auto-fix"} {
+	for _, mode := range []string{"build", "planning", "fix", "auto-build", "auto-planning", "auto-fix"} {
 		planning := strings.Contains(mode, "planning")
 		automatic := strings.HasPrefix(mode, "auto-")
-		repair := mode == "auto-fix"
+		repair := strings.HasSuffix(mode, "fix")
 		name := mode
 		t.Run(name, func(t *testing.T) {
 			s, nc := workflowFixture(t)
@@ -33,6 +33,19 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			card := workflowCard(t, s)
+			var repairAssignment Attempt
+			if repair {
+				seed := &Workflow{s: s, ctx: t.Context()}
+				repairDone(t, seed, card)
+				if err := seed.FixCard(card.ID, "repair-message"); err != nil {
+					t.Fatal(err)
+				}
+				var e error
+				repairAssignment, e = seed.CardResult(card.ID)
+				if e != nil {
+					t.Fatal(e)
+				}
+			}
 			w, err := NewWorkflow(t.Context(), s, nc)
 			if err != nil {
 				t.Fatal(err)
@@ -77,8 +90,14 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if planning {
 				lane = "Planning"
 			}
-			if err = w.MoveCard(card.ID, lane, 0); err != nil {
-				t.Fatal(err)
+			if !repair {
+				if err = w.MoveCard(card.ID, lane, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			expectedNumber := 1
+			if repair {
+				expectedNumber = repairAssignment.Number
 			}
 			var task, run, attempt, taskJSON, session string
 			waitWorkflow(t, func() bool {
@@ -93,16 +112,6 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				}
 				return false
 			})
-			if repair {
-				// Seed an existing immutable repair assignment on the failed execution.
-				// The same continuation path must preserve it without allocating new work.
-				if _, err = s.db.Exec(`UPDATE cards SET status='Fix' WHERE id=?`, card.ID); err != nil {
-					t.Fatal(err)
-				}
-				if _, err = s.db.Exec(`UPDATE workflow_attempts SET branch='repair-branch',repair_message='repair-message',repair_pr_url='https://github.com/example/repo/pull/7',repair_source_number=1 WHERE task_id=?`, task); err != nil {
-					t.Fatal(err)
-				}
-			}
 			// Additional saved context must survive process restart and continuation.
 			contextJSON := []byte(`{"context":["saved-context-marker"]}`)
 			if _, err = journal.Append(t.Context(), runtime.Record{RunID: run, Kind: runtime.RecordContext, Payload: contextJSON, Text: "saved-context-marker"}); err != nil {
@@ -117,6 +126,9 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			reply := testmodel.Call("completeTask", `{"pr_number":7}`)
+			if repair {
+				reply = testmodel.Call("completeTask", `{"pr_number":18}`)
+			}
 			if planning {
 				reply = testmodel.Call("clarify", `{"questions":["Continue with API v2?"]}`)
 			}
@@ -199,13 +211,13 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				}
 			} else {
 				a, e := w.CardResult(card.ID)
-				if e != nil || a.TaskID != task || a.RunID != run || a.RemoteAttemptID != attempt || a.TaskJSON != taskJSON || a.Number != 1 || a.PRURL == "" {
+				if e != nil || a.TaskID != task || a.RunID != run || a.RemoteAttemptID != attempt || a.TaskJSON != taskJSON || a.Number != expectedNumber || a.PRURL == "" {
 					t.Fatal("build identity/branch/report changed", a, e)
 				}
 			}
 			if repair {
 				a, e := w.CardResult(card.ID)
-				if e != nil || a.Branch != "repair-branch" || a.RepairMessage != "repair-message" || a.RepairPRURL != "https://github.com/example/repo/pull/7" {
+				if e != nil || a.Branch != repairAssignment.Branch || a.RepairMessage != repairAssignment.RepairMessage || a.RepairPRURL != repairAssignment.RepairPRURL || a.RepairSourceNumber != repairAssignment.RepairSourceNumber {
 					t.Fatal("repair assignment lost", a, e)
 				}
 			}
