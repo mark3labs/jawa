@@ -45,7 +45,7 @@ func TestPRRefreshRoute(t *testing.T) {
 		t.Fatal("lost board selection")
 	}
 	body := assertSSE(t, sseRequest(a, "POST", "/prs/refresh", form, session, csrf))
-	for _, want := range []string{"1 targeted, 1 checked, 0 queued", `data-pr-check-state="clear"`, "Last checked", "head-evidence", "base-evidence", "Check PR now", "Refresh PR status"} {
+	for _, want := range []string{"1 targeted, 1 checked, 0 queued", `data-pr-check-state="clear"`, "Last checked", "head-evidence", "base-evidence", "Refresh ready PRs"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -131,7 +131,7 @@ func TestPRCheckPresentation(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := out.String()
-			if !strings.Contains(body, label) || !strings.Contains(body, "Check PR now") {
+			if !strings.Contains(body, label) || strings.Contains(body, "Check PR now") {
 				t.Fatal(body)
 			}
 			if strings.Contains(body, "Last checked") != !check.CheckedAt.IsZero() {

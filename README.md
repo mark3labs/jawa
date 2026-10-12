@@ -369,16 +369,17 @@ repair dialog stays open with its draft; on success it closes and clears.
 
 ### Refresh pull request status
 
-Verified cards in **Ready for review** have a **Check PR now** button. The
-board's **Refresh PR status** button checks all eligible cards in that project.
-These actions bypass the normal one-minute polling cooldown; they do not rerun
+The **Refresh ready PRs** button at the top of **Ready for review** checks
+all eligible cards in that project, rather than adding a refresh button to each card.
+This action bypasses the normal one-minute polling cooldown; it does not rerun
 CI, move cards, merge pull requests, or start repairs.
 
 Current merge evidence appears separately from the historical ready badge:
 checking (queued or in progress), no merge conflicts detected, confirmed
 conflict, unknown, check failed, merged, or closed without merging. Cards with
 no applicable evidence say they have not been checked yet. Completed checks
-show an explicit UTC timestamp and optional head/base revision evidence.
+show a muted relative timestamp (with the exact UTC time in its tooltip) and
+optional head/base revision evidence.
 Checking cards await fresh evidence; unknown and failed checks never imply clear.
 “No merge conflicts detected” is not a guarantee that every merge gate passes.
 

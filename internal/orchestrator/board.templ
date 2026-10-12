@@ -30,7 +30,6 @@ templ boardContent(d pageData) {
 					</div>
 				</div>
 				<div class="view-stats">
-					@prRefreshForm(d, p.ID, "", "Refresh PR status")
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Building"))) }</strong> building</span>
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
 				</div>
@@ -49,6 +48,11 @@ templ boardContent(d pageData) {
 									</button>
 								}
 							</header>
+							if status == "Done" {
+								<div class="lane-actions">
+									@prRefreshForm(d, p.ID, "", "Refresh ready PRs")
+								</div>
+							}
 							<div id={ "lane-" + p.ID + "-" + status } class="task-list" data-status={ status }>
 								for _, c := range cardsIn(d.cards, p.ID, status) {
 									@taskCard(d, c)
@@ -286,7 +290,7 @@ templ cardPRStatus(d pageData, c Card) {
 			<p>{ prCheckLabel(check) }</p>
 		}
 		if !check.CheckedAt.IsZero() {
-			<p class="pr-checked-at">Last checked <time datetime={ timeAttr(check.CheckedAt) }>{ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }</time></p>
+			<p class="pr-checked-at">Last checked <jawa-time datetime={ timeAttr(check.CheckedAt) } title={ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.CheckedAt, d.now) }</jawa-time></p>
 		} else if check.State == "checking" {
 			<p class="pr-checked-at">Awaiting a fresh check.</p>
 		} else {
@@ -303,7 +307,6 @@ templ cardPRStatus(d pageData, c Card) {
 				}
 			</details>
 		}
-		@prRefreshForm(d, c.ProjectID, c.ID, "Check PR now")
 		if check.State == "conflict" {
 			<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
 				@icon("warning")
@@ -319,7 +322,7 @@ templ archiveButton(d pageData, c Card) {
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
 		<input type="hidden" name="card_id" value={ c.ID }/>
-		<button type="submit" class="btn small archive-action" title="Changes visibility only; work and history are preserved">
+		<button type="submit" class="archive-action" title="Changes visibility only; work and history are preserved">
 			@icon("archive")
 			{ archiveLabel(c) }
 		</button>
