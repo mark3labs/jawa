@@ -45,7 +45,7 @@ func TestPRRefreshRoute(t *testing.T) {
 		t.Fatal("lost board selection")
 	}
 	body := assertSSE(t, sseRequest(a, "POST", "/prs/refresh", form, session, csrf))
-	for _, want := range []string{"1 targeted, 1 checked, 0 queued", `data-pr-check-state="clear"`, "Last checked", "head-evidence", "base-evidence", "Check PR now", "Refresh PR status"} {
+	for _, want := range []string{"1 targeted, 1 checked, 0 queued", `data-pr-check-state="clear"`, "Last checked", "head-evidence", "base-evidence", "Refresh ready PRs"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -118,20 +118,20 @@ func TestPRRefreshBusyAndCancelled(t *testing.T) {
 func TestPRCheckPresentation(t *testing.T) {
 	c := Card{ID: "done", ProjectID: "project", Status: "Done"}
 	attempts := []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/18"}}
-	labels := map[string]string{"checking": "Checking PR status", "clear": "No merge conflicts detected", "conflict": "Pull request has merge conflicts.", "unknown": "PR merge status is unknown", "error": "PR check failed", "merged": "Pull request is merged", "closed": "closed without merging", "": "not been checked yet"}
+	labels := map[string]string{"checking": "Checking PR status", "clear": "No merge conflicts detected", "conflict": "Pull request has merge conflicts.", "unknown": "PR merge status is unknown", "error": "PR check failed", "merged": "Last checked", "closed": "closed without merging", "": "not been checked yet"}
 	for state, label := range labels {
 		t.Run(state, func(t *testing.T) {
 			check := PRCheck{State: state}
 			if state != "checking" && state != "" {
 				check.CheckedAt = time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 			}
-			d := pageData{uiSnapshot: uiSnapshot{attempts: attempts, prChecks: map[string]PRCheck{c.ID: check}}}
+			d := pageData{attempts: attempts, prChecks: map[string]PRCheck{c.ID: check}}
 			var out bytes.Buffer
 			if err := cardNote(d, c).Render(t.Context(), &out); err != nil {
 				t.Fatal(err)
 			}
 			body := out.String()
-			if !strings.Contains(body, label) || !strings.Contains(body, "Check PR now") {
+			if !strings.Contains(body, label) || strings.Contains(body, "Check PR now") {
 				t.Fatal(body)
 			}
 			if strings.Contains(body, "Last checked") != !check.CheckedAt.IsZero() {
@@ -144,7 +144,7 @@ func TestPRCheckPresentation(t *testing.T) {
 	}
 	for _, card := range []Card{{ID: c.ID, Status: "Fix"}, {ID: "legacy", Status: "Done"}} {
 		var out bytes.Buffer
-		d := pageData{uiSnapshot: uiSnapshot{attempts: attempts}}
+		d := pageData{attempts: attempts}
 		if err := cardNote(d, card).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestPRRefreshBoardQueueCounts(t *testing.T) {
 	session, csrf := setupTest(t, a)
 	first := workflowCard(t, a.s)
 	repairDone(t, a.workflow, first)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		c, err := a.s.CreateCard(first.ProjectID, "Another ready PR", "")
 		if err != nil {
 			t.Fatal(err)

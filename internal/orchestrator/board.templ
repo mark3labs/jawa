@@ -30,7 +30,6 @@ templ boardContent(d pageData) {
 					</div>
 				</div>
 				<div class="view-stats">
-					@prRefreshForm(d, p.ID, "", "Refresh PR status")
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Building"))) }</strong> building</span>
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
 				</div>
@@ -49,6 +48,11 @@ templ boardContent(d pageData) {
 									</button>
 								}
 							</header>
+							if status == "Done" {
+								<div class="lane-actions">
+									@prRefreshForm(d, p.ID, "", "Refresh ready PRs")
+								</div>
+							}
 							<div id={ "lane-" + p.ID + "-" + status } class="task-list" data-status={ status }>
 								for _, c := range cardsIn(d.cards, p.ID, status) {
 									@taskCard(d, c)
@@ -89,7 +93,10 @@ templ taskCard(d pageData, c Card) {
 	@card.Card(card.Props{ID: "card-" + c.ID, Class: "task-card", Attributes: templ.Attributes{"data-card-id": c.ID, "data-title": c.Title, "data-status": c.Status, "data-can-fix": strconv.FormatBool(canAction(c, d.attempts, "fix")), "data-show": filterExpr(d.projects, c)}}) {
 		<div class="card-top">
 			<a class="card-key" href={ templ.SafeURL(planningPath(c.ID)) } title="View card and plan">{ cardKey(d.projects, c) }</a>
-			@cardMenu(d, c)
+			<div class="card-tools">
+				@archiveButton(d, c)
+				@cardMenu(d, c)
+			</div>
 		</div>
 		<h3 class="card-title">{ c.Title }</h3>
 		if c.Description != "" {
@@ -112,7 +119,11 @@ templ cardChips(d pageData, c Card) {
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
 			@toneIcon(runTone(la[0]))
-			<span>{ runLabel(la[0]) }</span>
+			if d.prChecks[c.ID].State == "merged" && la[0].Ready {
+				<span>Merged</span>
+			} else {
+				<span>{ runLabel(la[0]) }</span>
+			}
 		</a>
 		if pr := safeActivityURL(la[0].PRURL); pr != "" {
 			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
@@ -266,9 +277,21 @@ templ prRefreshForm(d pageData, projectID, cardID, label string) {
 templ cardPRStatus(d pageData, c Card) {
 	{{ check := d.prChecks[c.ID] }}
 	<div class={ "card-pr-status", templ.KV("card-conflict", check.State == "conflict") } role="status" data-pr-check-state={ check.State }>
-		<p>{ prCheckLabel(check) }</p>
+		if check.State == "conflict" || check.State == "error" {
+			<span class="chip tone-failed" title={ prCheckLabel(check) }>
+				if check.State == "conflict" {
+					@icon("warning")
+					Merge Conflict
+				} else {
+					@icon("warning")
+					Checks Failed
+				}
+			</span>
+		} else if check.State != "merged" {
+			<p>{ prCheckLabel(check) }</p>
+		}
 		if !check.CheckedAt.IsZero() {
-			<p class="pr-checked-at">Last checked <time datetime={ timeAttr(check.CheckedAt) }>{ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }</time></p>
+			<p class="pr-checked-at">Last checked <jawa-time datetime={ timeAttr(check.CheckedAt) } title={ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.CheckedAt, d.now) }</jawa-time></p>
 		} else if check.State == "checking" {
 			<p class="pr-checked-at">Awaiting a fresh check.</p>
 		} else {
@@ -285,7 +308,6 @@ templ cardPRStatus(d pageData, c Card) {
 				}
 			</details>
 		}
-		@prRefreshForm(d, c.ProjectID, c.ID, "Check PR now")
 		if check.State == "conflict" {
 			<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
 				@icon("warning")
@@ -293,4 +315,52 @@ templ cardPRStatus(d pageData, c Card) {
 			</button>
 		}
 	</div>
+}
+
+// Archiving changes visibility only, including for cards with active work.
+templ archiveButton(d pageData, c Card) {
+	<form method="post" action={ archiveRoute(c) } data-on:submit__prevent={ "@post('" + archiveRoute(c) + "', {contentType:'form'})" }>
+		<input type="hidden" name="_csrf" value={ d.csrf }/>
+		@viewFields(d.v)
+		<input type="hidden" name="card_id" value={ c.ID }/>
+		<button type="submit" class="archive-action" title="Changes visibility only; work and history are preserved">
+			@icon("archive")
+			{ archiveLabel(c) }
+		</button>
+	</form>
+}
+
+func archiveRoute(c Card) string {
+	if c.Archived { return "/cards/restore" }
+	return "/cards/archive"
+}
+
+func archiveLabel(c Card) string {
+	if c.Archived { return "Restore" }
+	return "Archive"
+}
+
+templ archiveContent(d pageData) {
+	<div id="archive-content" class="view archive-view">
+		<div class="view-head">
+			<div class="view-title"><div><h1>Archive</h1><p class="meta">Hidden from the board. Work and history are preserved.</p></div></div>
+		</div>
+		<div class="archive-grid">
+			for _, c := range d.cards {
+				if c.Archived && (d.v.Project == "" || d.v.Project == c.ProjectID) {
+					@taskCard(d, c)
+				}
+			}
+		</div>
+		if !hasArchivedCards(d.cards, d.v.Project) {
+			<p class="lane-empty">No archived cards. Use Archive on a card to hide it from the board.</p>
+		}
+	</div>
+}
+
+func hasArchivedCards(cards []Card, project string) bool {
+	for _, c := range cards {
+		if c.Archived && (project == "" || c.ProjectID == project) { return true }
+	}
+	return false
 }

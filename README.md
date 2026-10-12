@@ -130,7 +130,7 @@ only accepted typed tool reports can supply the PR used for verification.
 Provider-confirmed merged PRs also count as Done, provided repository, branch, base,
 and head identity checks pass. Closed unmerged PRs remain blocked.
 
-The UI separates **Board** (one project at a time), **Runs**, **Agents**, and
+The UI separates **Board** (one project at a time), **Archive**, **Runs**, **Agents**, and
 **Settings** into bookmarkable views. It uses templ and prebuilt shadcn-templ
 components, with a dark Jawa-inspired robe-brown/sand/amber palette, compact
 cards, keyboard-accessible action menus, and self-hosted Inter typography.
@@ -141,6 +141,13 @@ timestamps, clipboard controls, and keyboard shortcuts. No production CDN is use
 On phones the board stacks its lanes; tablets use two columns, with visible card
 actions and touch-sized controls. Runs retain their agent, attempt, PR and update
 information in a compact card layout. Card menus allow moves without dragging.
+
+Every card has an **Archive** button beside its actions menu. Archived cards are
+hidden from Board and appear in the searchable `/archive` view. **Restore** returns
+a card to its existing workflow lane. Archiving changes visibility only: it does
+not cancel active planning/builds or delete plans, runs, PR links, or history.
+Merge Conflict, Merged, and Checks Failed PR status evidence uses compact badges;
+Checks Failed indicates a provider status-check failure, not a claim about CI results.
 
 Jawa can be installed as a **PWA** using your browser's install command (on iOS,
 Safari **Share → Add to Home Screen**). Serve it over HTTPS for mobile installation;
@@ -399,16 +406,17 @@ repair dialog stays open with its draft; on success it closes and clears.
 
 ### Refresh pull request status
 
-Verified cards in **Ready for review** have a **Check PR now** button. The
-board's **Refresh PR status** button checks all eligible cards in that project.
-These actions bypass the normal one-minute polling cooldown; they do not rerun
+The **Refresh ready PRs** button at the top of **Ready for review** checks
+all eligible cards in that project, rather than adding a refresh button to each card.
+This action bypasses the normal one-minute polling cooldown; it does not rerun
 CI, move cards, merge pull requests, or start repairs.
 
 Current merge evidence appears separately from the historical ready badge:
 checking (queued or in progress), no merge conflicts detected, confirmed
 conflict, unknown, check failed, merged, or closed without merging. Cards with
 no applicable evidence say they have not been checked yet. Completed checks
-show an explicit UTC timestamp and optional head/base revision evidence.
+show a muted relative timestamp (with the exact UTC time in its tooltip) and
+optional head/base revision evidence.
 Checking cards await fresh evidence; unknown and failed checks never imply clear.
 “No merge conflicts detected” is not a guarantee that every merge gate passes.
 

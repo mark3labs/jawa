@@ -123,6 +123,8 @@ func renderFragments(ctx context.Context, s *Store, wf *Workflow, csrf string, v
 	}
 	var out []templ.Component
 	switch v.View {
+	case viewArchive:
+		out = append(out, archiveContent(d))
 	case viewPlanning:
 		out = append(out, planningContent(d))
 	case viewBoard:

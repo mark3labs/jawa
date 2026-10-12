@@ -22,6 +22,7 @@ type Project struct {
 type Card struct {
 	ID, ProjectID, Title, Description, Status, IssueURL string
 	Position                                            int
+	Archived                                            bool
 	CreatedAt                                           time.Time
 }
 
@@ -182,6 +183,18 @@ func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, err
 }
 func (s *Store) Cards(project string) ([]Card, error) {
 	return s.queryCards(context.Background(), project)
+}
+
+// SetCardArchived changes only the independent archive flag; card history and workflow are untouched.
+func (s *Store) SetCardArchived(id string, archived bool) error {
+	n, err := s.setCardArchived(context.Background(), id, archived)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("card not found")
+	}
+	return nil
 }
 func (s *Store) MoveCard(id, status string, position int) error {
 	if status != "Todo" && status != "Planning" && status != "Building" && status != "Fix" && status != "Done" {

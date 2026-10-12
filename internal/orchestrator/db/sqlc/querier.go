@@ -27,6 +27,7 @@ type Querier interface {
 	MarkPlanningCancellationSent(ctx context.Context, arg MarkPlanningCancellationSentParams) error
 	NextCardPosition(ctx context.Context, arg NextCardPositionParams) (int64, error)
 	RetainPlanningDelivery(ctx context.Context, arg RetainPlanningDeliveryParams) error
+	SetCardArchived(ctx context.Context, arg SetCardArchivedParams) (int64, error)
 	UpdateCardLane(ctx context.Context, arg UpdateCardLaneParams) (int64, error)
 }
 

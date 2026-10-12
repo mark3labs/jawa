@@ -21,5 +21,8 @@ ORDER BY position,created_at,id;
 -- name: NextCardPosition :one
 SELECT CAST(coalesce(max(position)+1,0) AS INTEGER) AS position FROM cards WHERE project_id = ? AND status = ?;
 
+-- name: SetCardArchived :execrows
+UPDATE cards SET archived = ? WHERE id = ?;
+
 -- name: GetProject :one
 SELECT * FROM projects WHERE id = ?;

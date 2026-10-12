@@ -55,6 +55,9 @@ templ logo(size int) {
 templ icon(name string) {
 	<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		switch name {
+			case "archive":
+				<rect x="3" y="4" width="18" height="4" rx="1"></rect>
+				<path d="M5 8v12h14V8M10 12h4"></path>
 			case "board":
 				<rect x="3" y="3" width="7" height="18" rx="1.5"></rect>
 				<rect x="14" y="3" width="7" height="11" rx="1.5"></rect>
@@ -193,6 +196,8 @@ templ viewFields(v viewParams) {
 
 func viewLabel(v viewKind) string {
 	switch v {
+	case viewArchive:
+		return "Archive"
 	case viewPlanning:
 		return "Planning"
 	case viewRuns:
@@ -243,6 +248,8 @@ templ appPage(d pageData) {
 					<main class="content" id="content">
 						@notification("", "")
 						switch d.v.View {
+							case viewArchive:
+								@archiveContent(d)
 							case viewPlanning:
 								@planningContent(d)
 							case viewRuns:
@@ -293,6 +300,10 @@ templ sidebarNav(d pageData) {
 	<nav id="sidebar-nav" class="nav" aria-label="Primary">
 		<div class="nav-group">
 			<div class="nav-label">Workspace</div>
+			<a class="nav-item" href="/archive" aria-current={ isCurrent(d.v.View == viewArchive) }>
+				@icon("archive")
+				<span>Archive</span>
+			</a>
 			<a class="nav-item" href="/runs" aria-current={ isCurrent(d.v.View == viewRuns) }>
 				@icon("runs")
 				<span>Runs</span>
@@ -367,7 +378,7 @@ templ topbar(d pageData) {
 			}
 		}
 		<div class="topbar-actions">
-			if d.v.View == viewBoard {
+			if d.v.View == viewBoard || d.v.View == viewArchive {
 				<label class="search">
 					@icon("search")
 					@input.Input(input.Props{ID: "card-filter", Class: "filter", Placeholder: "Filter cards", Attributes: templ.Attributes{"aria-label": "Filter cards", "data-bind:filter": "", "autocomplete": "off"}})

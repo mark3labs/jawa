@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,12 +15,12 @@ import (
 )
 
 // Read only the private smoke database and journal; no workflow state is faked.
-func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Model) (map[string]any, error) {
+func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Model) (snapshot map[string]any, err error) {
 	db, err := sql.Open("sqlite", filepath.Join(dir, "server", "orchestrator.db")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	result := map[string]any{}
 	queries := map[string]string{
 		"attempts": `SELECT * FROM workflow_attempts WHERE card_id=?`,
@@ -40,8 +41,7 @@ func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Mo
 		}
 		columns, e := rows.Columns()
 		if e != nil {
-			rows.Close()
-			return nil, e
+			return nil, errors.Join(e, rows.Close())
 		}
 		items := []map[string]any{}
 		for rows.Next() {
@@ -51,8 +51,7 @@ func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Mo
 				pointers[i] = &values[i]
 			}
 			if e = rows.Scan(pointers...); e != nil {
-				rows.Close()
-				return nil, e
+				return nil, errors.Join(e, rows.Close())
 			}
 			item := map[string]any{}
 			for i, c := range columns {
@@ -63,8 +62,7 @@ func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Mo
 				run = id
 			}
 		}
-		e = rows.Err()
-		rows.Close()
+		e = errors.Join(rows.Err(), rows.Close())
 		if e != nil {
 			return nil, e
 		}
@@ -79,7 +77,7 @@ func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Mo
 	if e != nil {
 		return nil, e
 	}
-	defer journal.Close()
+	defer func() { err = errors.Join(err, journal.Close()) }()
 	records, e := journal.Replay(ctx, run)
 	if e != nil {
 		return nil, e
@@ -100,7 +98,7 @@ func resumeSnapshot(ctx context.Context, dir, card string, healthy *testmodel.Mo
 }
 
 // Add a context marker only while the real host is stopped, as in runtime tests.
-func seedResumeContext(ctx context.Context, dir, card string) error {
+func seedResumeContext(ctx context.Context, dir, card string) (err error) {
 	snapshot, e := resumeSnapshot(ctx, dir, card, nil)
 	if e != nil {
 		return e
@@ -113,7 +111,7 @@ func seedResumeContext(ctx context.Context, dir, card string) error {
 	if e != nil {
 		return e
 	}
-	defer j.Close()
+	defer func() { err = errors.Join(err, j.Close()) }()
 	_, e = j.Append(ctx, runtime.Record{RunID: records[0].RunID, Kind: runtime.RecordContext, Text: "browser-saved-context-marker", Payload: []byte(`{"context":["browser-saved-context-marker"]}`)})
 	return e
 }
