@@ -112,7 +112,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `name="debug" value="false"`) || !strings.Contains(live, `name="allow-no-ci" value="true"`) {
+	if !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `name="debug" value="true">`) || !strings.Contains(live, `name="allow-no-ci" value="true" checked>`) {
 		t.Fatalf("live reset did not restore bootstrap values: %s", live)
 	}
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {
