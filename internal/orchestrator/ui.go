@@ -386,7 +386,7 @@ func (d pageData) automaticResumeNote(c Card) string {
 		if !ok || detail.Session.State != "failed" || len(detail.Turns) == 0 {
 			return ""
 		}
-		t := detail.Turns[len(detail.Turns)-1]
+		t, _ := latestPlanningTurn(detail)
 		status, ok := d.autoResumes[t.ID]
 		if !ok || !detail.CanResume || status.token != detail.ResumeToken {
 			return ""
@@ -416,4 +416,70 @@ func automaticResumeStatusNote(status autoResumeStatus) string {
 		return "Automatic resume stopped after host rejection. Manual recovery remains available when safe."
 	}
 	return ""
+}
+
+// latestPlanningTurn selects current work independently of storage/slice ordering.
+func latestPlanningTurn(detail PlanningDetail) (PlanningTurn, bool) {
+	var latest PlanningTurn
+	found := false
+	for _, turn := range detail.Turns {
+		if turn.SessionID != "" && turn.SessionID != detail.Session.ID {
+			continue
+		}
+		if !found || turn.Number > latest.Number {
+			latest, found = turn, true
+		}
+	}
+	return latest, found
+}
+
+func (d pageData) cardAgent(c Card) string {
+	if c.Status == "Planning" {
+		detail, ok := d.planning[c.ID]
+		if !ok {
+			return ""
+		}
+		switch detail.Session.State {
+		case "submitted", "running", "questions", "ready":
+			turn, ok := latestPlanningTurn(detail)
+			if ok && (turn.State == "submitted" || turn.State == "running" || turn.State == "waiting") {
+				return turn.AgentID
+			}
+		}
+		return ""
+	}
+	if latest := latestAttempt(c.ID, d.attempts); len(latest) > 0 && attemptActive(latest[0]) {
+		return latest[0].AgentID
+	}
+	return ""
+}
+
+func (d pageData) cardDiagnostic(c Card) (string, string) {
+	if c.Status == "Planning" {
+		detail, ok := d.planning[c.ID]
+		if !ok || detail.Session.Error == resumePendingNotice {
+			return "", ""
+		}
+		return detail.Session.Error, planningTone(planningDisplayState(detail))
+	}
+	if latest := latestAttempt(c.ID, d.attempts); len(latest) > 0 && !attemptActive(latest[0]) && runTone(latest[0]) != "ready" {
+		return latest[0].Error, runTone(latest[0])
+	}
+	return "", ""
+}
+
+// cardActivity is activity time, including retained execution and current planning.
+func (d pageData) cardActivity(c Card) time.Time {
+	updated := cardUpdated(c, d.attempts)
+	if detail, ok := d.planning[c.ID]; ok {
+		if detail.Session.UpdatedAt.After(updated) {
+			updated = detail.Session.UpdatedAt
+		}
+		for _, turn := range detail.Turns {
+			if (turn.SessionID == "" || turn.SessionID == detail.Session.ID) && turn.UpdatedAt.After(updated) {
+				updated = turn.UpdatedAt
+			}
+		}
+	}
+	return updated
 }

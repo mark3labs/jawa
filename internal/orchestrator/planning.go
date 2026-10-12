@@ -32,10 +32,10 @@ type PlanningRevision struct {
 	CreatedAt                   time.Time
 }
 type PlanningTurn struct {
-	ID, SessionID, State, Error, Result string
-	Number                              int
-	Published                           bool
-	CreatedAt, UpdatedAt                time.Time
+	ID, SessionID, State, Error, Result, AgentID string
+	Number                                       int
+	Published                                    bool
+	CreatedAt, UpdatedAt                         time.Time
 }
 type PlanningInteraction struct {
 	ReportID, ToolCallID, Kind, Status string
@@ -158,7 +158,7 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 			d.ResumeToken = resumeToken(a)
 			d.CanResume = executionFailure(Attempt{TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error})
 		}
-		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
+		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, AgentID: t.AgentID, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
 		active = active || planningTurnActive(t.State)
 	}
 	interactions, err := q.ListPlanningInteractions(ctx, p.ID)
