@@ -50,3 +50,16 @@ This is a finite REST policy, not a claim that every Forgejo version or merge ga
 ## Tests
 
 Run `go test ./internal/orchestrator` (or `go test ./...`). Local HTTP/TLS fixtures cover successful GitHub and Forgejo readiness, no-feedback/resolved-feedback Forgejo PRs, required/pending/failing/missing CI, effective rulesets (including approval rules that do not gate readiness), incomplete policy responses, optional CI failures, unresolved/unknown-resolution comments, formal changes requests/dismissal, head races, credentials, malformed responses, cancellation, redirect/pagination/body limits. No live credentials are used.
+
+### Terminal merge display detection
+
+The Ready PR display checker confirms explicit `merged=true`, `state=closed`
+responses with at most two bounded PR reads. It validates the PR number, base
+repository/ref, assigned head ref and head SHA. For terminal display only,
+missing/deleted head-repository metadata is allowed; a supplied mismatching
+repository is rejected. Base SHA and mergeability may be unavailable after
+closure. Initially merged responses require confirmation with the same head
+SHA; a clear/conflict reread that has become merged uses the new evidence.
+Open PR conflict checks and `ProviderVerifier` readiness identity rules remain
+unchanged. Manual merged markers are independent local metadata, not provider
+evidence or readiness approval; refresh never clears an applicable marker.

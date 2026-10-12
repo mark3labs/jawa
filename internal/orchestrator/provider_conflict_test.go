@@ -45,7 +45,7 @@ func conflictFixture(t *testing.T, provider string) (*Store, Attempt) {
 
 func TestProviderConflictChecker(t *testing.T) {
 	for _, provider := range []string{"github", "forgejo"} {
-		for _, scenario := range []string{"conflict", "clear", "unknown", "blocked", "wrong repo", "wrong base", "wrong branch", "changed head", "changed base", "clear changed head", "clear changed base", "missing base SHA", "invalid base SHA", "clear missing base SHA", "clear became unknown", "cleared", "merged", "closed", "draft", "HTTP error", "malformed", "cancelled", "bad URL"} {
+		for _, scenario := range []string{"conflict", "clear", "unknown", "blocked", "wrong repo", "wrong base", "wrong branch", "changed head", "changed base", "clear changed head", "clear changed base", "missing base SHA", "invalid base SHA", "clear missing base SHA", "clear became unknown", "cleared", "merged", "merged deleted repo", "merged missing base SHA", "merged changed head", "merged became open", "clear became merged", "conflict became merged", "open deleted repo", "merged wrong repo", "merged wrong number", "merged wrong SHA", "merged wrong base repo", "closed", "draft", "HTTP error", "malformed", "cancelled", "bad URL"} {
 			t.Run(provider+"/"+scenario, func(t *testing.T) {
 				s, a := conflictFixture(t, provider)
 				branch, err := assignedBranch(a)
@@ -93,8 +93,33 @@ func TestProviderConflictChecker(t *testing.T) {
 						if calls == 2 {
 							mergeable = true
 						}
-					case "merged":
+					case "merged", "merged deleted repo", "merged missing base SHA", "merged changed head", "merged became open", "merged wrong repo", "merged wrong number", "merged wrong SHA", "merged wrong base repo":
 						state, merged = "closed", true
+						switch scenario {
+						case "merged deleted repo":
+							repo = ""
+						case "merged missing base SHA":
+							baseSHA = ""
+						case "merged changed head":
+							if calls == 2 {
+								sha = strings.Repeat("b", 40)
+							}
+						case "merged became open":
+							if calls == 2 {
+								state, merged = "open", false
+							}
+						case "merged wrong repo":
+							repo = "other/repo"
+						case "merged wrong SHA":
+							sha = "invalid"
+						}
+					case "clear became merged", "conflict became merged":
+						mergeable = scenario == "clear became merged"
+						if calls == 2 {
+							state, merged, baseSHA, repo = "closed", true, "", ""
+						}
+					case "open deleted repo":
+						repo = ""
 					case "closed":
 						state = "closed"
 					case "draft":
@@ -112,7 +137,18 @@ func TestProviderConflictChecker(t *testing.T) {
 					if scenario == "clear became unknown" && calls == 2 {
 						mergeable = nil
 					}
-					body, _ := json.Marshal(map[string]any{"number": 7, "state": state, "merged": merged, "draft": draft, "mergeable": mergeable, "mergeable_state": dirty, "head": map[string]any{"ref": ref, "sha": sha, "repo": map[string]any{"full_name": repo}}, "base": map[string]any{"ref": base, "sha": baseSHA, "repo": map[string]any{"full_name": "acme/repo"}}})
+					number, baseRepo := 7, "acme/repo"
+					if scenario == "merged wrong number" {
+						number = 8
+					}
+					if scenario == "merged wrong base repo" {
+						baseRepo = "other/repo"
+					}
+					var headRepo any = map[string]any{"full_name": repo}
+					if scenario == "merged deleted repo" {
+						headRepo = nil
+					}
+					body, _ := json.Marshal(map[string]any{"number": number, "state": state, "merged": merged, "draft": draft, "mergeable": mergeable, "mergeable_state": dirty, "head": map[string]any{"ref": ref, "sha": sha, "repo": headRepo}, "base": map[string]any{"ref": base, "sha": baseSHA, "repo": map[string]any{"full_name": baseRepo}}})
 					status := 200
 					if scenario == "HTTP error" {
 						status = 403
@@ -142,12 +178,12 @@ func TestProviderConflictChecker(t *testing.T) {
 					if provider == "forgejo" {
 						want = "conflict"
 					}
-				case "merged":
+				case "merged", "merged deleted repo", "merged missing base SHA", "clear became merged", "conflict became merged":
 					want = "merged"
 				case "closed":
 					want = "closed"
 				}
-				wantError := strings.HasPrefix(scenario, "wrong ") || scenario == "HTTP error" || scenario == "malformed" || scenario == "cancelled" || scenario == "bad URL"
+				wantError := strings.HasPrefix(scenario, "merged wrong ") || scenario == "open deleted repo" || strings.HasPrefix(scenario, "wrong ") || scenario == "HTTP error" || scenario == "malformed" || scenario == "cancelled" || scenario == "bad URL"
 				if (err != nil) != wantError {
 					t.Fatalf("error=%v wantError=%v", err, wantError)
 				}
@@ -157,7 +193,7 @@ func TestProviderConflictChecker(t *testing.T) {
 				if calls > 2 {
 					t.Fatalf("unbounded calls: %d", calls)
 				}
-				if (want == "conflict" || want == "clear") && calls != 2 {
+				if (want == "conflict" || want == "clear" || want == "merged") && calls != 2 {
 					t.Fatalf("conflict not confirmed: %d", calls)
 				}
 				if scenario == "bad URL" && calls != 0 {

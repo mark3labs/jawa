@@ -509,3 +509,25 @@ rejection stops that failure generation; exhausted budgets need operator action.
 Default-on recovery can incur provider costs and repeat external side effects.
 It still requires the original agent journal/sandbox and compatible control route;
 see [failed-run recovery limits](internal/orchestrator/FAILED_RESUME.md).
+
+### Manually marking a Ready PR as merged
+
+The corner menu of a Ready for review card with a verified PR and no active
+attempt includes **Mark as merged**. This is a local display override: it does
+not merge or edit the remote PR, publish an agent command, change readiness or
+attempt history, move the card, or archive it. It works even when the provider
+is unavailable or still reports the PR as open. The card shows **Marked as
+merged manually** with the marking time, not a provider-check timestamp.
+
+The marker persists across restarts and archive/restore and takes precedence
+over provider status. Refresh still fetches provider evidence without clearing
+the manual marker. It applies only to the exact latest ready attempt, PR URL,
+and current provider/repository/base configuration; a repair or configuration
+change does not inherit it. Duplicate submissions preserve the original time.
+There is no manual undo action, and Send to Fix remains available as before.
+
+`POST /cards/mark-merged` uses dashboard authentication and CSRF protection.
+The native/enhanced form sends `card_id`, `expected_attempt_id`,
+`expected_pr_url`, `_csrf`, and the standard view/project fields. Stale or
+ineligible submissions fail without writing metadata. Already effectively
+merged cards omit the action.

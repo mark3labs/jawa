@@ -185,6 +185,10 @@ templ cardMenu(d pageData, c Card) {
 		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
 			if c.Status == "Done" {
 				if canAction(c, d.attempts, "fix") {
+					if d.prChecks[c.ID].State != "merged" {
+						{{ attempt := latestAttempt(c.ID, d.attempts)[0] }}
+						@menuPost(d, c, "/cards/mark-merged", "Mark as merged", "check", [][2]string{{"expected_attempt_id", attempt.ID}, {"expected_pr_url", attempt.PRURL}})
+					}
 					<button type="button" class="menu-item" role="menuitem" data-on:click={ fixDialogAction(c.ID, "") }>
 						@icon("retry")
 						<span>Send to Fix…</span>
@@ -306,7 +310,9 @@ templ cardPRStatus(d pageData, c Card) {
 		} else if check.State != "merged" {
 			<p>{ prCheckLabel(check) }</p>
 		}
-		if !check.CheckedAt.IsZero() {
+		if check.Manual {
+			<p class="pr-checked-at">Marked as merged manually <jawa-time datetime={ timeAttr(check.MarkedAt) } title={ check.MarkedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.MarkedAt, d.now) }</jawa-time></p>
+		} else if !check.CheckedAt.IsZero() {
 			<p class="pr-checked-at">Last checked <jawa-time datetime={ timeAttr(check.CheckedAt) } title={ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.CheckedAt, d.now) }</jawa-time></p>
 		} else if check.State == "checking" {
 			<p class="pr-checked-at">Awaiting a fresh check.</p>
@@ -347,12 +353,16 @@ templ archiveButton(d pageData, c Card) {
 }
 
 func archiveRoute(c Card) string {
-	if c.Archived { return "/cards/restore" }
+	if c.Archived {
+		return "/cards/restore"
+	}
 	return "/cards/archive"
 }
 
 func archiveLabel(c Card) string {
-	if c.Archived { return "Restore" }
+	if c.Archived {
+		return "Restore"
+	}
 	return "Archive"
 }
 
@@ -376,7 +386,9 @@ templ archiveContent(d pageData) {
 
 func hasArchivedCards(cards []Card, project string) bool {
 	for _, c := range cards {
-		if c.Archived && (project == "" || c.ProjectID == project) { return true }
+		if c.Archived && (project == "" || c.ProjectID == project) {
+			return true
+		}
 	}
 	return false
 }

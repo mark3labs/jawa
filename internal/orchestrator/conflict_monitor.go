@@ -205,8 +205,22 @@ func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string
 // evidence is hidden during repair and after project configuration changes.
 func (w *Workflow) CardPRCheck(id string) (PRCheck, error) {
 	var p PRCheck
+	var marked int64
+	err := w.s.db.QueryRow(`SELECT m.attempt_id,m.pr_url,m.marked_at
+ FROM workflow_pr_merge_overrides m JOIN workflow_attempts a ON a.id=m.attempt_id
+ JOIN cards c ON c.id=a.card_id JOIN projects project ON project.id=c.project_id
+ WHERE c.id=? AND c.status='Done' AND a.ready=1 AND a.state='ready' AND a.pr_url=m.pr_url
+ AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id)
+ AND m.provider=project.provider AND m.repo=project.repo AND m.base_branch=project.base_branch`, id).Scan(&p.AttemptID, &p.PRURL, &marked)
+	if err == nil {
+		p.State, p.Manual, p.MarkedAt = "merged", true, time.UnixMilli(marked).UTC()
+		return p, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return p, err
+	}
 	var checked int64
-	err := w.s.db.QueryRow(`SELECT p.attempt_id,p.pr_url,p.state,p.head_sha,p.base_sha,p.error,p.checked_at
+	err = w.s.db.QueryRow(`SELECT p.attempt_id,p.pr_url,p.state,p.head_sha,p.base_sha,p.error,p.checked_at
  FROM workflow_pr_checks p JOIN workflow_attempts a ON a.id=p.attempt_id
  JOIN cards c ON c.id=a.card_id JOIN projects project ON project.id=c.project_id
  WHERE c.id=? AND c.status='Done' AND a.ready=1 AND a.state='ready' AND a.pr_url=p.pr_url

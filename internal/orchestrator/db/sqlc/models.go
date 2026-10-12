@@ -230,6 +230,15 @@ type WorkflowPrCheck struct {
 	CheckedAt  int64  `json:"checked_at"`
 }
 
+type WorkflowPrMergeOverride struct {
+	AttemptID  string `json:"attempt_id"`
+	PrUrl      string `json:"pr_url"`
+	Provider   string `json:"provider"`
+	Repo       string `json:"repo"`
+	BaseBranch string `json:"base_branch"`
+	MarkedAt   int64  `json:"marked_at"`
+}
+
 type WorkflowReconciliation struct {
 	ID                      int64  `json:"id"`
 	TaskID                  string `json:"task_id"`
