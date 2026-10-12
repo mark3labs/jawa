@@ -19,9 +19,9 @@ templ planningContent(d pageData) {
 			</section>
 			if detail, exists := d.planning[c.ID]; exists {
 				<section class="planning-section" aria-label="Proposed plan">
-					<h2>Planning <span class={ "chip", "tone-" + planningTone(detail.Session.State) }>
-						@toneIcon(planningTone(detail.Session.State))
-						<span>{ planningLabel(detail.Session.State) }</span>
+					<h2>Planning <span class={ "chip", "tone-" + planningTone(planningDisplayState(detail)) }>
+						@toneIcon(planningTone(planningDisplayState(detail)))
+						<span>{ planningLabel(planningDisplayState(detail)) }</span>
 					</span></h2>
 
 					if detail.Session.Spec != "" {
