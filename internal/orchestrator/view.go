@@ -457,6 +457,8 @@ func laneHint(status string) string {
 	switch status {
 	case "Planning":
 		return "Investigate ideas and approve a plan before building."
+	case "Fix":
+		return "Repairs to existing pull requests appear here."
 	case "Building":
 		return "Cards an agent is working on appear here."
 	case "Done":

@@ -146,25 +146,29 @@ type TypedReport struct {
 }
 
 type WorkflowAttempt struct {
-	ID              string `json:"id"`
-	CardID          string `json:"card_id"`
-	Number          int64  `json:"number"`
-	TaskID          string `json:"task_id"`
-	TaskJson        string `json:"task_json"`
-	AgentID         string `json:"agent_id"`
-	RunID           string `json:"run_id"`
-	RemoteAttemptID string `json:"remote_attempt_id"`
-	State           string `json:"state"`
-	RunState        string `json:"run_state"`
-	Result          string `json:"result"`
-	OutcomeJson     string `json:"outcome_json"`
-	Error           string `json:"error"`
-	PrUrl           string `json:"pr_url"`
-	Published       int64  `json:"published"`
-	Ready           int64  `json:"ready"`
-	EventSeq        int64  `json:"event_seq"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
+	ID                 string `json:"id"`
+	CardID             string `json:"card_id"`
+	Number             int64  `json:"number"`
+	TaskID             string `json:"task_id"`
+	TaskJson           string `json:"task_json"`
+	AgentID            string `json:"agent_id"`
+	RunID              string `json:"run_id"`
+	RemoteAttemptID    string `json:"remote_attempt_id"`
+	State              string `json:"state"`
+	RunState           string `json:"run_state"`
+	Result             string `json:"result"`
+	OutcomeJson        string `json:"outcome_json"`
+	Error              string `json:"error"`
+	PrUrl              string `json:"pr_url"`
+	Published          int64  `json:"published"`
+	Ready              int64  `json:"ready"`
+	EventSeq           int64  `json:"event_seq"`
+	Branch             string `json:"branch"`
+	RepairMessage      string `json:"repair_message"`
+	RepairPrUrl        string `json:"repair_pr_url"`
+	RepairSourceNumber int64  `json:"repair_source_number"`
+	CreatedAt          int64  `json:"created_at"`
+	UpdatedAt          int64  `json:"updated_at"`
 }
 
 type WorkflowCancelRequest struct {
@@ -199,6 +203,18 @@ type WorkflowExecutionEvent struct {
 	EventType       string `json:"event_type"`
 	EventJson       string `json:"event_json"`
 	ReceivedAt      int64  `json:"received_at"`
+}
+
+type WorkflowPrCheck struct {
+	AttemptID  string `json:"attempt_id"`
+	PrUrl      string `json:"pr_url"`
+	Provider   string `json:"provider"`
+	Repo       string `json:"repo"`
+	BaseBranch string `json:"base_branch"`
+	State      string `json:"state"`
+	HeadSha    string `json:"head_sha"`
+	Error      string `json:"error"`
+	CheckedAt  int64  `json:"checked_at"`
 }
 
 type WorkflowReconciliation struct {

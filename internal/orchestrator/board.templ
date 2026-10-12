@@ -36,7 +36,7 @@ templ boardContent(d pageData) {
 			</div>
 			<jawa-board project={ p.ID }>
 				<div class="lanes">
-					for _, status := range []string{"Todo", "Planning", "Building", "Done"} {
+					for _, status := range []string{"Todo", "Planning", "Building", "Fix", "Done"} {
 						<section class={ "lane", "lane-" + status } aria-label={ laneName(status) }>
 							<header class="lane-head">
 								@laneIcon(status)
@@ -85,7 +85,7 @@ templ boardContent(d pageData) {
 }
 
 templ taskCard(d pageData, c Card) {
-	@card.Card(card.Props{ID: "card-" + c.ID, Class: "task-card", Attributes: templ.Attributes{"data-card-id": c.ID, "data-title": c.Title, "data-status": c.Status, "data-show": filterExpr(d.projects, c)}}) {
+	@card.Card(card.Props{ID: "card-" + c.ID, Class: "task-card", Attributes: templ.Attributes{"data-card-id": c.ID, "data-title": c.Title, "data-status": c.Status, "data-can-fix": strconv.FormatBool(canAction(c, d.attempts, "fix")), "data-show": filterExpr(d.projects, c)}}) {
 		<div class="card-top">
 			<a class="card-key" href={ templ.SafeURL(planningPath(c.ID)) } title="View card and plan">{ cardKey(d.projects, c) }</a>
 			@cardMenu(d, c)
@@ -125,7 +125,7 @@ templ cardChips(d pageData, c Card) {
 				<span>{ la[0].AgentID }</span>
 			</span>
 		}
-	} else if c.Status == "Building" {
+	} else if c.Status == "Building" || c.Status == "Fix" {
 		<span class="chip tone-queued">
 			@toneIcon("queued")
 			<span>Not started</span>
@@ -143,6 +143,17 @@ templ cardChips(d pageData, c Card) {
 }
 
 templ cardNote(d pageData, c Card) {
+	if check, ok := d.prChecks[c.ID]; ok && check.State == "conflict" && c.Status == "Done" {
+		<div class="card-conflict" role="status">
+			<p>Pull request has merge conflicts.</p>
+			if canAction(c, d.attempts, "fix") {
+				<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
+					@icon("warning")
+					Fix Merge Conflict
+				</button>
+			}
+		</div>
+	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 && la[0].Error != "" && !attemptActive(la[0]) && runTone(la[0]) != "ready" {
 		<p class={ "card-note", "tone-" + runTone(la[0]) }>{ la[0].Error }</p>
 	}
@@ -156,6 +167,16 @@ templ cardMenu(d pageData, c Card) {
 			@icon("more")
 		</button>
 		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
+			if c.Status == "Done" {
+				if canAction(c, d.attempts, "fix") {
+					<button type="button" class="menu-item" role="menuitem" data-on:click={ fixDialogAction(c.ID, "") }>
+						@icon("retry")
+						<span>Send to Fix…</span>
+					</button>
+				} else {
+					@menuDisabled("Send to Fix", "retry", "Fix requires a verified pull request and no active attempt.")
+				}
+			}
 			if c.Status == "Todo" {
 				@menuPost(d, c, "/cards/plan", "Plan first", "runs", nil)
 				@menuPost(d, c, "/cards/move", "Start work", "play", [][2]string{{"status", "Building"}, {"position", "0"}})
@@ -179,7 +200,7 @@ templ cardMenu(d pageData, c Card) {
 					@menuDisabled("Reset to Todo", "reset", actionReason(c, d.attempts, "reset"))
 				}
 			}
-			if c.Status == "Building" {
+			if c.Status == "Building" || c.Status == "Fix" {
 				if canAction(c, d.attempts, "cancel") {
 					<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$cancelCard = " + strconv.Quote(c.ID) + "; $cancelOpen = true" }>
 						@icon("reset")

@@ -19,6 +19,8 @@ import (
 
 // Attempt is a durable board execution, distinct from a agent's remote attempt.
 type Attempt struct {
+	Branch, RepairMessage, RepairPRURL                 string
+	RepairSourceNumber                                 int
 	ID, CardID                                         string
 	Number                                             int
 	TaskID, TaskJSON, AgentID, RunID, RemoteAttemptID  string
@@ -40,6 +42,7 @@ type Workflow struct {
 	wg            sync.WaitGroup
 	mu            sync.RWMutex
 	verifier      Verifier
+	conflicts     *conflictMonitor
 	reports       *nats.Subscription
 	observeReport func(context.Context, client.Target) (client.Status, error)
 	resumeConn    *nats.Conn
@@ -101,6 +104,9 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 				w.log().Warn("Planning result recovery failed")
 			}
 			w.verifyPending()
+			if err := w.PollPRConflicts(w.ctx); err != nil && w.ctx.Err() == nil {
+				w.log().Warn("PR conflict polling incomplete")
+			}
 			select {
 			case <-w.ctx.Done():
 				return
@@ -143,12 +149,12 @@ func (w *Workflow) Agents(ctx context.Context) ([]presence.Record, error) {
 	return w.presence.Discover(ctx, presence.Filter{})
 }
 
-const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at`
+const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at,branch,repair_message,repair_pr_url,repair_source_number`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var created, updated int64
-	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated)
+	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated, &a.Branch, &a.RepairMessage, &a.RepairPRURL, &a.RepairSourceNumber)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	a.UpdatedAt = time.UnixMilli(updated).UTC()
 	return a, err
@@ -182,13 +188,14 @@ func (w *Workflow) MoveCard(id, status string, pos int) error {
 	return w.moveCard(id, status, pos, false)
 }
 
-// Retry starts a new durable attempt after a terminal failure, or starts legacy work with no attempt.
+// Retry starts a new durable attempt after a terminal failure, preserving repair
+// assignments in Fix, or starts legacy Building work with no attempt.
 func (w *Workflow) Retry(id string) error { return w.moveCard(id, "Building", 0, true) }
 func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
-	if pos < 0 || (status != "Todo" && status != "Building" && status != "Done") {
+	if pos < 0 || (status != "Todo" && status != "Building" && status != "Fix" && status != "Done") {
 		return errors.New("invalid move")
 	}
 	tx, err := w.s.writeTx()
@@ -206,6 +213,21 @@ func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 		return latestErr
 	}
 	noAttempt := errors.Is(latestErr, sql.ErrNoRows)
+	if retry && source == "Fix" {
+		if noAttempt || latest.RepairPRURL == "" || !terminalFailure(latest) {
+			return errors.New("retry requires a terminal failed or blocked repair")
+		}
+		if err = queueRepair(tx, latest, latest.RepairMessage); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if status == "Fix" && source != "Fix" {
+		return errors.New("use FixCard with a repair message to enter Fix")
+	}
+	if source == "Fix" && status != "Fix" {
+		return errors.New("fix requires verified PR readiness; use Reset after terminal failure")
+	}
 	if status == "Done" && source != "Done" {
 		return errors.New("done requires verified PR readiness")
 	}
@@ -454,7 +476,7 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	// A restarted agent may continue the same run, but must not revive a
 	// superseded attempt or a card that was explicitly reset.
 	var current bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
 		return err
 	}
 	if !current {
@@ -526,7 +548,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		// Keep the pinned identity and run state, but surface unusable terminal
 		// reports. Never infer a missing AgentID or readiness from a conflict.
 		if !a.Ready && (string(out.State) == "failed" || string(out.State) == "completed" || string(out.State) == "cancelled") {
-			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status='Building') AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>?`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
+			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>?`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
 				return err
 			}
 		}
@@ -546,7 +568,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 	}
 	if resumableOutcome(a) {
 		var current bool
-		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
 			return err
 		}
 		if !current {
@@ -652,6 +674,9 @@ func (w *Workflow) markReady(a Attempt) error {
 	if current.Ready || current.OutcomeJSON != a.OutcomeJSON || current.State != "blocked" || current.PRURL == "" || current.RunState != "completed" {
 		return nil
 	}
+	if current.RepairPRURL != "" && current.PRURL != current.RepairPRURL {
+		return errors.New("repair readiness requires the original pull request")
+	}
 	var project, status string
 	var latest int
 	if err = tx.QueryRow(`SELECT project_id,status FROM cards WHERE id=?`, a.CardID).Scan(&project, &status); err != nil {
@@ -660,7 +685,7 @@ func (w *Workflow) markReady(a Attempt) error {
 	if err = tx.QueryRow(`SELECT max(number) FROM workflow_attempts WHERE card_id=?`, a.CardID).Scan(&latest); err != nil {
 		return err
 	}
-	if status != "Building" || latest != a.Number {
+	if (status != "Building" && status != "Fix") || latest != a.Number {
 		return nil
 	}
 	if err = moveWorkflowCard(tx, a.CardID, project, status, "Done", int(^uint(0)>>1)); err != nil {

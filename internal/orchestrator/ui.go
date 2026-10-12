@@ -12,6 +12,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/mark3labs/bonnie/presence"
@@ -26,6 +27,7 @@ type uiSnapshot struct {
 	cards          []Card
 	agents         []presence.Record
 	planning       map[string]PlanningDetail
+	prChecks       map[string]PRCheck
 	attempts       []Attempt
 	nats           NATSConfig
 	natsConfigured bool
@@ -66,7 +68,19 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 			return snap, fmt.Errorf("load planning detail: %w", planningErr)
 		}
 	}
+	snap.prChecks = make(map[string]PRCheck)
 	if wf != nil {
+		for _, c := range snap.cards {
+			if c.Status != "Done" {
+				continue
+			}
+			check, checkErr := wf.CardPRCheck(c.ID)
+			if checkErr == nil {
+				snap.prChecks[c.ID] = check
+			} else if !errors.Is(checkErr, sql.ErrNoRows) {
+				return snap, fmt.Errorf("load PR check: %w", checkErr)
+			}
+		}
 		presenceCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		snap.agents, err = wf.Agents(presenceCtx)
 		cancel()
@@ -209,13 +223,15 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	case "resume":
 		return c.Status == "Building" && !legacy && !active && executionFailure(latest[0])
 	case "retry":
-		return c.Status == "Building" && terminal && !active
+		return (c.Status == "Building" || c.Status == "Fix") && terminal && !active
+	case "fix":
+		return c.Status == "Done" && !legacy && latest[0].Ready && latest[0].State == "ready" && latest[0].PRURL != "" && !active
 	case "reset":
 		return c.Status != "Todo" && !active && (legacy || terminal)
 	case "delete":
 		return !active || (!legacy && !latest[0].Ready && latest[0].Error == executionConflictNotice)
 	case "cancel":
-		if c.Status != "Building" || len(latest) == 0 {
+		if (c.Status != "Building" && c.Status != "Fix") || len(latest) == 0 {
 			return false
 		}
 		a := latest[0]
@@ -317,4 +333,10 @@ func planningInteractionLabel(status string) string {
 	default:
 		return status
 	}
+}
+
+const conflictFixMessage = "Resolve merge conflicts with the current base branch, run project tests, and push fixes to the existing pull request."
+
+func fixDialogAction(cardID, message string) string {
+	return "$fixCard = " + strconv.Quote(cardID) + "; $fixMessage = " + strconv.Quote(message) + "; $fixOpen = true"
 }

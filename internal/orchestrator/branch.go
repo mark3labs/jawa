@@ -55,6 +55,12 @@ func assignedBranch(a Attempt) (string, error) {
 		return "", fmt.Errorf("task lacks deterministic Branch instruction")
 	}
 	_, branch, _ := strings.Cut(task.Text, "\nBranch: ")
+	if a.RepairPRURL != "" {
+		if a.Branch == "" || branch != a.Branch || a.RepairSourceNumber < 1 || a.RepairSourceNumber >= a.Number {
+			return "", fmt.Errorf("invalid repair branch identity")
+		}
+		a.Number = a.RepairSourceNumber
+	}
 	legacy := fmt.Sprintf("jawa/card/%s/attempt/%d", a.CardID, a.Number)
 	if branch == legacy {
 		return branch, nil

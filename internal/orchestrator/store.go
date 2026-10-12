@@ -184,7 +184,7 @@ func (s *Store) Cards(project string) ([]Card, error) {
 	return s.queryCards(context.Background(), project)
 }
 func (s *Store) MoveCard(id, status string, position int) error {
-	if status != "Todo" && status != "Planning" && status != "Building" && status != "Done" {
+	if status != "Todo" && status != "Planning" && status != "Building" && status != "Fix" && status != "Done" {
 		return errors.New("invalid status")
 	}
 	if position < 0 {
@@ -206,6 +206,9 @@ func (s *Store) MoveCard(id, status string, position int) error {
 	// Planning must never be entered/exited without the workflow transaction.
 	if (status == "Planning" || source == "Planning") && source != status {
 		return errors.New("planning transitions require workflow")
+	}
+	if (status == "Fix" || source == "Fix") && source != status {
+		return errors.New("fix transitions require workflow")
 	}
 	// Rebuild both affected lanes in their stable order. Excluding the moving
 	// card first makes position mean its final zero-based index in all cases.

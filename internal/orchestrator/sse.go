@@ -115,6 +115,10 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	case "/cards/cancel":
 		signals["cancelOpen"] = "false"
 		signals["cancelCard"] = `""`
+	case "/cards/fix":
+		signals["fixOpen"] = "false"
+		signals["fixCard"] = `""`
+		signals["fixMessage"] = `""`
 	case "/cards/delete":
 		signals["deleteOpen"] = "false"
 		signals["deleteCard"] = `""`

@@ -139,7 +139,7 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 			return ack, errors.New("proposeSpec is not allowed during build")
 		}
 		var current bool
-		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status='Building' AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
 			return ack, err
 		}
 		if !current || a.Ready || (a.OutcomeJSON != "" && !resumableOutcome(a)) || a.RunState == "failed" || a.RunState == "cancelled" || !matches(a, r.AgentID, r.RunID, r.AttemptID) {
@@ -186,6 +186,9 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 			err = tx.QueryRow(`SELECT p.provider,p.repo FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo)
 			if err == nil {
 				pr, err = projectPRURL(provider, repo, r.Payload.PRNumber)
+			}
+			if err == nil && a.RepairPRURL != "" && pr != a.RepairPRURL {
+				err = errors.New("repair must complete the existing pull request")
 			}
 			reason = "awaiting verification"
 		}
