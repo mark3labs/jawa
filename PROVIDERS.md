@@ -32,7 +32,7 @@ Open PRs must be non-draft and explicitly mergeable, with expected identity and 
 
 Required contexts and app-specific checks are the union of classic branch protection and effective `required_status_checks` rules from repository/organization rulesets. Empty/missing policy fields (including HTTP 200 `{}`) block rather than silently removing requirements. `pull_request` rules are deliberately not enforced as approval requirements under this PR-ready policy; other merge gates also remain human responsibilities.
 
-Required checks must succeed on the current SHA; unrelated optional failures/pending checks do not block when required checks are configured. Without required checks, all reported CI must succeed. Neutral/skipped required checks are conservatively blocked. No CI blocks by default; the existing explicit GitHub-only `JAWA_ALLOW_NO_CI=true` opt-in does not bypass required checks.
+Required checks must have acceptable evidence on the current SHA: completed GitHub check runs with success or skipped conclusions are accepted, including app-specific requirements. Unrelated optional failures/pending checks do not block when required checks are configured. Without required checks, all reported CI must be acceptable; skipped-only check runs count as CI evidence without the no-CI opt-in. Neutral and other non-success/non-skipped conclusions remain blocked, as do non-completed runs. Commit statuses still require success. No CI blocks by default; the existing explicit GitHub-only `JAWA_ALLOW_NO_CI=true` opt-in does not bypass required checks.
 
 REST reviews block outstanding `CHANGES_REQUESTED`, even after a new head; later approval/dismissal from that reviewer clears it (a comment does not). GraphQL independently requires every review thread resolved on the same head SHA. Approvals are not required.
 
@@ -49,7 +49,7 @@ This is a finite REST policy, not a claim that every Forgejo version or merge ga
 
 ## Tests
 
-Run `go test ./internal/orchestrator` (or `go test ./...`). Local HTTP/TLS fixtures cover successful GitHub and Forgejo readiness, no-feedback/resolved-feedback Forgejo PRs, required/pending/failing/missing CI, effective rulesets (including approval rules that do not gate readiness), incomplete policy responses, optional CI failures, unresolved/unknown-resolution comments, formal changes requests/dismissal, head races, credentials, malformed responses, cancellation, redirect/pagination/body limits. No live credentials are used.
+Run `go test ./internal/orchestrator` (or `go test ./...`). Local HTTP/TLS fixtures cover successful GitHub and Forgejo readiness, no-feedback/resolved-feedback Forgejo PRs, required/pending/failing/missing CI, completed skipped check runs (including required/app-specific and skipped-only evidence), effective rulesets (including approval rules that do not gate readiness), incomplete policy responses, optional CI failures, unresolved/unknown-resolution comments, formal changes requests/dismissal, head races, credentials, malformed responses, cancellation, redirect/pagination/body limits. No live credentials are used.
 
 ### Terminal merge display detection
 

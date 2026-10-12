@@ -381,7 +381,7 @@ func (p providerReader) githubCI(root, base, sha string) error {
 		if c.HeadSHA != sha || c.Name == "" {
 			return errors.New("provider: CI checks not completed successfully on current head")
 		}
-		success := c.Status == "completed" && c.Conclusion == "success"
+		success := c.Status == "completed" && (c.Conclusion == "success" || c.Conclusion == "skipped")
 		allSuccessful = allSuccessful && success
 		passed[c.Name] = passed[c.Name] || success
 		if apps[c.Name] == nil {

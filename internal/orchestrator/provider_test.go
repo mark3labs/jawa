@@ -19,7 +19,7 @@ func (f providerTransport) RoundTrip(r *http.Request) (*http.Response, error) { 
 
 func TestProviderVerifier(t *testing.T) {
 	sha := strings.Repeat("a", 40)
-	for _, scenario := range []string{"success", "merged", "merged then open", "wrong repo", "wrong branch", "wrong head", "pending", "failed", "missing required", "red thread", "changes requested", "dismissed", "no CI", "allow no CI", "missing token", "bad URL", "legacy task", "graphql error", "changed head", "redirect", "cancelled", "malformed", "missing mergeability", "empty policy", "missing contexts", "missing checks", "empty rules", "rules empty parameters", "rules unavailable", "rules only", "rules missing required", "rules success", "optional failure", "pending review"} {
+	for _, scenario := range []string{"success", "merged", "merged then open", "wrong repo", "wrong branch", "wrong head", "pending", "failed", "missing required", "red thread", "changes requested", "dismissed", "no CI", "allow no CI", "missing token", "bad URL", "legacy task", "graphql error", "changed head", "redirect", "cancelled", "malformed", "missing mergeability", "empty policy", "missing contexts", "missing checks", "empty rules", "rules empty parameters", "rules unavailable", "rules only", "rules missing required", "rules success", "optional failure", "pending review", "skipped", "rules skipped", "skipped changed head", "skipped red thread"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Setenv("JAWA_GITHUB_TOKEN", "test-secret")
 			t.Setenv("GITHUB_TOKEN", "")
@@ -91,7 +91,7 @@ func TestProviderVerifier(t *testing.T) {
 					if scenario == "wrong head" {
 						head = ""
 					}
-					if scenario == "changed head" && prCalls > 1 {
+					if (scenario == "changed head" || scenario == "skipped changed head") && prCalls > 1 {
 						head = strings.Repeat("b", 40)
 					}
 					mergeable := any(true)
@@ -125,7 +125,7 @@ func TestProviderVerifier(t *testing.T) {
 						if _, err := fmt.Fprint(w, `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"missing"}]}}]`); err != nil {
 							t.Error(err)
 						}
-					case "rules success", "optional failure", "rules only":
+					case "rules success", "rules skipped", "optional failure", "rules only":
 						if _, err := fmt.Fprint(w, `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":1}]}},{"type":"pull_request","parameters":{"required_approving_review_count":2}}]`); err != nil {
 							t.Error(err)
 						}
@@ -180,6 +180,9 @@ func TestProviderVerifier(t *testing.T) {
 						return
 					}
 					state, conclusion := "completed", "success"
+					if strings.Contains(scenario, "skipped") {
+						conclusion = "skipped"
+					}
 					if scenario == "pending" {
 						state = "in_progress"
 					}
@@ -222,7 +225,7 @@ func TestProviderVerifier(t *testing.T) {
 						}
 						return
 					}
-					if _, err := fmt.Fprintf(w, `{"data":{"repository":{"pullRequest":{"headRefOid":%q,"reviewThreads":{"nodes":[{"isResolved":%t}],"pageInfo":{"hasNextPage":false}}}}}}`, sha, scenario != "red thread"); err != nil {
+					if _, err := fmt.Fprintf(w, `{"data":{"repository":{"pullRequest":{"headRefOid":%q,"reviewThreads":{"nodes":[{"isResolved":%t}],"pageInfo":{"hasNextPage":false}}}}}}`, sha, scenario != "red thread" && scenario != "skipped red thread"); err != nil {
 						t.Errorf("write provider fixture: %v", err)
 					}
 				default:
@@ -253,15 +256,157 @@ func TestProviderVerifier(t *testing.T) {
 			if (scenario == "merged" || scenario == "merged then open") && calls != 2 {
 				t.Fatalf("merged path fetched non-PR evidence: %d calls", calls)
 			}
-			want := scenario == "merged" || scenario == "success" || scenario == "dismissed" || scenario == "allow no CI" || scenario == "rules success" || scenario == "optional failure" || scenario == "pending review" || scenario == "rules only"
+			want := scenario == "merged" || scenario == "success" || scenario == "dismissed" || scenario == "allow no CI" || scenario == "rules success" || scenario == "optional failure" || scenario == "pending review" || scenario == "rules only" || scenario == "skipped" || scenario == "rules skipped"
 			if ok != want || (want && err != nil) || (!want && err == nil) {
 				t.Fatalf("ok=%v err=%v want=%v", ok, err, want)
+			}
+			if scenario == "skipped changed head" && (prCalls != 2 || err == nil || !strings.Contains(err.Error(), "PR head changed during verification")) {
+				t.Fatalf("skipped CI did not reach final head gate: calls=%d err=%v", prCalls, err)
+			}
+			if scenario == "skipped red thread" && (err == nil || !strings.Contains(err.Error(), "unresolved review thread")) {
+				t.Fatalf("skipped CI did not reach review gate: %v", err)
 			}
 			if (scenario == "bad URL" || scenario == "missing token" || scenario == "legacy task" || scenario == "cancelled") && calls != 0 {
 				t.Fatal("made request before validating input")
 			}
 			if err != nil && strings.Contains(err.Error(), "test-secret") {
 				t.Fatal("credential leaked")
+			}
+		})
+	}
+}
+
+func TestGitHubCISkipped(t *testing.T) {
+	sha := strings.Repeat("a", 40)
+	type check struct {
+		Name       string           `json:"name"`
+		HeadSHA    string           `json:"head_sha"`
+		Status     string           `json:"status"`
+		Conclusion string           `json:"conclusion"`
+		App        struct{ ID int } `json:"app"`
+	}
+	skipped := check{Name: "build", HeadSHA: sha, Status: "completed", Conclusion: "skipped"}
+	skipped.App.ID = 1
+	success := skipped
+	success.Name, success.Conclusion = "optional", "success"
+	failure := success
+	failure.Conclusion = "failure"
+	pending := success
+	pending.Status = "in_progress"
+	type testCase struct {
+		name, policy string
+		checks       []check
+		status       string
+		allowNoCI    bool
+		wantErr      string
+	}
+	tests := []testCase{
+		{name: "classic context", policy: "context", checks: []check{skipped}},
+		{name: "classic app", policy: "app", checks: []check{skipped}},
+		{name: "ruleset app", policy: "rules", checks: []check{skipped}},
+		{name: "success and skipped", checks: []check{success, skipped}},
+		{name: "skipped only", checks: []check{skipped}},
+		{name: "optional failure ignored", policy: "app", checks: []check{skipped, failure}},
+		{name: "failure blocks all", checks: []check{skipped, failure}, wantErr: "CI not successful"},
+		{name: "pending blocks all", checks: []check{skipped, pending}, wantErr: "CI not successful"},
+		{name: "status failure blocks all", checks: []check{skipped}, status: "failure", wantErr: "CI not successful"},
+		{name: "required status failure", policy: "status", checks: []check{skipped}, status: "failure", wantErr: "required CI check missing or unsuccessful"},
+		{name: "required status success", policy: "status", checks: []check{skipped}, status: "success"},
+		{name: "no CI", wantErr: "no CI evidence"},
+		{name: "allow no CI", allowNoCI: true},
+		{name: "allow no CI does not bypass required", policy: "context", allowNoCI: true, wantErr: "required CI check missing or unsuccessful"},
+	}
+	for _, policy := range []string{"", "context", "app", "rules"} {
+		wantErr := "required CI check missing or unsuccessful"
+		if policy == "" {
+			wantErr = "CI not successful"
+		}
+		for _, conclusion := range []string{"neutral", "failure", "cancelled", "timed_out", "action_required", "stale", "", "unknown"} {
+			c := skipped
+			c.Conclusion = conclusion
+			tests = append(tests, testCase{name: policy + "/conclusion/" + conclusion, policy: policy, checks: []check{c}, wantErr: wantErr})
+		}
+		for _, state := range []string{"queued", "in_progress"} {
+			c := skipped
+			c.Status = state
+			tests = append(tests, testCase{name: policy + "/state/" + state, policy: policy, checks: []check{c}, wantErr: wantErr})
+		}
+	}
+	for _, variant := range []string{"wrong app", "wrong head", "missing name", "absent required name"} {
+		c := skipped
+		wantErr := "required CI check missing or unsuccessful"
+		switch variant {
+		case "wrong app":
+			c.App.ID = 2
+		case "wrong head":
+			c.HeadSHA = strings.Repeat("b", 40)
+			wantErr = "CI checks not completed successfully on current head"
+		case "missing name":
+			c.Name = ""
+			wantErr = "CI checks not completed successfully on current head"
+		case "absent required name":
+			c.Name = "optional"
+		}
+		tests = append(tests, testCase{name: variant, policy: "app", checks: []check{c}, wantErr: wantErr})
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				var body any
+				switch {
+				case r.URL.Path == "/repos/acme/repo/branches/main":
+					body = map[string]any{"protected": true}
+				case strings.HasSuffix(r.URL.Path, "/protection/required_status_checks"):
+					contexts := []string{}
+					checks := []map[string]any{}
+					switch tc.policy {
+					case "context":
+						contexts = append(contexts, "build")
+					case "app":
+						checks = append(checks, map[string]any{"context": "build", "app_id": 1})
+					case "status":
+						contexts = append(contexts, "deploy")
+					}
+					body = map[string]any{"contexts": contexts, "checks": checks}
+				case strings.Contains(r.URL.Path, "/rules/branches/"):
+					rules := []map[string]any{}
+					if tc.policy == "rules" {
+						rules = append(rules, map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []map[string]any{{"context": "build", "integration_id": 1}}}})
+					}
+					body = rules
+				case strings.HasSuffix(r.URL.Path, "/check-runs"):
+					checks := tc.checks
+					if checks == nil {
+						checks = []check{}
+					}
+					body = map[string]any{"total_count": len(checks), "check_runs": checks}
+				case strings.HasSuffix(r.URL.Path, "/status"):
+					statuses := []map[string]any{}
+					state := "pending"
+					if tc.status != "" {
+						state = tc.status
+						statuses = append(statuses, map[string]any{"context": "deploy", "state": state})
+					}
+					body = map[string]any{"sha": sha, "state": state, "total_count": len(statuses), "statuses": statuses}
+				default:
+					t.Errorf("unexpected request %s", r.URL)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				if err := json.NewEncoder(w).Encode(body); err != nil {
+					t.Errorf("encode CI fixture: %v", err)
+				}
+			}))
+			defer server.Close()
+			reader := providerReader{ctx: t.Context(), client: server.Client(), api: server.URL, token: "test-secret", allowNoCI: tc.allowNoCI}
+			err := reader.githubCI("/repos/acme/repo", "main", sha)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected CI blocker: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want blocker %q", err, tc.wantErr)
 			}
 		})
 	}
