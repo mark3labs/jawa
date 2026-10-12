@@ -278,12 +278,20 @@ func actionReason(c Card, attempts []Attempt, action string) string {
 
 func planningState(d pageData, cardID string) string {
 	if detail, ok := d.planning[cardID]; ok {
-		return detail.Session.State
+		return planningDisplayState(detail)
 	}
 	return "queued"
 }
+func planningDisplayState(detail PlanningDetail) string {
+	if detail.Session.State == "running" && detail.Session.Error == resumePendingNotice {
+		return "resuming"
+	}
+	return detail.Session.State
+}
 func planningLabel(state string) string {
 	switch state {
+	case "resuming":
+		return "Resuming…"
 	case "running", "submitted":
 		return "Investigating"
 	case "questions":
@@ -302,6 +310,8 @@ func planningLabel(state string) string {
 }
 func planningTone(state string) string {
 	switch state {
+	case "resuming":
+		return "resuming"
 	case "running", "submitted":
 		return "running"
 	case "questions":

@@ -47,7 +47,7 @@ func TestAutoResumeFiveGenerations(t *testing.T) {
 	defer func() { _ = sub.Unsubscribe() }()
 	_ = nc.Flush()
 	now := time.Unix(1700000000, 0)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if err = w.discoverAutoResumes(now); err != nil {
 			t.Fatal(err)
 		}
@@ -286,7 +286,7 @@ func TestAutoResumeStatusRendering(t *testing.T) {
 	a := Attempt{TaskID: "task", CardID: "card", State: "failed", RunState: "failed", AgentID: "agent", RunID: "run", RemoteAttemptID: "remote", OutcomeJSON: string(raw), Error: "authoritative runtime failure"}
 	card := Card{ID: "card", Status: "Building"}
 	status := autoResumeStatus{token: resumeToken(a), state: "scheduled", due: time.Unix(1700000000, 0).UnixMilli(), count: 2}
-	d := pageData{uiSnapshot: uiSnapshot{cards: []Card{card}, attempts: []Attempt{a}, autoResumes: map[string]autoResumeStatus{"task": status}}}
+	d := pageData{cards: []Card{card}, attempts: []Attempt{a}, autoResumes: map[string]autoResumeStatus{"task": status}}
 	for _, state := range []string{"scheduled", "stopped", "exhausted"} {
 		status.state = state
 		d.autoResumes["task"] = status

@@ -17,6 +17,9 @@ type FailedResume struct {
 	Target  client.Target `json:"target"`
 	Seq     int           `json:"seq"`
 	TurnID  string        `json:"turn_id"`
+	// Reconcile fences an idle command without executing it. It is not part of
+	// the durable command identity; active executions remain pending.
+	Reconcile bool `json:"reconcile,omitempty"`
 }
 type FailedResumeReply struct {
 	Version int             `json:"version"`

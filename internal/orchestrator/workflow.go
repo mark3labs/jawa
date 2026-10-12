@@ -33,19 +33,20 @@ type Attempt struct {
 type Verifier func(context.Context, Attempt) (bool, error)
 
 type Workflow struct {
-	logger        *log.Logger
-	s             *Store
-	client        *client.Client
-	presence      *presencenats.Store
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	mu            sync.RWMutex
-	verifier      Verifier
-	conflicts     *conflictMonitor
-	reports       *nats.Subscription
-	observeReport func(context.Context, client.Target) (client.Status, error)
-	resumeConn    *nats.Conn
+	logger           *log.Logger
+	s                *Store
+	client           *client.Client
+	presence         *presencenats.Store
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	mu               sync.RWMutex
+	verifier         Verifier
+	conflicts        *conflictMonitor
+	reports          *nats.Subscription
+	observeReport    func(context.Context, client.Target) (client.Status, error)
+	resumeConn       *nats.Conn
+	resumeStaleAfter time.Duration
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
@@ -77,6 +78,11 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
 	w.resumeConn = conn
+	w.resumeStaleAfter, err = resumeStaleDuration()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 	w.observeReport = c.Status
 	if err := w.subscribeReports(conn); err != nil {
 		cancel()

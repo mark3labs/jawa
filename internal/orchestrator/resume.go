@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -165,37 +166,83 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 	return tx.Commit()
 }
 
-// Reuse exactly the same durable command identity on timeouts and restart.
+const resumePendingNotice = "Resume pending confirmation"
+
+func resumeStaleDuration() (time.Duration, error) {
+	value := os.Getenv("JAWA_RESUME_STALE_AFTER")
+	if value == "" {
+		return 5 * time.Minute, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return 0, errors.New("JAWA_RESUME_STALE_AFTER must be a positive duration")
+	}
+	return d, nil
+}
+
+// Reuse the durable command identity. Expiration requests a host-side fence,
+// never a local abandonment that could race a delayed original command.
 func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
-	rows, err := w.s.db.Query(`SELECT id,request_json FROM failed_resumes WHERE status='pending'`)
+	rows, err := w.s.db.Query(`SELECT id,request_json,created_at FROM failed_resumes WHERE status='pending'`)
 	if err != nil {
+		w.log().Error("Failed to load pending resumes")
 		return
 	}
-	type command struct{ id, raw string }
+	type command struct {
+		id, raw string
+		created int64
+	}
 	var commands []command
 	for rows.Next() {
 		var c command
-		if rows.Scan(&c.id, &c.raw) != nil {
+		if err = rows.Scan(&c.id, &c.raw, &c.created); err != nil {
 			break
 		}
 		commands = append(commands, c)
 	}
+	if err == nil {
+		err = rows.Err()
+	}
 	_ = rows.Close()
+	if err != nil {
+		w.log().Error("Failed to read pending resumes")
+		return
+	}
+	threshold := w.resumeStaleAfter
+	if threshold <= 0 {
+		threshold = 5 * time.Minute
+	}
 	for _, c := range commands {
 		var req reportprotocol.FailedResume
 		if json.Unmarshal([]byte(c.raw), &req) != nil {
+			w.log().Error("Invalid pending resume command", "resume_id", c.id)
 			continue
+		}
+		if time.Since(time.UnixMilli(c.created)) >= threshold {
+			w.log().Warn("Resume remains pending; checking owning agent", "resume_id", c.id, "task_id", req.Target.TaskID)
+			if w.client != nil {
+				ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+				status, e := w.client.Status(ctx, req.Target)
+				cancel()
+				// Absence and transport failures are not proof of safe abandonment.
+				if e == nil && status.Error == "" && status.Target == req.Target && !status.Active && status.State == runtime.RunFailed {
+					req.Reconcile = true
+				}
+			}
 		}
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 		reply, e := reportprotocol.ResumeFailed(ctx, conn, "bonnie", req)
 		cancel()
-		if e != nil || reply.Status == "pending" || reply.Status == "ambiguous" {
+		if e != nil {
+			w.log().Warn("Resume delivery failed; will retry", "resume_id", c.id)
 			continue
 		}
-		if reply.Status != "completed" && reply.Status != "rejected" {
+		if reply.Status == "pending" {
 			continue
 		}
-		_ = w.finishFailedResume(c.id, reply)
+		if e = w.finishFailedResume(c.id, reply); e != nil {
+			w.log().Error("Failed to apply resume receipt", "resume_id", c.id, "status", reply.Status)
+		}
 	}
 }
 func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResumeReply) error {
@@ -218,7 +265,7 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 		return err
 	}
 	if reply.Version != 1 || reply.ID != id || reply.Target != req.Target ||
-		(reply.Status != "completed" && reply.Status != "rejected") {
+		(reply.Status != "completed" && reply.Status != "rejected" && reply.Status != "ambiguous") {
 		return errors.New("invalid resume receipt identity or status")
 	}
 	if reply.Status == "completed" && (reply.Seq <= req.Seq || reply.Outcome == nil ||
@@ -231,14 +278,18 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	if _, err = tx.Exec(`UPDATE failed_resumes SET status=?,reply_json=? WHERE id=?`, reply.Status, raw, id); err != nil {
 		return err
 	}
-	if reply.Status == "rejected" {
+	if reply.Status != "completed" {
+		notice := "Resume rejected: " + reply.Error
+		if reply.Status == "ambiguous" {
+			notice = "Resume could not be confirmed: " + reply.Error
+		}
 		if planning {
-			_, err = tx.Exec(`UPDATE planning_turns SET state='failed',outcome_json=?,error=?,updated_at=? WHERE id=?`, previous, "Resume rejected: "+reply.Error, time.Now().UnixMilli(), task)
+			_, err = tx.Exec(`UPDATE planning_turns SET state='failed',outcome_json=?,error=?,updated_at=? WHERE id=?`, previous, notice, time.Now().UnixMilli(), task)
 			if err == nil {
-				_, err = tx.Exec(`UPDATE planning_sessions SET state='failed',error=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?)`, "Resume rejected: "+reply.Error, task)
+				_, err = tx.Exec(`UPDATE planning_sessions SET state='failed',error=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?)`, notice, task)
 			}
 		} else {
-			_, err = tx.Exec(`UPDATE workflow_attempts SET state='failed',run_state='failed',outcome_json=?,error=?,updated_at=? WHERE task_id=?`, previous, "Resume rejected: "+reply.Error, time.Now().UnixMilli(), task)
+			_, err = tx.Exec(`UPDATE workflow_attempts SET state='failed',run_state='failed',outcome_json=?,error=?,updated_at=? WHERE task_id=?`, previous, notice, time.Now().UnixMilli(), task)
 		}
 	} else if reply.Outcome != nil && reply.Outcome.TaskID == task && reply.Outcome.AgentID == reply.Target.AgentID && reply.Outcome.RunID == reply.Target.RunID && reply.Outcome.AttemptID == reply.Target.AttemptID {
 		// New outcomes come only from the durable host receipt, never a replay of
@@ -270,7 +321,7 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 			return err
 		}
 	}
-	if automatic && reply.Status == "rejected" {
+	if automatic && reply.Status != "completed" {
 		var a Attempt
 		if planning {
 			t, e := sqlc.New(tx).GetPlanningTurn(w.ctx, task)

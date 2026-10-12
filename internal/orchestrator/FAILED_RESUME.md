@@ -58,14 +58,30 @@ NATS ACLs. Old agents do not answer it. Same stable agent identity and journal a
 required. Presence is not a lease: retain the existing single owner per agent/run
 and single orchestrator per database/NATS scope assumptions.
 
-If a host crashes after command intent but before its receipt, execution is
-ambiguous. The adapter deliberately does **not** replay StartRetry automatically;
-the reservation remains pending and blocks unsafe fresh work. There is currently
-no UI for abandoning/reconciling this ambiguous command. Restore/inspect the owning
-host and journal with operator support; never delete the ledger to force execution
-while ownership is unknown. Missing/expired sandbox storage also cannot be rebuilt
-by this action. External side effects are not rolled back or made exactly-once by
-same-run continuation.
+If a host crashes after command intent but before its receipt, the adapter does
+**not** replay StartRetry. Locally in-flight or runner-active commands remain
+pending. An idle orphan intent is finalized with a durable `ambiguous` receipt;
+the orchestrator restores the previous failure and stops automatic retries for
+that failure generation. Receipt replay and persistence use bounded retries and
+log failures. A completed receipt must carry a valid journal cursor.
+
+Pending build/fix and planning badges show **Resuming…**, not Running.
+`JAWA_RESUME_STALE_AFTER` configures the reconciliation threshold as a positive Go
+duration (default `5m`, for example `30s` or `10m`); invalid values fail workflow
+startup. This is not an execution deadline: active and unreachable owners remain
+pending. After the threshold, the orchestrator queries the exact owning agent.
+For a confirmed idle failed run it sends the same command with `reconcile: true`.
+The updated host durably fences unseen commands without executing them, or
+supersedes an invalid completed receipt with an ambiguous receipt. Only that host
+receipt releases the reservation; elapsed time or Status alone never does. This
+prevents a delayed original request from starting after fresh Retry is enabled.
+Invalid receipts and stale reservations are logged without result payloads.
+
+Deploy updated agents and orchestrator together: old agents do not implement the
+reconciliation fence. There is no admin reconciliation command in this change.
+Never delete the ledger to force execution while ownership is unknown.
+Missing/expired sandbox storage cannot be rebuilt by this action. External side
+effects are not rolled back or made exactly-once by same-run continuation.
 
 Tests use real KIT, BONNIE SQLite journals and local JetStream with an exhausted
 scripted provider followed by a healthy provider after restart. They cover both
@@ -97,7 +113,8 @@ may claim overdue schedules. Resetting dashboard overrides restores enabled
 behavior. Board cards and planning details display deadlines, exhaustion or host
 rejection without hiding the original failure. Automation never treats absence,
 transport failure, typed blockers, waiting, cancellation or interruption as a
-runtime failure, and does not resolve ambiguous pending commands.
+runtime failure. Durable ambiguous receipts stop automation and restore the failed
+state; they do not authorize automatic re-execution.
 
 Default-on continuation can incur provider cost and repeat external side effects;
 the cap limits additional execution but does not roll back side effects. Wall-clock

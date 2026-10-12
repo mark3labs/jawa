@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -207,6 +208,8 @@ const executionConflictNotice = "Terminal agent report could not be applied: exe
 
 func runTone(a Attempt) string {
 	switch {
+	case !a.Ready && a.Error == resumePendingNotice:
+		return "resuming"
 	case !a.Ready && a.Error == executionConflictNotice:
 		return "blocked"
 	case a.Ready || a.State == "ready":
@@ -232,6 +235,8 @@ func runLabel(a Attempt) string {
 		return "Cancelled"
 	}
 	switch runTone(a) {
+	case "resuming":
+		return "Resuming…"
 	case "ready":
 		return "Ready for review"
 	case "failed":
@@ -398,13 +403,9 @@ func dashboardValue(d pageData, key, env, fallback string) string {
 func providerConfigs(overrides map[string]string, defaults ...map[string]string) []providerConfig {
 	values := map[string]string{}
 	if len(defaults) > 0 {
-		for k, v := range defaults[0] {
-			values[k] = v
-		}
+		maps.Copy(values, defaults[0])
 	}
-	for k, v := range overrides {
-		values[k] = v
-	}
+	maps.Copy(values, overrides)
 	return []providerConfig{
 		{"GitHub", "--github-token / JAWA_GITHUB_TOKEN or GITHUB_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "github-token", "JAWA_GITHUB_TOKEN")) != ""},
 		{"Forgejo", "--forgejo-token / JAWA_FORGEJO_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "forgejo-token", "JAWA_FORGEJO_TOKEN")) != ""},

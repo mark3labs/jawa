@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/mark3labs/bonnie/presence"
 	"github.com/nats-io/nats.go"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -716,9 +717,7 @@ func Command() *cobra.Command {
 		}
 		readProviderFlags(cmd, providerDefaults)
 		s.runtimeDefaults = providerDefaults
-		for k, v := range providerDefaults {
-			runtimeDefaults[k] = v
-		}
+		maps.Copy(runtimeDefaults, providerDefaults)
 		defer func() {
 			if closeErr := s.Close(); closeErr != nil {
 				logger.Error("Failed to close store", "err", closeErr)
