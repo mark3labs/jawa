@@ -30,6 +30,7 @@ templ boardContent(d pageData) {
 					</div>
 				</div>
 				<div class="view-stats">
+					@prRefreshForm(d, p.ID, "", "Refresh PR status")
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Building"))) }</strong> building</span>
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
 				</div>
@@ -143,16 +144,8 @@ templ cardChips(d pageData, c Card) {
 }
 
 templ cardNote(d pageData, c Card) {
-	if check, ok := d.prChecks[c.ID]; ok && check.State == "conflict" && c.Status == "Done" {
-		<div class="card-conflict" role="status">
-			<p>Pull request has merge conflicts.</p>
-			if canAction(c, d.attempts, "fix") {
-				<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
-					@icon("warning")
-					Fix Merge Conflict
-				</button>
-			}
-		</div>
+	if canAction(c, d.attempts, "fix") {
+		@cardPRStatus(d, c)
 	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 && la[0].Error != "" && !attemptActive(la[0]) && runTone(la[0]) != "ready" {
 		<p class={ "card-note", "tone-" + runTone(la[0]) }>{ la[0].Error }</p>
@@ -256,5 +249,48 @@ templ menuDisabled(label, ic, reason string) {
 		@icon(ic)
 		<span>{ label }</span>
 		<span class="menu-reason">{ reason }</span>
+	</div>
+}
+
+// Refresh forms work natively and use finite SSE when Datastar is available.
+templ prRefreshForm(d pageData, projectID, cardID, label string) {
+	<form class="pr-refresh-form" method="post" action="/prs/refresh" data-signals:pr-refreshing="false" data-indicator:pr-refreshing data-on:submit__prevent="@post('/prs/refresh', {contentType:'form'})">
+		<input type="hidden" name="_csrf" value={ d.csrf }/>
+		<input type="hidden" name="project_id" value={ projectID }/>
+		<input type="hidden" name="card_id" value={ cardID }/>
+		@viewFields(d.v)
+		<button type="submit" class="btn small" data-attr:disabled="$prRefreshing" data-attr:aria-busy="$prRefreshing ? 'true' : 'false'">{ label }</button>
+	</form>
+}
+
+templ cardPRStatus(d pageData, c Card) {
+	{{ check := d.prChecks[c.ID] }}
+	<div class={ "card-pr-status", templ.KV("card-conflict", check.State == "conflict") } role="status" data-pr-check-state={ check.State }>
+		<p>{ prCheckLabel(check) }</p>
+		if !check.CheckedAt.IsZero() {
+			<p class="pr-checked-at">Last checked <time datetime={ timeAttr(check.CheckedAt) }>{ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }</time></p>
+		} else if check.State == "checking" {
+			<p class="pr-checked-at">Awaiting a fresh check.</p>
+		} else {
+			<p class="pr-checked-at">No prior check recorded.</p>
+		}
+		if check.HeadSHA != "" || check.BaseSHA != "" {
+			<details class="pr-evidence">
+				<summary>Checked revision evidence</summary>
+				if check.HeadSHA != "" {
+					<p>Head: <code>{ check.HeadSHA }</code></p>
+				}
+				if check.BaseSHA != "" {
+					<p>Base: <code>{ check.BaseSHA }</code></p>
+				}
+			</details>
+		}
+		@prRefreshForm(d, c.ProjectID, c.ID, "Check PR now")
+		if check.State == "conflict" {
+			<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
+				@icon("warning")
+				Fix Merge Conflict
+			</button>
+		}
 	</div>
 }

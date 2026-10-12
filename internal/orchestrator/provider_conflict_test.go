@@ -45,7 +45,7 @@ func conflictFixture(t *testing.T, provider string) (*Store, Attempt) {
 
 func TestProviderConflictChecker(t *testing.T) {
 	for _, provider := range []string{"github", "forgejo"} {
-		for _, scenario := range []string{"conflict", "clear", "unknown", "blocked", "wrong repo", "wrong base", "wrong branch", "changed head", "cleared", "merged", "closed", "draft", "HTTP error", "malformed", "cancelled", "bad URL"} {
+		for _, scenario := range []string{"conflict", "clear", "unknown", "blocked", "wrong repo", "wrong base", "wrong branch", "changed head", "changed base", "clear changed head", "clear changed base", "missing base SHA", "invalid base SHA", "clear missing base SHA", "clear became unknown", "cleared", "merged", "closed", "draft", "HTTP error", "malformed", "cancelled", "bad URL"} {
 			t.Run(provider+"/"+scenario, func(t *testing.T) {
 				s, a := conflictFixture(t, provider)
 				branch, err := assignedBranch(a)
@@ -62,9 +62,10 @@ func TestProviderConflictChecker(t *testing.T) {
 						t.Errorf("unexpected request: %s", r.URL.Path)
 					}
 					ref, repo, base, sha := branch, "acme/repo", "main", strings.Repeat("a", 40)
+					baseSHA := strings.Repeat("c", 40)
 					mergeable, state, merged, dirty, draft := any(false), "open", false, "dirty", false
 					switch scenario {
-					case "clear":
+					case "clear", "clear changed head", "clear changed base", "clear missing base SHA", "clear became unknown":
 						mergeable = true
 					case "unknown":
 						mergeable = nil
@@ -76,6 +77,14 @@ func TestProviderConflictChecker(t *testing.T) {
 						base = "other"
 					case "wrong branch":
 						ref = "other"
+					case "missing base SHA":
+						baseSHA = ""
+					case "invalid base SHA":
+						baseSHA = "not-a-sha"
+					case "changed base":
+						if calls == 2 {
+							baseSHA = strings.Repeat("d", 40)
+						}
 					case "changed head":
 						if calls == 2 {
 							sha = strings.Repeat("b", 40)
@@ -91,7 +100,19 @@ func TestProviderConflictChecker(t *testing.T) {
 					case "draft":
 						draft = true
 					}
-					body, _ := json.Marshal(map[string]any{"number": 7, "state": state, "merged": merged, "draft": draft, "mergeable": mergeable, "mergeable_state": dirty, "head": map[string]any{"ref": ref, "sha": sha, "repo": map[string]any{"full_name": repo}}, "base": map[string]any{"ref": base, "repo": map[string]any{"full_name": "acme/repo"}}})
+					if scenario == "clear changed head" && calls == 2 {
+						sha = strings.Repeat("b", 40)
+					}
+					if scenario == "clear changed base" && calls == 2 {
+						baseSHA = strings.Repeat("d", 40)
+					}
+					if scenario == "clear missing base SHA" {
+						baseSHA = ""
+					}
+					if scenario == "clear became unknown" && calls == 2 {
+						mergeable = nil
+					}
+					body, _ := json.Marshal(map[string]any{"number": 7, "state": state, "merged": merged, "draft": draft, "mergeable": mergeable, "mergeable_state": dirty, "head": map[string]any{"ref": ref, "sha": sha, "repo": map[string]any{"full_name": repo}}, "base": map[string]any{"ref": base, "sha": baseSHA, "repo": map[string]any{"full_name": "acme/repo"}}})
 					status := 200
 					if scenario == "HTTP error" {
 						status = 403
@@ -136,7 +157,7 @@ func TestProviderConflictChecker(t *testing.T) {
 				if calls > 2 {
 					t.Fatalf("unbounded calls: %d", calls)
 				}
-				if want == "conflict" && calls != 2 {
+				if (want == "conflict" || want == "clear") && calls != 2 {
 					t.Fatalf("conflict not confirmed: %d", calls)
 				}
 				if scenario == "bad URL" && calls != 0 {

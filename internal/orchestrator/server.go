@@ -155,7 +155,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -174,6 +174,9 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var fx mutationEffects
 	switch r.URL.Path {
+	case "/prs/refresh":
+		a.refreshPRChecks(w, r)
+		return
 	case "/logout":
 		a.clear(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -877,4 +880,47 @@ func (a *app) activity(w http.ResponseWriter, r *http.Request) {
 		Attempts []Attempt         `json:"attempts"`
 		Cards    []Card            `json:"cards"`
 	}{agents, attempts, cards})
+}
+
+// refreshPRChecks gives the bounded provider batch time to finish before writing
+// the normal finite SSE response or native redirect. No global timeout changes.
+func (a *app) refreshPRChecks(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+	controller := http.NewResponseController(w)
+	if err := controller.SetWriteDeadline(time.Now().Add(35 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		a.responseError(w, r, "Unable to refresh PR status. Try again.", http.StatusServiceUnavailable)
+		return
+	}
+	var result PRRefreshResult
+	var err error
+	if a.workflow == nil {
+		err = ErrPRChecksUnavailable
+	} else {
+		result, err = a.workflow.RefreshPRChecks(ctx, r.FormValue("project_id"), r.FormValue("card_id"))
+	}
+	if err != nil {
+		status, message := http.StatusServiceUnavailable, "Unable to refresh PR status. Unfinished checks remain queued; no clear status is assumed. Try again."
+		switch {
+		case errors.Is(err, ErrPRRefreshBusy):
+			status, message = http.StatusConflict, "PR checks are already running. Wait for the current check, then try again."
+		case errors.Is(err, ErrPRChecksUnavailable):
+			message = "PR checks are unavailable. Try again when the provider checker is available."
+		case errors.Is(err, sql.ErrNoRows):
+			status, message = http.StatusNotFound, "Project or verified Done pull request not found. Refresh the board and try again."
+		}
+		// A failed batch may have invalidated old evidence. Patch the current board
+		// before the error notice rather than leaving an old clear status onscreen.
+		if datastarRequest(r) && ctx.Err() == nil {
+			a.snapshot(w, r, false, mutationEffects{})
+		}
+		a.responseError(w, r, message, status)
+		return
+	}
+	if datastarRequest(r) {
+		a.snapshot(w, r, true, mutationEffects{flash: fmt.Sprintf("PR status refresh: %d targeted, %d checked, %d queued for background checking.", result.Targeted, result.Checked, result.Queued)})
+		return
+	}
+	http.Redirect(w, r, parseViewParams(r, "").Path(), http.StatusSeeOther)
 }

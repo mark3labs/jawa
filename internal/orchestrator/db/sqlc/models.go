@@ -213,6 +213,7 @@ type WorkflowPrCheck struct {
 	BaseBranch string `json:"base_branch"`
 	State      string `json:"state"`
 	HeadSha    string `json:"head_sha"`
+	BaseSha    string `json:"base_sha"`
 	Error      string `json:"error"`
 	CheckedAt  int64  `json:"checked_at"`
 }

@@ -211,8 +211,8 @@ type providerPR struct {
 		}
 	}
 	Base struct {
-		Ref  string
-		Repo struct {
+		Ref, SHA string
+		Repo     struct {
 			FullName string `json:"full_name"`
 		}
 	}

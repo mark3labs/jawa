@@ -71,14 +71,14 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 func TestConflictWarningOnlyForConflict(t *testing.T) {
 	c := Card{ID: "done", Status: "Done"}
 	attempts := []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/18"}}
-	for _, state := range []string{"conflict", "clear", "unknown", "error", "merged", "closed", ""} {
+	for _, state := range []string{"checking", "conflict", "clear", "unknown", "error", "merged", "closed", ""} {
 		t.Run(state, func(t *testing.T) {
 			d := pageData{attempts: attempts, prChecks: map[string]PRCheck{c.ID: {State: state}}}
 			var out bytes.Buffer
 			if err := cardNote(d, c).Render(t.Context(), &out); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(out.String(), "merge conflicts") != (state == "conflict") {
+			if strings.Contains(out.String(), "Pull request has merge conflicts.") != (state == "conflict") {
 				t.Fatalf("state %q: %s", state, out.String())
 			}
 		})

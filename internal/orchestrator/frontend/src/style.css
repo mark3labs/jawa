@@ -651,3 +651,13 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 #fix-message { width: 100%; margin-top: 8px; }
 
 .btn.conflict-fix { color: var(--amber); border-color: var(--amber); }
+
+/* Current provider evidence stays separate from historical readiness. */
+.card-pr-status { border-top: 1px solid var(--line-strong); margin-top: 10px; padding-top: 10px; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.card-pr-status p { margin: 0 0 8px; }
+.card-pr-status.card-conflict { border-color: var(--amber); color: var(--amber); }
+.pr-checked-at, .pr-evidence { color: var(--text-3); }
+.pr-evidence { margin-bottom: 8px; }
+.pr-evidence code { overflow-wrap: anywhere; }
+.pr-refresh-form { display: inline-flex; max-width: 100%; }
+.card-pr-status .btn { margin-bottom: 4px; }
