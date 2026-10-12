@@ -348,6 +348,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					values[pair[1]] = value
 				}
 			}
+			if err == nil && r.Form.Has("auto-resume-failed-runs") {
+				value := r.Form.Get("auto-resume-failed-runs")
+				if value != "true" && value != "false" {
+					err = errors.New("auto-resume-failed-runs must be true or false")
+				} else {
+					values["auto-resume-failed-runs"] = value
+				}
+			}
 			if err == nil && r.Form.Has("allow-no-ci") {
 				value := r.Form.Get("allow-no-ci")
 				if value != "true" && value != "false" {

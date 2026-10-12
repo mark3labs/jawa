@@ -232,7 +232,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 12 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 13 {
 		t.Fatal(version, err)
 	}
 }
@@ -254,7 +254,9 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
 	execTest(t, database, strings.Split(string(legacy), "-- +goose Down")[0])
 	execTest(t, database, `INSERT INTO workflow_pr_checks VALUES('a','url','github','repo','main','conflict','head','',123);
  ALTER TABLE cards DROP COLUMN archived;
- DELETE FROM goose_db_version WHERE version_id IN (11,12)`)
+ DROP TABLE auto_resumes;
+ ALTER TABLE failed_resumes DROP COLUMN automatic;
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -271,5 +273,44 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
 	var count int
 	if err := database.QueryRow(`SELECT count(*) FROM workflow_pr_checks`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("cascade %d %v", count, err)
+	}
+}
+
+func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	ctx := context.Background()
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `DROP TABLE auto_resumes; ALTER TABLE failed_resumes DROP COLUMN automatic;
+ DELETE FROM goose_db_version WHERE version_id=13;
+ INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
+ INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
+	for range 2 {
+		if err := Migrate(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var automatic int
+	if err := database.QueryRow(`SELECT automatic FROM failed_resumes WHERE id='old'`).Scan(&automatic); err != nil || automatic != 0 {
+		t.Fatal(automatic, err)
+	}
+	execTest(t, database, `INSERT INTO auto_resumes VALUES('task','c',0,'token',123,123,'scheduled')`)
+	if _, err := database.Exec(`UPDATE failed_resumes SET automatic=2`); err == nil {
+		t.Fatal("invalid origin accepted")
+	}
+	execTest(t, database, `DELETE FROM cards WHERE id='c'`)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM auto_resumes`).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
+	}
+	rows, err := database.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		t.Fatal("foreign key violation")
 	}
 }

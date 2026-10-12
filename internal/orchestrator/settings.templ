@@ -102,6 +102,7 @@ templ settingsContent(d pageData) {
 						@monoField("runtime-listen", "listen", "Dashboard address", dashboardValue(d, "listen", "JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"))
 						@monoField("runtime-nats-listen", "nats-listen", "NATS address", dashboardValue(d, "nats-listen", "JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"))
 					</div>
+					@switchField("runtime-auto-resume", "auto-resume-failed-runs", "Auto-resume failed runs", "Planning, build and Fix runtime failures: up to five automatic resumes. Applies immediately.", dashboardValue(d, "auto-resume-failed-runs", "", "true") == "true")
 					@switchField("runtime-debug", "debug", "Debug logging", "Log polling and ignored deliveries. Applies immediately.", dashboardValue(d, "debug", "JAWA_ORCHESTRATOR_DEBUG", "false") == "true")
 					<div class="form-actions">
 						@submit("Save")

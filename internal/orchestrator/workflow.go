@@ -394,6 +394,7 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 
 func (w *Workflow) dispatch() {
 	w.dispatchPlanning()
+	w.autoResumePass(time.Now())
 	if w.resumeConn != nil {
 		w.dispatchFailedResumes(w.resumeConn)
 	}

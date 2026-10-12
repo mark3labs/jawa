@@ -485,3 +485,22 @@ npm run build
 npm run test:fix  # requires Chromium; CHROMIUM_PATH overrides its location
 npm run test:pr-refresh
 ```
+
+### Automatic failed-run recovery
+
+Settings → Server → **Auto-resume failed runs** is enabled by default. Planning,
+build and Fix runtime failures resume the same task/run with saved conversation,
+context and branch, after delays of 5, 10, 20, 40 and 80 seconds (maximum five
+automatic commands per task). Typed blockers, cancellation, waiting, interruption,
+missing reports and ambiguous ownership are not auto-resumed. Manual resume does
+not consume the budget; fresh Retry starts a new task/budget. Fix retains its
+existing repair PR, branch and message.
+
+The setting applies immediately. Disabling prevents new automatic reservations,
+not delivery of commands already reserved; schedules and budgets survive restart
+and disabling. Enabling also schedules existing eligible failures, and may process
+overdue schedules. Reset dashboard overrides restores enabled behavior. Host
+rejection stops that failure generation; exhausted budgets need operator action.
+Default-on recovery can incur provider costs and repeat external side effects.
+It still requires the original agent journal/sandbox and compatible control route;
+see [failed-run recovery limits](internal/orchestrator/FAILED_RESUME.md).

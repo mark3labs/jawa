@@ -80,3 +80,10 @@ explicit retry message. Deploy upgraded agents/backend together.
 Version `00008_failed_resume.sql` adds the failed-run command reservation ledger,
 retaining original outcomes and durable request/reply audit without creating new
 execution identities. See `../FAILED_RESUME.md` for restart and ambiguity semantics.
+
+Version `00013_auto_resume.sql` adds the `automatic` ledger discriminator (existing
+commands default to manual) and `auto_resumes` scheduling hints. Deadlines and
+failure tokens persist across restart; budgets are derived from automatic command
+reservations, never a separate counter. Card deletion cascades scheduling hints.
+The default-enabled setting requires no data rewrite; absent overrides mean true.
+See `../FAILED_RESUME.md` for budget, rejection and disable semantics.

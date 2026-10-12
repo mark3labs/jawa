@@ -1,13 +1,13 @@
 # Resume failed run
 
-Build card menus and failed planning details offer **Resume failed run** separately
+Build and Fix card menus and failed planning details offer **Resume failed run** separately
 from fresh **Retry attempt / Retry planning**. Resume keeps the task ID, board
 attempt/planning turn, remote attempt, RunID, saved conversation/context and assigned
 branch. It does not publish the original task again, allocate a worktree, or append
 the original prompt again. Retry retains its existing fresh-attempt behavior
 (including a new build branch).
 
-Eligibility is intentionally narrow: latest execution on its current Building or
+Eligibility is intentionally narrow: latest execution on its current Building, Fix or
 Planning card, a versioned natural `failed` outcome with complete pinned ownership,
 no accepted terminal typed report, no active work or pending resume, and no retained
 competing execution. Explicit reportBlocker, completed-without-report, cancelled,
@@ -73,3 +73,33 @@ modes, original prompt/context and identity preservation, concurrent action
 reservation, stale forms/events/outcomes, host restart/dedup, missing host, explicit
 rejection/fresh fallback, narrow eligibility and crash-window fail-closed behavior.
 They make no paid provider calls and do not exercise real remote repositories.
+
+## Automatic runtime recovery
+
+**Auto-resume failed runs** in Settings is enabled by default, including after an
+upgrade. It covers planning, Building and Fix runtime failures using the same
+ownership and journal guards as manual resume. Existing eligible failures are
+scheduled on discovery, not resumed immediately. Delays for automatic commands
+1–5 are **5, 10, 20, 40 and 80 seconds**, starting at durable discovery of each
+failure generation. Status confirmation failures defer checks by at least five
+seconds without consuming a slot. The dispatch pass claims at most 25 due tasks.
+
+The budget is per task/run: manual resumes and planning Answer do not reset or
+consume it; fresh Retry creates a new task with a new budget. A committed automatic
+reservation consumes a slot even if the host rejects it. Retransmission uses the
+same command ID and does not consume another. Rejection stops automation for that
+failure generation; manual recovery remains available when safe. After five slots,
+operator action is required. Fix preserves its repair branch, PR and message.
+
+Disabling applies immediately to new reservations, but already-reserved commands
+continue delivery. Deadlines and budgets survive disable and restart; re-enabling
+may claim overdue schedules. Resetting dashboard overrides restores enabled
+behavior. Board cards and planning details display deadlines, exhaustion or host
+rejection without hiding the original failure. Automation never treats absence,
+transport failure, typed blockers, waiting, cancellation or interruption as a
+runtime failure, and does not resolve ambiguous pending commands.
+
+Default-on continuation can incur provider cost and repeat external side effects;
+the cap limits additional execution but does not roll back side effects. Wall-clock
+changes can affect deadlines. The original agent, journal, sandbox and compatible
+control route are still required; upgrade agents with the orchestrator.

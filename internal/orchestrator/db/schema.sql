@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS workflow_cancel_requests (
 CREATE TABLE failed_resumes (
  id TEXT PRIMARY KEY, task_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
  planning INTEGER NOT NULL, request_json TEXT NOT NULL, previous_outcome TEXT NOT NULL,
- status TEXT NOT NULL DEFAULT 'pending', reply_json TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+ status TEXT NOT NULL DEFAULT 'pending', reply_json TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+ automatic INTEGER NOT NULL DEFAULT 0 CHECK(automatic IN (0,1)));
 CREATE UNIQUE INDEX failed_resume_pending ON failed_resumes(task_id) WHERE status='pending';
 
 CREATE TABLE workflow_pr_checks (
@@ -94,3 +95,10 @@ CREATE TABLE workflow_pr_checks (
  error TEXT NOT NULL DEFAULT '',
  checked_at INTEGER NOT NULL
 );
+
+CREATE TABLE auto_resumes (
+ task_id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+ planning INTEGER NOT NULL CHECK(planning IN (0,1)), failure_token TEXT NOT NULL,
+ due_at INTEGER NOT NULL, next_check_at INTEGER NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('scheduled','reserved','stopped','exhausted')));
+CREATE INDEX auto_resume_due ON auto_resumes(state,next_check_at,task_id);
