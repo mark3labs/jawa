@@ -408,11 +408,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, back.Path(), http.StatusSeeOther)
 }
+
+const sessionLifetime = 30 * 24 * time.Hour
+
 func (a *app) ensureCSRF(w http.ResponseWriter, r *http.Request) {
 	if len(CSRFToken(r)) == 64 {
 		return
 	}
-	c := &http.Cookie{Name: "csrf", Value: newID(), Path: "/", Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: 86400}
+	c := &http.Cookie{Name: "csrf", Value: newID(), Path: "/", Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: time.Now().Add(sessionLifetime), MaxAge: int(sessionLifetime / time.Second)}
 	http.SetCookie(w, c)
 	cookies := r.Cookies()
 	r.Header.Del("Cookie")
@@ -452,7 +455,7 @@ func (a *app) clear(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) issue(w http.ResponseWriter, r *http.Request) error {
 	t := newID()
-	exp := time.Now().Add(24 * time.Hour)
+	exp := time.Now().Add(sessionLifetime)
 	if _, err := a.s.db.Exec("INSERT INTO sessions(token_hash,expires_at) VALUES(?,?)", tokenHash(t), exp.Unix()); err != nil {
 		return err
 	}
@@ -460,8 +463,8 @@ func (a *app) issue(w http.ResponseWriter, r *http.Request) error {
 		_, _ = a.s.db.Exec("DELETE FROM sessions WHERE token_hash=?", tokenHash(c.Value))
 	}
 	_, _ = a.s.db.Exec("DELETE FROM sessions WHERE expires_at<=?", time.Now().Unix())
-	http.SetCookie(w, &http.Cookie{Name: "session", Value: t, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: 86400})
-	http.SetCookie(w, &http.Cookie{Name: "csrf", Value: newID(), Path: "/", Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: 86400})
+	http.SetCookie(w, &http.Cookie{Name: "session", Value: t, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: int(sessionLifetime / time.Second)})
+	http.SetCookie(w, &http.Cookie{Name: "csrf", Value: newID(), Path: "/", Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: int(sessionLifetime / time.Second)})
 	return nil
 }
 func (a *app) setup(w http.ResponseWriter, r *http.Request) {

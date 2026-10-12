@@ -12,7 +12,8 @@
     "test:fix": "node fix.mjs",
     "test:responsive": "node responsive.mjs",
     "test:pwa": "node pwa.mjs",
-    "test:pr-refresh": "node pr-refresh.mjs"
+    "test:pr-refresh": "node pr-refresh.mjs",
+    "test:auth-persistence": "node auth-persistence.mjs"
   },
   "dependencies": {
     "sortablejs": "^1.15.6"

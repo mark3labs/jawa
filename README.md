@@ -34,6 +34,17 @@ are blocked with a setup alert. Completion persists across restarts. Existing
 installations without a completion marker must confirm their credentials once;
 the initial random bootstrap password does not count as completed setup.
 
+Authentication lasts an absolute **30 days** from account creation or successful
+login; activity does not renew it. Refresh and browser/PWA relaunch retain a valid
+session when the same origin, browser profile and server data directory are kept.
+Logout revokes it immediately. Existing sessions keep their previous expiry:
+after upgrading, log in again to receive the longer lifetime. Clearing browser
+storage or platform eviction can require another login. Some platforms separate
+browser and installed-app cookie stores; log in inside the installed app first.
+Never store passwords or bearer tokens in JavaScript storage. See the
+[mobile/PWA acceptance checklist](internal/orchestrator/CONTRACT.md#mobile-and-pwa-checks)
+for disposable browser automation and physical-device validation.
+
 Add projects by
 selecting a provider and entering a repository name (`owner/repo`). GitHub uses
 `https://github.com` automatically. For Forgejo, also enter the instance URL;

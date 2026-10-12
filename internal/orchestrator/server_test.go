@@ -210,8 +210,11 @@ func TestSecureCookiesBodyLimitAndAssets(t *testing.T) {
 	if e := a.issue(w, r); e != nil {
 		t.Fatal(e)
 	}
-	if !cookie(t, w, "session").Secure {
-		t.Fatal("session not secure")
+	for _, name := range []string{"session", "csrf"} {
+		c := cookie(t, w, name)
+		if !c.Secure || c.HttpOnly != (name == "session") || c.SameSite != http.SameSiteStrictMode || c.Path != "/" || c.Domain != "" || c.MaxAge != 2592000 {
+			t.Fatalf("insecure or nonpersistent %s cookie", name)
+		}
 	}
 	status(t, request(a, "POST", "/setup", url.Values{"password": {strings.Repeat("x", maxRequestBody+1)}}), 413)
 	status(t, request(a, "GET", "/assets/style.css", nil), 200)
