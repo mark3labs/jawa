@@ -192,7 +192,11 @@ templ cardMenu(d pageData, c Card) {
 			if canAction(c, d.attempts, "start") {
 				@menuPost(d, c, "/cards/retry", "Start work", "play", nil)
 			}
-			if canAction(c, d.attempts, "resume") {
+			if c.Status == "Planning" {
+				if detail, ok := d.planning[c.ID]; ok && detail.CanResume {
+					@menuPost(d, c, "/cards/planning/resume", "Resume failed run", "play", [][2]string{{"expected_resume", detail.ResumeToken}})
+				}
+			} else if canAction(c, d.attempts, "resume") {
 				@menuPost(d, c, "/cards/resume", "Resume failed run", "play", [][2]string{{"expected_resume", resumeToken(latestAttempt(c.ID, d.attempts)[0])}})
 			}
 			if canAction(c, d.attempts, "retry") {

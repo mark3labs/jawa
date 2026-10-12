@@ -37,14 +37,34 @@ func TestFailedResumeEligibility(t *testing.T) {
 			if executionFailure(a) {
 				t.Fatal("unsafe resume offered")
 			}
-			if canAction(Card{ID: "card", Status: "Building"}, []Attempt{a}, "resume") {
-				t.Fatal("unsafe UI action")
+			for _, lane := range []string{"Building", "Fix"} {
+				if canAction(Card{ID: "card", Status: lane}, []Attempt{a}, "resume") {
+					t.Fatal("unsafe UI action", lane)
+				}
 			}
 		})
 	}
 	valid.CardID = "card"
 	if !canAction(Card{ID: "card", Status: "Building"}, []Attempt{valid}, "resume") || !canAction(Card{ID: "card", Status: "Building"}, []Attempt{valid}, "retry") {
 		t.Fatal("resume and fresh Retry must be distinct available actions")
+	}
+	for _, lane := range []string{"Building", "Fix", "Planning", "Todo", "Done"} {
+		card := Card{ID: "card", Status: lane}
+		if got, want := canAction(card, []Attempt{valid}, "resume"), lane == "Building" || lane == "Fix"; got != want {
+			t.Errorf("%s eligibility=%v", lane, got)
+		}
+		active := valid
+		active.Number = 2
+		active.State = "running"
+		if canAction(card, []Attempt{valid, active}, "resume") {
+			t.Fatal("active attempt allowed", lane)
+		}
+		newer := valid
+		newer.Number = 2
+		newer.OutcomeJSON = ""
+		if canAction(card, []Attempt{valid, newer}, "resume") {
+			t.Fatal("old failure selected", lane)
+		}
 	}
 }
 

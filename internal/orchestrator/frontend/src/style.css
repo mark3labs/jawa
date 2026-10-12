@@ -721,3 +721,8 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 }
 .archive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
 .archive-grid .task-card { margin: 0; }
+
+/* Keep the issue action adjacent without overflowing narrow dialogs. */
+.issue-autofill-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.issue-autofill-row select { flex: 1 1 12rem; min-width: 0; }
+.issue-autofill-row .btn { flex: 0 0 auto; }

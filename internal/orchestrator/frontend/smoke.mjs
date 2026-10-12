@@ -147,7 +147,7 @@ const newCard = () => page.locator('.topbar').getByRole('button', {name: 'New ca
 async function createCard(title) {
  await newCard().click();
  await page.getByLabel('Title', {exact: true}).fill(title);
- await page.getByLabel('Description').fill('Offline browser orchestration test');
+ await page.getByLabel('Description', {exact: true}).fill('Offline browser orchestration test');
  await page.getByRole('button', {name: 'Create card', exact: true}).click();
  await card(title).waitFor();
 }
@@ -227,12 +227,12 @@ try {
  // Unsolicited results may patch cards, but never the shell or open draft.
  await newCard().click();
  await page.getByLabel('Title', {exact: true}).fill('Preserved draft');
- await page.getByLabel('Description').fill('Keep this while results arrive');
+ await page.getByLabel('Description', {exact: true}).fill('Keep this while results arrive');
  const data = await waitActivity(d => d.attempts.length === 3 && d.attempts.every(a => a.Result && a.Error === 'provider: credentials missing'), 'real BONNIE outcomes and fail-closed provider verification');
  await card('Legacy Building card').locator('.card-note').filter({hasText: 'provider: credentials missing'}).waitFor();
  await expect(page.locator('#card-dialog')).toBeVisible();
  await expect(page.getByLabel('Title', {exact: true})).toHaveValue('Preserved draft');
- await expect(page.getByLabel('Description')).toHaveValue('Keep this while results arrive');
+ await expect(page.getByLabel('Description', {exact: true})).toHaveValue('Keep this while results arrive');
  await page.locator('#card-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
  await sameDocument();
  for (const attempt of data.attempts) {
@@ -449,10 +449,8 @@ try {
   await bridge(`/start-resume-${mode}`); started = true;
   await waitActivity(d => d.agents.some(w => w.identity.agent === agent && w.state === 'ready'), 'healthy restarted same host');
   const endpoint = mode === 'build' ? '/cards/resume' : '/cards/planning/resume';
-  if (mode === 'planning') await screen(`/planning?card=${id}`, 'planning');
   const responsePromise = page.waitForResponse(r => new URL(r.url()).pathname === endpoint && r.request().method() === 'POST');
-  if (mode === 'build') await action(title, 'Resume failed run');
-  else await page.getByRole('button', {name: 'Resume failed run', exact: true}).click();
+  await action(title, 'Resume failed run');
   const response = await responsePromise;
   assert.equal(response.status(), 200);
   assert.match(response.request().postData(), /expected_resume/);

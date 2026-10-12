@@ -10,8 +10,11 @@ const fixture = `<!doctype html>
 <label>Project <select id="card-project" name="project_id">
 <option value="alpha" selected>Alpha</option><option value="beta & other">Beta</option>
 <option value="">Choose a project</option></select></label>
+<input id="card-title" name="title" value="Manual title">
+<textarea id="card-description" name="description">Manual description</textarea>
 <jawa-issue-selector>
 <label>Issue <select id="card-issue" name="issue_url"><option value="">No linked issue</option></select></label>
+<button data-issue-autofill type="button" disabled>Autofill</button>
 <p id="card-issue-status" role="status"></p>
 <button data-issue-refresh type="button">Refresh issues</button>
 </jawa-issue-selector>
@@ -62,9 +65,13 @@ try {
   const issue = page.locator('#card-issue');
   const status = page.locator('#card-issue-status');
   const project = page.locator('#card-project');
+  const autofill = page.locator('[data-issue-autofill]');
+  const title = page.locator('#card-title');
+  const description = page.locator('#card-description');
+  const draft = async () => [await title.inputValue(), await description.inputValue()];
   const refresh = page.locator('[data-issue-refresh]');
   const issueURL = 'https://github.com/example/repo/issues/7';
-  const entries = [{number: 7, title: '<img src=x onerror="window.injected=true"> & "title"', url: issueURL}];
+  const entries = [{number: 7, title: '<img src=x onerror="window.injected=true"> & "title"', url: issueURL, body: '  # 日本語\n**Markdown**\n<img src=x onerror="window.injected=true">  '}];
   const waitRequests = count => page.waitForFunction(n => requests.length === n, count);
   const reply = (index, issues = entries, code = 200) => page.evaluate(
     ({index, issues, code}) => window.reply(index, issues, code), {index, issues, code}
@@ -74,6 +81,11 @@ try {
     text => document.querySelector('#card-issue-status').textContent.includes(text), text
   );
   const submitWithoutLink = async () => {
+    const before = await draft();
+    // Even synthetic clicks must re-check membership, not trust disabled UI.
+    await autofill.dispatchEvent('click');
+    assert.deepEqual(await draft(), before);
+    assert.equal(await autofill.isDisabled(), true);
     assert.equal(await page.locator('#submit').isEnabled(), true);
     await page.click('#submit');
     const submitted = await page.evaluate(() => window.submission);
@@ -92,16 +104,32 @@ try {
   assert.equal(await issue.locator('option').nth(1).textContent(), `#7 ${entries[0].title}`);
   assert.equal(await page.locator('jawa-issue-selector img').count(), 0);
   assert.equal(await page.evaluate(() => window.injected), undefined);
+  assert.equal(await autofill.isDisabled(), true);
   await issue.selectOption(issueURL);
+  assert.equal(await autofill.isEnabled(), true);
+  assert.deepEqual(await draft(), ['Manual title', 'Manual description']);
+  await autofill.focus();
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await draft(), [entries[0].title, entries[0].body]);
+  assert.equal(await page.evaluate(() => window.submission.title), 'Manual title', 'autofill must not submit');
+  assert.equal(await page.locator('dialog img').count(), 0);
+  await title.fill('Edited title');
+  await description.fill('Edited description');
   await page.click('#submit');
+  assert.deepEqual(await page.evaluate(() => [submission.title, submission.description]), ['Edited title', 'Edited description']);
   assert.equal(await page.evaluate(() => submission.issue_url), issueURL);
   await issue.selectOption('');
+  assert.deepEqual(await draft(), ['Edited title', 'Edited description']);
   await submitWithoutLink();
   await issue.selectOption(issueURL);
+
+  const edited = ['Edited title', 'Edited description'];
 
   // Changing projects clears the link synchronously and aborts older requests.
   await project.selectOption('beta & other');
   await waitRequests(2);
+  assert.equal(await autofill.isDisabled(), true);
+  assert.deepEqual(await draft(), edited);
   assert.equal(await issue.inputValue(), '');
   assert.equal(await issue.isDisabled(), true);
   assert.equal(await page.evaluate(() => requests[1].url), '/projects/issues?project_id=beta%20%26%20other');
@@ -111,14 +139,20 @@ try {
   await reply(2);
   await waitLoaded();
   await issue.selectOption(issueURL);
-  await reply(1, [{number: 9, title: 'Stale project', url: 'https://example.com/stale'}]);
+  await reply(1, [{number: 9, title: 'Stale project', body: 'Stale body', url: 'https://example.com/stale'}]);
   await page.waitForTimeout(50);
   assert.equal(await issue.inputValue(), issueURL);
   assert.equal(await issue.locator('option').count(), 2);
+  await autofill.click();
+  assert.deepEqual(await draft(), [entries[0].title, entries[0].body], 'stale reply cannot replace copy source');
+  await title.fill(edited[0]);
+  await description.fill(edited[1]);
 
   // Refresh clears selection, safe failures remain optional, and retry works.
   await refresh.click();
   await waitRequests(4);
+  assert.equal(await autofill.isDisabled(), true);
+  assert.deepEqual(await draft(), edited);
   assert.equal(await issue.inputValue(), '');
   await reply(3, [], 502);
   await waitStatus('Unable to load');
@@ -131,8 +165,13 @@ try {
   assert.doesNotMatch(await status.textContent(), /private provider/);
   await refresh.click();
   await waitRequests(6);
-  await reply(5);
+  await reply(5, [{...entries[0], body: ''}]);
   await waitLoaded();
+  await issue.selectOption(issueURL);
+  await autofill.click();
+  assert.deepEqual(await draft(), [entries[0].title, '']);
+  await title.fill(edited[0]);
+  await description.fill(edited[1]);
 
   // Empty and malformed responses are safe; a blank project makes no request.
   await refresh.click();
@@ -143,7 +182,7 @@ try {
   await submitWithoutLink();
   await refresh.click();
   await waitRequests(8);
-  await reply(7, null);
+  await reply(7, [{...entries[0], body: null}]);
   await waitStatus('Unable to load');
   await project.selectOption('');
   await waitStatus('Choose a project');
@@ -157,6 +196,8 @@ try {
   await issue.selectOption(issueURL);
   await page.click('#reset');
   await waitRequests(10);
+  assert.equal(await autofill.isDisabled(), true);
+  assert.deepEqual(await draft(), ['Manual title', 'Manual description']);
   assert.equal(await project.inputValue(), 'alpha');
   assert.equal(await issue.inputValue(), '');
   assert.equal(await page.evaluate(() => requests[9].url), '/projects/issues?project_id=alpha');
@@ -171,6 +212,8 @@ try {
   await page.waitForFunction(() => requests[10].signal.aborted);
   await page.click('#open');
   await waitRequests(12);
+  assert.equal(await autofill.isDisabled(), true);
+  assert.deepEqual(await draft(), ['Manual title', 'Manual description']);
   await reply(11);
   await waitLoaded();
   await reply(10, []);
@@ -188,6 +231,7 @@ try {
   await reply(12);
   await page.waitForTimeout(50);
   assert.equal(await issue.isDisabled(), true);
+  assert.equal(await autofill.isDisabled(), true);
   await refresh.click();
   await waitRequests(14);
   await reply(13);
@@ -201,11 +245,16 @@ try {
   await waitRequests(15);
   await page.evaluate(() => { window.stop(); window.stop(); });
   assert.equal(await page.evaluate(() => requests[14].signal.aborted), true);
+  assert.equal(await autofill.isDisabled(), true);
+  const disposedDraft = await draft();
+  await autofill.dispatchEvent('click');
+  assert.deepEqual(await draft(), disposedDraft);
   const snapshot = await status.textContent();
   await reply(14);
   await page.waitForTimeout(50);
   assert.equal(await issue.locator('option').count(), 1);
   assert.equal(await issue.isDisabled(), true);
+  assert.equal(await autofill.isDisabled(), true);
   await refresh.click();
   await project.selectOption('beta & other');
   await page.click('#reset');

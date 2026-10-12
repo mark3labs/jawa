@@ -44,11 +44,11 @@ func TestListProjectIssuesProviders(t *testing.T) {
 					t.Fatal("missing bounded deadline")
 				}
 				if calls == 1 {
-					resp := issueResponse(`[{"number":7,"title":"Open issue","state":"open","html_url":"javascript:evil"},{"number":8,"title":"PR","state":"open","pull_request":{}},{"number":9,"title":"Closed","state":"closed"},{"number":10,"title":"PR","state":"open","is_pull":true}]`)
+					resp := issueResponse(`[{"number":7,"title":"Open issue","body":"first body","state":"open","html_url":"javascript:evil"},{"number":8,"title":"PR","state":"open","pull_request":{}},{"number":9,"title":"Closed","state":"closed"},{"number":10,"title":"PR","state":"open","is_pull":true}]`)
 					resp.Header.Set("Link", `<https://evil.example/steal>; rel="next"`)
 					return resp, nil
 				}
-				return issueResponse(`[{"number":11,"title":"Second issue","state":"open","pull_request":null},{"number":7,"title":"duplicate","state":"open"}]`), nil
+				return issueResponse(`[{"number":11,"title":"Second issue","state":"open","pull_request":null},{"number":7,"title":"duplicate","body":"must not replace first body","state":"open"}]`), nil
 			})}
 			issues, err := listProjectIssues(t.Context(), Project{Provider: provider, Repo: repo}, c)
 			if err != nil || len(issues) != 2 || calls != 2 {
@@ -58,7 +58,7 @@ func TestListProjectIssuesProviders(t *testing.T) {
 			if provider == "forgejo" {
 				webHost = host
 			}
-			if issues[0].Number != 7 || issues[0].Title != "Open issue" || issues[0].URL != "https://"+webHost+"/acme/repo/issues/7" {
+			if issues[0].Number != 7 || issues[0].Title != "Open issue" || issues[0].Body != "first body" || issues[0].URL != "https://"+webHost+"/acme/repo/issues/7" {
 				t.Fatalf("untrusted issue: %+v", issues[0])
 			}
 			if c.Jar != jar || c.Timeout != time.Hour || c.CheckRedirect != nil {
@@ -182,7 +182,7 @@ func TestProjectIssuesEndpoint(t *testing.T) {
 	body = `[{"number":3,"title":"Issue","state":"open","html_url":"https://evil.example"}]`
 	w = request(a, "GET", path, nil, session)
 	status(t, w, 200)
-	if strings.TrimSpace(w.Body.String()) != `{"issues":[{"number":3,"title":"Issue","url":"https://github.com/acme/repo/issues/3"}]}` {
+	if strings.TrimSpace(w.Body.String()) != `{"issues":[{"number":3,"title":"Issue","body":"","url":"https://github.com/acme/repo/issues/3"}]}` {
 		t.Fatalf("JSON contract: %s", w.Body.String())
 	}
 	body = `private-test-token malformed`
@@ -204,5 +204,55 @@ func TestListProjectIssuesCommandCredentials(t *testing.T) {
 	_, err := listProjectIssues(t.Context(), Project{Provider: "github", Repo: "https://github.com/acme/repo"}, c, map[string]string{"github-token": "cli-token"})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIssueBodies(t *testing.T) {
+	for _, provider := range []string{"github", "forgejo"} {
+		for _, body := range []string{`""`, `null`, `"  # 日本語\n**Markdown**\n<img src=x>\u0000  "`, ``, `42`, `{}`, `[]`, `true`} {
+			t.Run(provider+"/"+body, func(t *testing.T) {
+				t.Setenv("JAWA_GITHUB_TOKEN", "test-token")
+				t.Setenv("JAWA_FORGEJO_TOKEN", "test-token")
+				field := ""
+				if body != "" {
+					field = `,"body":` + body
+				}
+				c := &http.Client{Transport: providerTransport(func(*http.Request) (*http.Response, error) {
+					return issueResponse(`[{"number":1,"title":"Exact title","state":"open"` + field + `}]`), nil
+				})}
+				issues, err := listProjectIssues(t.Context(), Project{Provider: provider, Repo: "https://github.com/acme/repo"}, c)
+				var want string
+				valid := body == "" || json.Unmarshal([]byte(body), &want) == nil
+				if !valid {
+					if err == nil || err.Error() != "issues: malformed API response" || issues != nil {
+						t.Fatalf("unsafe result: %+v %v", issues, err)
+					}
+					return
+				}
+				if err != nil || len(issues) != 1 || issues[0].Body != want {
+					t.Fatalf("body mismatch: %+v %v", issues, err)
+				}
+			})
+		}
+	}
+}
+
+func TestIssueAutofillMarkup(t *testing.T) {
+	a := testApp(t)
+	session, _ := setupTest(t, a)
+	w := request(a, "GET", "/board", nil, session)
+	status(t, w, 200)
+	body := w.Body.String()
+	for _, want := range []string{`class="issue-autofill-row"`, `id="card-issue" name="issue_url"`, `type="button" data-issue-autofill disabled`, `aria-label="Autofill title and description from issue"`, `aria-describedby="card-issue-autofill-help"`, `id="card-title"`, `name="title"`, `id="card-description"`, `name="description"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	row := strings.Index(body, `class="issue-autofill-row"`)
+	if row >= 0 {
+		end := strings.Index(body[row:], `</div>`)
+		if end < 0 || !strings.Contains(body[row:row+end], "data-issue-autofill") {
+			t.Error("autofill not adjacent to selector")
+		}
 	}
 }

@@ -15,6 +15,7 @@ import (
 type projectIssue struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
+	Body   string `json:"body"`
 	URL    string `json:"url"`
 }
 
@@ -84,10 +85,10 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 			return nil, errors.New("issues: response exceeds limit or unreadable")
 		}
 		var entries []struct {
-			Number       int
-			Title, State string
-			PullRequest  json.RawMessage `json:"pull_request"`
-			IsPull       bool            `json:"is_pull"`
+			Number             int
+			Title, State, Body string
+			PullRequest        json.RawMessage `json:"pull_request"`
+			IsPull             bool            `json:"is_pull"`
 		}
 		if json.Unmarshal(data, &entries) != nil || entries == nil || len(entries) > 100 {
 			return nil, errors.New("issues: malformed API response")
@@ -100,7 +101,7 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 				return nil, errors.New("issues: invalid issue number or title")
 			}
 			if !seen[entry.Number] {
-				issues = append(issues, projectIssue{Number: entry.Number, Title: entry.Title, URL: "https://" + host + "/" + owner + "/" + name + "/issues/" + strconv.Itoa(entry.Number)})
+				issues = append(issues, projectIssue{Number: entry.Number, Title: entry.Title, Body: entry.Body, URL: "https://" + host + "/" + owner + "/" + name + "/issues/" + strconv.Itoa(entry.Number)})
 				seen[entry.Number] = true
 			}
 		}

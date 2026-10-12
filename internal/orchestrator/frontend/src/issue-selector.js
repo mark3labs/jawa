@@ -6,8 +6,14 @@ export function setupIssueSelector(host, cleanup) {
   const select = host.querySelector('#card-issue');
   const status = host.querySelector('#card-issue-status');
   const refresh = host.querySelector('[data-issue-refresh]');
+  const autofill = host.querySelector('[data-issue-autofill]');
+  const title = form?.querySelector('#card-title');
+  const description = form?.querySelector('#card-description');
+  if (!autofill || !title || !description) return;
   if (!form || !dialog || !project || !select || !status || !refresh) return;
 
+  const sources = new Map();
+  let loadedProject;
   let disposed = false;
   let generation = 0;
   let controller;
@@ -21,7 +27,24 @@ export function setupIssueSelector(host, cleanup) {
     controller = undefined;
   }
 
+  function updateAutofill() {
+    autofill.disabled = disposed || !dialog.open || select.disabled ||
+      project.value !== loadedProject || !sources.has(select.value);
+  }
+
+  function copyIssue() {
+    updateAutofill();
+    if (autofill.disabled) return;
+    const issue = sources.get(select.value);
+    title.value = issue.title;
+    description.value = issue.body;
+    status.textContent = 'Title and description copied. You can edit both fields.';
+  }
+
   function clear() {
+    sources.clear();
+    loadedProject = undefined;
+    autofill.disabled = true;
     select.replaceChildren(new Option('No linked issue', '', true, true));
     select.disabled = true;
   }
@@ -60,12 +83,15 @@ export function setupIssueSelector(host, cleanup) {
       if (!isCurrent()) return;
       if (!Array.isArray(data.issues) || data.issues.some(issue =>
         !issue || !Number.isInteger(issue.number) || issue.number < 1 ||
-        typeof issue.title !== 'string' || typeof issue.url !== 'string' || !issue.url
+        typeof issue.body !== 'string' || typeof issue.title !== 'string' || typeof issue.url !== 'string' || !issue.url
       )) throw new Error('Invalid issue response');
       for (const issue of data.issues) {
+        sources.set(issue.url, {title: issue.title, body: issue.body});
         select.add(new Option(`#${issue.number} ${issue.title}`, issue.url));
       }
+      loadedProject = projectID;
       select.disabled = data.issues.length === 0;
+      updateAutofill();
       status.textContent = data.issues.length
         ? 'Choose an issue, or leave No linked issue selected.'
         : 'No open issues found. You can submit without linking an issue. Refresh issues to check again.';
@@ -100,6 +126,8 @@ export function setupIssueSelector(host, cleanup) {
     }
   });
   observer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+  select.addEventListener('change', updateAutofill);
+  autofill.addEventListener('click', copyIssue);
   project.addEventListener('change', load);
   refresh.addEventListener('click', load);
   form.addEventListener('reset', onReset);
@@ -111,6 +139,8 @@ export function setupIssueSelector(host, cleanup) {
     cancel();
     clearTimeout(resetTimer);
     observer.disconnect();
+    select.removeEventListener('change', updateAutofill);
+    autofill.removeEventListener('click', copyIssue);
     project.removeEventListener('change', load);
     refresh.removeEventListener('click', load);
     form.removeEventListener('reset', onReset);

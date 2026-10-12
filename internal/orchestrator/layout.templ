@@ -514,9 +514,13 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "card-issue"}) {
 					Open issue (optional)
 				}
-				<select id="card-issue" name="issue_url" aria-describedby="card-issue-status">
-					<option value="">No linked issue</option>
-				</select>
+				<div class="issue-autofill-row">
+					<select id="card-issue" name="issue_url" aria-describedby="card-issue-status">
+						<option value="">No linked issue</option>
+					</select>
+					<button class="btn" type="button" data-issue-autofill disabled aria-label="Autofill title and description from issue" aria-describedby="card-issue-autofill-help">Autofill</button>
+				</div>
+				<p id="card-issue-autofill-help" class="muted">Autofill replaces the title and description. You can edit them afterward.</p>
 				<p id="card-issue-status" class="muted" role="status" aria-live="polite">Open the dialog to load this project's issues.</p>
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
 					Refresh issues
