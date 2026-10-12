@@ -45,7 +45,11 @@ connecting agents; initial random credentials deliberately cannot be used.
 
 The **New card** dialog lists open issues from the selected project's repository
 as `#number title`; choosing one stores its issue link. Changing projects clears
-the previous selection. **Refresh issues** retries loading or picks up new issues.
+the previous selection without changing your draft. Selecting an issue alone does
+not copy its text. **Autofill** explicitly replaces both Title and Description
+with the selected issue’s title and raw body (or an empty description for a
+bodyless issue); both fields remain editable. It uses the loaded snapshot.
+**Refresh issues** retries loading or obtains a newer snapshot before copying.
 You can still create a card with **No linked issue** when the list is empty or
 unavailable. The orchestrator needs `JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) with
 repository issue read access for GitHub, or `JAWA_FORGEJO_TOKEN` for Forgejo;

@@ -49,7 +49,7 @@ try {
     boardPath = new URL(page.url()).pathname + new URL(page.url()).search;
     await page.locator('.topbar').getByRole('button', { name: 'New card', exact: true }).click();
     await page.getByLabel('Title', { exact: true }).fill(`Responsive ${'long-title-'.repeat(15)}`);
-    await page.getByLabel('Description').fill('Long description for responsive layout');
+    await page.getByLabel('Description', {exact: true}).fill('Long description for responsive layout');
     await page.getByRole('button', { name: 'Create card', exact: true }).click();
     await page.locator('.task-card').waitFor();
     await page.locator('.task-card .icon-btn').click();
