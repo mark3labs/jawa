@@ -28,10 +28,12 @@ type Bridge struct {
 	submitMu      sync.Mutex
 	resumeWG      sync.WaitGroup
 	resumeStopped bool
-	mu            sync.RWMutex
-	runner        *runtime.Runner
-	cfg           natschannel.Config
-	conn          *nats.Conn
+	// Protected by submitMu, from durable admission through receipt persistence.
+	resumeInFlight map[reportprotocol.FailedResume]bool
+	mu             sync.RWMutex
+	runner         *runtime.Runner
+	cfg            natschannel.Config
+	conn           *nats.Conn
 }
 
 func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) error {

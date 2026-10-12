@@ -347,7 +347,7 @@ func TestPlanningAnswerSameRunAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	var first natschannel.Result
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		msg, err := results.NextMsgWithContext(ctx)
 		if err != nil {
 			t.Fatal(err)

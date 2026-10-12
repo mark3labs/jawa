@@ -67,6 +67,12 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 		t.Fatal("secret appeared in settings page")
 	}
 	assertSettingsProviderUX(t, page.Body.String())
+	if !strings.Contains(page.Body.String(), `name="auto-resume-failed-runs" value="true" checked>`) {
+		t.Fatal("auto-resume not enabled by default")
+	}
+	invalidAuto := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "auto-resume-failed-runs": {"yes"}, "debug": {"true"}}, session, csrf)
+	status(t, invalidAuto, 400)
+
 	// Reject invalid addresses before any setting is changed.
 	bad := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "listen": {"127.0.0.1:70000"}, "github-token": {"JAWA_SECRET_SHOULD_NOT_APPEAR"}}, session, csrf)
 	status(t, bad, 400)
@@ -81,10 +87,10 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if err != nil || len(values) != 0 {
 		t.Fatalf("CSRF bypass persisted: %#v, %v", values, err)
 	}
-	good := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "listen": {"127.0.0.1:9000"}, "nats-listen": {"127.0.0.1:4222"}, "debug": {"false"}, "allow-no-ci": {"false"}, "github-token": {"JAWA_SECRET_SHOULD_NOT_APPEAR"}}, session, csrf)
+	good := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "listen": {"127.0.0.1:9000"}, "nats-listen": {"127.0.0.1:4222"}, "debug": {"false"}, "allow-no-ci": {"false"}, "auto-resume-failed-runs": {"false"}, "github-token": {"JAWA_SECRET_SHOULD_NOT_APPEAR"}}, session, csrf)
 	status(t, good, 303)
 	values, err = a.s.DashboardOverrides()
-	if err != nil || values["debug"] != "false" || values["allow-no-ci"] != "false" || values["github-token"] != "JAWA_SECRET_SHOULD_NOT_APPEAR" {
+	if err != nil || values["auto-resume-failed-runs"] != "false" || values["debug"] != "false" || values["allow-no-ci"] != "false" || values["github-token"] != "JAWA_SECRET_SHOULD_NOT_APPEAR" {
 		t.Fatalf("explicit false or secret override not persisted: %#v, %v", values, err)
 	}
 	if values["forgejo-token"] != "" {
@@ -106,13 +112,22 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("saved secret appeared in live refresh")
 	}
+	if strings.Contains(live, `name="auto-resume-failed-runs" value="true" checked>`) {
+		t.Fatal("explicit false lost in SSE")
+	}
+	partial := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "debug": {"true"}}, session, csrf)
+	status(t, partial, 303)
+	values, err = a.s.DashboardOverrides()
+	if err != nil || values["auto-resume-failed-runs"] != "false" {
+		t.Fatal("partial form lost toggle", err)
+	}
 	reset := request(a, "POST", "/settings/orchestrator/reset", url.Values{"_csrf": {csrf.Value}}, session, csrf)
 	status(t, reset, 303)
 	live, err = a.liveSnapshot(httptest.NewRequest("GET", "/events", nil), viewParams{View: viewSettings})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `name="debug" value="true">`) || !strings.Contains(live, `name="allow-no-ci" value="true" checked>`) {
+	if !strings.Contains(live, `name="auto-resume-failed-runs" value="true" checked>`) || !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `name="debug" value="true">`) || !strings.Contains(live, `name="allow-no-ci" value="true" checked>`) {
 		t.Fatalf("live reset did not restore bootstrap values: %s", live)
 	}
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {

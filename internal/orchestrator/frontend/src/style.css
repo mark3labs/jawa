@@ -301,6 +301,7 @@ jawa-menu, jawa-time, jawa-copy { display: inline-block; }
 a.chip:hover { border-color: var(--robe); color: var(--text); }
 .chip .ic { width: 12px; height: 12px; }
 .chip.plain { border-color: transparent; background: none; padding: 0; color: var(--text-3); }
+.chip.tone-resuming { color: #83b5da; border-color: rgba(131, 181, 218, .3); background: rgba(131, 181, 218, .1); }
 .chip.tone-running { color: var(--amber); border-color: rgba(255, 176, 0, .3); background: var(--amber-dim); }
 .chip.tone-blocked { color: #f0954f; border-color: rgba(240, 149, 79, .3); background: var(--rust-dim); }
 .chip.tone-failed { color: var(--red); border-color: rgba(229, 84, 63, .3); background: var(--red-dim); }
@@ -317,6 +318,7 @@ a.chip:hover { border-color: var(--robe); color: var(--text); }
 .card-note.tone-failed { border-color: var(--red); background: var(--red-dim); color: #f1a597; }
 .run-body .card-note { display: block; -webkit-line-clamp: unset; }
 .tone-ic { width: 15px; height: 15px; flex: none; }
+.tone-resuming { color: #83b5da; }
 .tone-running { color: var(--amber); }
 .tone-blocked { color: #f0954f; }
 .tone-failed { color: var(--red); }

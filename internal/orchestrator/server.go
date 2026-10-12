@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/mark3labs/bonnie/presence"
 	"github.com/nats-io/nats.go"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -346,6 +347,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				if value := strings.TrimSpace(r.FormValue(pair[0])); value != "" {
 					values[pair[1]] = value
+				}
+			}
+			if err == nil && r.Form.Has("auto-resume-failed-runs") {
+				value := r.Form.Get("auto-resume-failed-runs")
+				if value != "true" && value != "false" {
+					err = errors.New("auto-resume-failed-runs must be true or false")
+				} else {
+					values["auto-resume-failed-runs"] = value
 				}
 			}
 			if err == nil && r.Form.Has("allow-no-ci") {
@@ -708,9 +717,7 @@ func Command() *cobra.Command {
 		}
 		readProviderFlags(cmd, providerDefaults)
 		s.runtimeDefaults = providerDefaults
-		for k, v := range providerDefaults {
-			runtimeDefaults[k] = v
-		}
+		maps.Copy(runtimeDefaults, providerDefaults)
 		defer func() {
 			if closeErr := s.Close(); closeErr != nil {
 				logger.Error("Failed to close store", "err", closeErr)
