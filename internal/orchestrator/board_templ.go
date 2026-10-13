@@ -1348,13 +1348,13 @@ func cardMenu(d pageData, c Card) templ.Component {
 			}
 		}
 		if c.Status != "Todo" && c.Status != "Planning" {
-			if canAction(c, d.attempts, "reset") {
+			if d.canReset(c) {
 				templ_7745c5c3_Err = menuPost(d, c, "/cards/reset", "Reset to Todo", "reset", nil).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = menuDisabled("Reset to Todo", "reset", actionReason(c, d.attempts, "reset")).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = menuDisabled("Reset to Todo", "reset", d.resetReason(c)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
