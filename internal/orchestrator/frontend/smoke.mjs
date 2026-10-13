@@ -31,7 +31,8 @@ const browser = await chromium.launch({
  executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
  headless: true, args: ['--no-sandbox'],
 });
-const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+const context = await browser.newContext({viewport: {width: 1440, height: 1000}});
+const page = await context.newPage();
 page.setDefaultTimeout(20000);
 // Observe the real browser stream without replacing fetch or manufacturing frames.
 await page.addInitScript(() => {
@@ -297,6 +298,44 @@ try {
  assert.equal(JSON.parse(await run.locator('.result').textContent()).payload.pr_number, 1);
  assert.equal(await run.locator('.run-pr a').getAttribute('href'), pr);
  await run.getByText(JSON.parse(data.attempts.find(a=>a.CardID===firstID).TaskJSON).text.split('\nBranch: ')[1], {exact: true}).waitFor();
+ // Authenticated NATS run detail: committed snapshot, shared live SSE, draft
+ // retention, queued follow-up and reduced-fidelity trace across viewport sizes.
+ await run.getByRole('link', {name:'Open', exact:true}).click();
+ await page.locator('#run-detail-content').waitFor();
+ await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
+ await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor();
+ await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');
+ await page.waitForTimeout(1500);
+ assert.equal(await page.getByLabel('Message / follow-up').inputValue(),'draft survives unsolicited updates');
+ const detailURL=page.url();
+ const secondViewer=await page.context().newPage();
+ await secondViewer.goto(detailURL);
+ await secondViewer.locator('#run-detail-content .run-tool').first().waitFor();
+ await page.getByLabel('Message / follow-up').fill('RUN_DETAIL_FOLLOWUP_FIXTURE');
+ await page.getByRole('button', {name:'Send follow-up',exact:true}).click();
+ await page.locator('.planning-markdown').filter({hasText:'Run detail follow-up response.'}).waitFor();
+ await secondViewer.locator('.planning-markdown').filter({hasText:'Run detail follow-up response.'}).waitFor();
+ await expect(page.getByLabel('Message / follow-up')).toHaveValue('');
+ await secondViewer.close();
+ for(const width of [320,390,768,1024,1440]) {
+  await page.setViewportSize({width,height:1000});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1), `run detail overflow at ${width}`);
+ }
+ const detailShots=process.env.JAWA_SMOKE_SCREENSHOT;
+ if(detailShots) {
+  await mkdir(dirname(detailShots),{recursive:true});
+  await page.screenshot({path:detailShots.replace('desktop.png','run-detail-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:detailShots.replace('desktop.png','run-detail-mobile.png'),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+ }
+ await page.getByRole('link',{name:'Trace',exact:true}).click();
+ await page.getByText('Snapshot history — turn/timestamps unavailable',{exact:true}).waitFor();
+ await page.getByLabel('Filter activity').fill('does-not-match-fixture');
+ await expect(page.locator('.run-message:visible')).toHaveCount(0);
+ await page.getByLabel('Filter activity').fill('');
+ await screen(`/runs?card=${firstID}`, 'runs');
+ await page.locator('details.run > summary').click();
  const runID = await run.getAttribute('id');
  await run.evaluate(el => el.smokeIdentity = 'stable-history');
  const runsStable = await stableDocument();

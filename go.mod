@@ -8,7 +8,7 @@ require (
 	github.com/axadrn/shadcn-templ/v2 v2.0.0-beta.14
 	github.com/charmbracelet/log v1.0.0
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/bonnie v0.26.0
+	github.com/mark3labs/bonnie v0.27.0
 	github.com/mark3labs/kit v0.129.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/nats-io/nats-server/v2 v2.15.1
@@ -74,7 +74,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dlclark/regexp2/v2 v2.8.4 // indirect
-	github.com/dop251/goja v0.0.0-20261012212121-0c308c5ed11b // indirect
+	github.com/dop251/goja v0.0.0-20261013122152-245c54f48cfc // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect

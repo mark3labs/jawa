@@ -742,3 +742,15 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .issue-autofill-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 .issue-autofill-row select { flex: 1 1 12rem; min-width: 0; }
 .issue-autofill-row .btn { flex: 0 0 auto; }
+
+/* Run detail history owns no drafts or tab/filter controls. */
+.run-detail-view { min-width: 0; max-width: 100%; }
+.run-detail-view h1, .run-detail-view h2, .run-detail-view h3 { overflow-wrap: anywhere; }
+.run-detail-view textarea, .run-detail-view input[type="search"] { width: 100%; max-width: 100%; min-height: 44px; }
+.run-history { display: grid; gap: 1rem; margin-block: 1rem; min-width: 0; }
+.run-message { border: 1px solid var(--border); border-radius: .5rem; padding: .75rem; min-width: 0; overflow-wrap: anywhere; }
+.run-message summary { min-height: 44px; overflow-wrap: anywhere; cursor: pointer; }
+.run-message pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.run-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
+.run-controls .meta { flex-basis: 100%; }
+.run-controls .chip { min-height: 44px; }

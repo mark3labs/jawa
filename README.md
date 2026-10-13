@@ -208,6 +208,7 @@ jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
 | `JAWA_NATS_CONSUMER` | `--nats-consumer` |
 | `JAWA_NATS_CREATE_STREAM` | `--nats-create-stream` |
 | `JAWA_NATS_PRESENCE` | `--nats-presence` |
+| `JAWA_NATS_API` | `--nats-api` |
 | `JAWA_NATS_PRESENCE_BUCKET` | `--nats-presence-bucket` |
 | `JAWA_SANDBOX_ROOT` | `--sandbox-root` |
 | `JAWA_SANDBOX_IMAGE` | `--sandbox-image` |
@@ -337,7 +338,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.26.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.27.0
 bonnie chat
 ```
 
@@ -594,3 +595,58 @@ The native/enhanced form sends `card_id`, `expected_attempt_id`,
 `expected_pr_url`, `_csrf`, and the standard view/project fields. Stale or
 ineligible submissions fail without writing metadata. Already effectively
 merged cards omit the action.
+
+### Run detail (BONNIE v0.27.0)
+
+Open a pinned attempt in **Runs** to view **Chat** and **Trace** through the
+agent's outbound NATS connection. No browser NATS credentials or agent TCP
+access is required. `--nats-api` / `JAWA_NATS_API` defaults to `true`, requires
+presence, and advertises `jawa.api_subject`. Set `JAWA_NATS_API=false` for older
+or externally provisioned brokers until the control bucket is available.
+Presence-disabled agents do not mount the API. Local HTTP behavior is unchanged.
+
+Upgrade the orchestrator **before** agents. It persists a private Ed25519 seed
+in its settings database and publishes only its public key in persistent KV
+`jawa_control`, key `api_public_key`. Keep the database/backups private. External
+brokers must provision this bucket/public key and equivalent ACLs independently;
+agents open, never create, the control bucket. Five-minute audience-bound tokens
+allow 30 seconds of future clock skew. Rotation invalidates new requests; it
+need not revoke existing streams. The agent watches changes and rechecks the key
+with bounded reads, failing closed on deletion, malformed keys or outages.
+
+Chat steers a current running build or queues a follow-up after accepted typed
+completion/readiness. A completed run without accepted completion, failed run,
+waiting/guidance run, pending recovery/cancellation, or offline agent is
+read-only; use the existing card recovery/guidance flow. Stop targets the exact
+observed active turn. It requests cancellation, not proof of completion. Core
+NATS mutations are **never retried**: a lost reply or the 25-second synchronous
+send deadline has an unknown outcome and may interrupt execution. Check the
+conversation before sending again.
+
+Trace is deliberately lower fidelity: selected-branch snapshot messages have
+no reliable turn/timestamps; durable BONNIE activity is grouped by turn, stored
+workflow deliveries use their own received times/order, and attached-viewer Kit
+activity is labeled live-only and is not retained. Missed live activity cannot
+be replayed. In-memory event histories are bounded to 256 entries per source;
+truncation is labeled. Cold offline pages have stored outcome/events, not a
+persisted conversation. Shared observations cap at 16 runs per agent and 64
+viewers per run (256 hubs total); closing the last viewer cancels upstream.
+
+**Broker trust boundary (accepted deployment limitation):** agents share trusted
+worker credentials. Direct worker publication to `bonnie.api.>` and subscription
+to `_INBOX.bonnieapi.>` is denied at startup and credential reload. Worker key
+publication and control-bucket delete/purge/message-delete are denied, as are
+stream create/update and stream snapshot/restore. The internal user is unrestricted.
+Task/result/event/answer/command/query/report subjects, ordinary inbox replies,
+JetStream stream info/reads, consumer operations, pulls/ACKs, and presence KV
+reads/writes remain available to workers for BONNIE compatibility.
+
+**These ACLs do not isolate malicious credentialed agents.** Consumer creation
+remains allowed for task consumers and KV watches. NATS Server v2.15.1 does not
+validate the requesting user's publication ACL against a consumer's delivery
+subject: a worker can use a JetStream delivery proxy to bypass direct subject
+restrictions. Other workers can also observe API requests/bearer tokens and
+forge reply traffic. Audience binding does not fix this same-agent exposure.
+This residual risk is explicitly accepted for trusted agents; do not describe
+proxy attempts as blocked. Use TLS/network controls and trusted credentials.
+Hostile-agent isolation needs separate accounts/users and validated provisioning.

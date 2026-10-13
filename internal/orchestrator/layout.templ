@@ -223,7 +223,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
+	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -241,7 +241,7 @@ templ appPage(d pageData) {
 			<div
 				class="shell"
 				data-signals={ shellSignals() }
-				data-init={ "@get('" + d.v.EventsURL() + "')" }
+				data-init={ "@get('" + pageEventsURL(d) + "')" }
 				data-effect="if ($goto.startsWith('/')) window.location.assign($goto)"
 				data-on:board-refresh={ d.v.SnapshotAction() }
 			>
@@ -256,7 +256,11 @@ templ appPage(d pageData) {
 							case viewPlanning:
 								@planningContent(d)
 							case viewRuns:
-								@runsContent(d)
+								if d.detail != nil {
+									@runDetailPage(*d.detail, d.csrf)
+								} else {
+									@runsContent(d)
+								}
 							case viewAgents:
 								@agentsContent(d)
 							case viewSettings:
@@ -668,4 +672,11 @@ templ auth(csrf, kind, msg string) {
 			</main>
 		</body>
 	</html>
+}
+
+func pageEventsURL(d pageData) string {
+	if d.detail != nil {
+		return "/runs/" + d.detail.Attempt.ID + "/events?tab=" + d.detail.Tab
+	}
+	return d.v.EventsURL()
 }

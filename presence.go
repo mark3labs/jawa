@@ -8,12 +8,14 @@ import (
 
 	"github.com/mark3labs/bonnie"
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
+	natsapi "github.com/mark3labs/bonnie/channel/natsapi"
 	presencenats "github.com/mark3labs/bonnie/presence/nats"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 	"github.com/spf13/cobra"
+	"jawa/internal/runapitoken"
 )
 
 // JetStream KV agent discovery is enabled by default; JAWA_NATS_PRESENCE=false
@@ -35,12 +37,14 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	if flag := cmd.Flags().Lookup("sandbox"); flag != nil {
 		flag.Usage = "sandbox backend (local, microsandbox); default local"
 	}
+	apiEnabled := envOr("JAWA_NATS_API", "true") == "true"
 	presence := envOr("JAWA_NATS_PRESENCE", "true") == "true"
 	bucket := envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents")
 	root := envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces")
 	image := envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")
 	token := os.Getenv("GITHUB_TOKEN")
 	apiKey, providerURL := "", ""
+	cmd.Flags().BoolVar(&apiEnabled, "nats-api", apiEnabled, "serve authenticated run API over NATS; requires presence (JAWA_NATS_API)")
 	cmd.Flags().BoolVar(&presence, "nats-presence", presence, "announce agent through JetStream KV (JAWA_NATS_PRESENCE)")
 	cmd.Flags().StringVar(&bucket, "nats-presence-bucket", bucket, "discovery bucket (JAWA_NATS_PRESENCE_BUCKET)")
 	cmd.Flags().StringVar(&root, "sandbox-root", root, "local workspace root (JAWA_SANDBOX_ROOT)")
@@ -68,6 +72,21 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 			return err
 		}
 		cleanup = closeConn
+		if apiEnabled {
+			subject, err := runapitoken.Subject(shared.RootSubject, shared.AgentID)
+			if err != nil {
+				closeConn()
+				return err
+			}
+			auth, stop, err := watchAPIKey(cmd.Context(), shared.Conn, shared.AgentID)
+			if err != nil {
+				closeConn()
+				return err
+			}
+			cleanup = func() { stop(); closeConn() }
+			pc.Labels = map[string]string{"jawa.api_subject": subject}
+			agent.Configure(bonnie.WithNATSAPI(natsapi.Config{Conn: shared.Conn, Subject: subject, Authenticator: auth}))
+		}
 		agent.Configure(bonnie.WithName(name), trustedReports.Channel(shared), bonnie.WithPresence(pc))
 		return nil
 	})

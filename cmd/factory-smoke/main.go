@@ -5,12 +5,17 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/mark3labs/bonnie/channel"
+	bonniehttp "github.com/mark3labs/bonnie/channel/http"
+	natsapi "github.com/mark3labs/bonnie/channel/natsapi"
 	"iter"
+	"jawa/internal/runapitoken"
 	"log"
 	"net"
 	"net/http"
@@ -56,6 +61,9 @@ func (model) answer(ctx context.Context) error {
 	}
 }
 func (m model) reply(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
+	if strings.Contains(fmt.Sprint(call.Prompt), "RUN_DETAIL_FOLLOWUP_FIXTURE") {
+		return &fantasy.Response{Content: fantasy.ResponseContent{fantasy.TextContent{Text: "Run detail follow-up response."}}, FinishReason: fantasy.FinishReasonStop}, nil
+	}
 	if m.planning == nil {
 		if err := m.answer(ctx); err != nil {
 			return nil, err
@@ -335,6 +343,29 @@ func run() (runErr error) {
 			resumeModel = testmodel.New(testmodel.Call("shell", `{"command":"test \"$(cat resume-marker.txt)\" = resume-workspace-marker && printf workspace-preserved"}`), testmodel.Call("clarify", `{"questions":["Resume browser API?"]}`), testmodel.Call("proposeSpec", `{"spec":"## Resumed browser plan","repo_commit":"`+strings.Repeat("a", 40)+`"}`))
 		}
 		selectedResumeModel := resumeModel
+		js, err := nc.JetStream()
+		if err != nil {
+			wcancel()
+			nc.Close()
+			http.Error(w, "API fixture setup failed", 500)
+			return
+		}
+		kv, err := js.KeyValue(runapitoken.Bucket)
+		if err != nil {
+			wcancel()
+			nc.Close()
+			http.Error(w, "API fixture setup failed", 500)
+			return
+		}
+		entry, err := kv.Get(runapitoken.PublicKey)
+		if err != nil {
+			wcancel()
+			nc.Close()
+			http.Error(w, "API fixture setup failed", 500)
+			return
+		}
+		pub := ed25519.PublicKey(entry.Value())
+		apiSubject, _ := runapitoken.Subject("bonnie", agentID)
 		var reportRuntime reportbridge.Bridge
 		agent := bonnie.New(
 			bonnie.WithName(agentID), bonnie.WithAddr("127.0.0.1:0"), bonnie.WithWebUI(false),
@@ -352,7 +383,14 @@ func run() (runErr error) {
 			}),
 			bonnie.WithKitSetup(reportRuntime.Setup),
 			reportRuntime.Channel(natschannel.Config{Conn: nc, RootSubject: "bonnie", AgentID: agentID, TargetedTasks: true, CreateStream: true}),
-			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID}),
+			bonnie.WithPresence(bonnie.PresenceConfig{Registry: registry, AgentID: agentID, Labels: map[string]string{"jawa.api_subject": apiSubject}}),
+			bonnie.WithNATSAPI(natsapi.Config{Conn: nc, Subject: apiSubject, Authenticator: func(r *http.Request) (*channel.Principal, error) {
+				token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+				if !ok || runapitoken.Verify(pub, token, agentID, time.Now()) != nil {
+					return nil, bonniehttp.ErrUnauthenticated
+				}
+				return &channel.Principal{ID: "orchestrator", Kind: "user", Authenticator: "jawa-orchestrator"}, nil
+			}}),
 		)
 		stopAgent = wcancel
 		agentDone = make(chan error, 1)
