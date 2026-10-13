@@ -636,6 +636,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
   .nav-item { padding-block: 8px; }
   .card-key, .meta-link { display: inline-flex; align-items: center; }
   .card-top, .lane-head { height: auto; min-height: 44px; }
+  .card-top { flex-wrap: wrap; }
   .card-top .icon-btn { opacity: 1; }
   .search { min-height: 44px; height: auto; max-width: 100%; }
   .search .filter { min-height: 44px; height: 44px !important; font-size: 16px; min-width: 0; }
@@ -651,6 +652,10 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
   .agent-run { flex-wrap: wrap; }
   .agent-run a { white-space: normal; overflow-wrap: anywhere; min-height: 44px; }
 }
+
+/* Card badges are compact metadata, even when linked. Keep action controls
+   touch-sized without enlarging badges or preventing long agent text wrapping. */
+.task-card .chip { min-height: 20px; height: auto; min-width: 0; padding-block: 0; }
 
 @media (max-width: 600px) {
   .lanes { grid-template-columns: minmax(0, 1fr); }
@@ -732,7 +737,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .archive-action .ic { width: 12px; height: 12px; }
 .archive-action:hover { background: var(--surface-3); color: var(--text); }
 .archive-action:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-@media (max-width: 600px), (pointer: coarse) {
+@media (max-width: 860px), (pointer: coarse) {
   .archive-action { min-height: 44px; min-width: 44px; padding-inline: 8px; }
 }
 .archive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
