@@ -50,7 +50,10 @@ try {
     const values = () => input.evaluate(el => new FormData(el.form).getAll(el.name));
     assert.deepEqual(await values(),['true','false']);
     await root.click(); assert.deepEqual(await values(),['false']);
-    await input.evaluate(el => el.form.reset());
+    await input.evaluate(el => {
+      const malformed=document.createElement('span'); malformed.dataset.slot='checkbox';
+      el.form.prepend(malformed); el.form.reset();
+    });
     await page.waitForFunction(() => document.querySelector('#runtime-auto-resume').previousElementSibling.getAttribute('aria-checked') === 'true');
     const clear = page.locator('[name="github-token-clear"]');
     await clear.locator('xpath=preceding-sibling::span[1]').click();

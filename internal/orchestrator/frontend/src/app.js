@@ -34,9 +34,11 @@ window.jawaSyncAcknowledgement = (host, checked, required) => {
 // Native reset happens after its event; synchronize browser-owned controls once
 // defaults have been restored. Delegation also covers inserted SSE fragments.
 document.addEventListener('reset', event => {
+  if (!(event.target instanceof HTMLFormElement)) return;
   queueMicrotask(() => {
     for (const root of event.target.querySelectorAll('[data-slot="checkbox"], [data-slot="switch"]')) {
       const input = root.nextElementSibling;
+      if (!input?.matches('input[type="checkbox"]')) continue;
       if (root.dataset.slot === 'checkbox') window.templ.checkbox.setChecked(root, input.checked);
       else input.dispatchEvent(new Event('change', {bubbles: true}));
     }

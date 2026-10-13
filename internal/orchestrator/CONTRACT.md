@@ -36,7 +36,9 @@ Rocket light-DOM components encapsulate Sortable, native popover actions, shortc
 relative timestamps and clipboard behavior; templ retains ownership of markup.
 
 Regenerate templates from repository root:
-`go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate -path ./internal/orchestrator`.
+`for file in internal/orchestrator/*.templ; do go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate -f "$file"; done`.
+Use repository-relative `-f` paths to preserve diagnostic filenames consistently
+with CI; `-path internal/orchestrator` writes different diagnostic filenames.
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
 Generated templ output and frontend assets are intentionally checked in and embedded;
 production requires neither Node nor CDN access. The build locates shadcn components

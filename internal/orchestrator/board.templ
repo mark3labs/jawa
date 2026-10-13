@@ -183,8 +183,7 @@ templ cardNote(d pageData, c Card) {
 		@cardPRStatus(d, c)
 	}
 	if b, ok := d.blocker(c); ok {
-		<div role="status">
- @alert.Alert(alert.Props{Class: "card-note tone-blocked", Attributes: templ.Attributes{"aria-live": "polite"}}) {
+		@alert.Alert(alert.Props{Class: "card-note tone-blocked", Attributes: templ.Attributes{"aria-live": "polite"}}) {
 			<p><strong>Blocked:</strong> { b.Reason }</p>
 			if b.Queued {
 				<p class="muted small">{ guidanceQueuedNotice }</p>
@@ -194,7 +193,6 @@ templ cardNote(d pageData, c Card) {
 				}
 			}
 		}
- </div>
 	}
 	if note, tone := d.cardDiagnostic(c); note != "" {
 		@alert.Alert(alert.Props{Class: "card-note tone-" + tone}) {
