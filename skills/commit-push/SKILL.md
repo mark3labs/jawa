@@ -1,24 +1,33 @@
 ---
 name: commit-push
-description: "Review intended working-tree changes, run relevant checks, create a Conventional Commits commit, and push the current branch. Use when the user explicitly asks to commit and push completed work; not for review-only tasks or unauthorized publishing."
+description: "Review working-tree changes, run relevant checks, create a Conventional Commits commit, and push the current branch. Use when the task authorizes committing and pushing; not for review-only tasks. Orchestrator build/repair tasks should follow deliver-pr, which includes this."
 ---
 
 # Commit and push
 
-## Task execution
-
-Derive scope, inputs, constraints, and authorization from the spawning task and repository context; this skill has no argument placeholders or interactive input step. Use repository evidence to resolve routine details. If essential information is unavailable or a decision cannot be made safely, stop and report the blocker and required input rather than relying on a follow-up conversation.
-
-Follow repository instructions. Authorization in the spawning task is sufficient for the operations it explicitly covers; do not request it again. Skill activation alone does not authorize committing, pushing, creating remote issues or requests, posting replies, or publishing. Run follow-up skills only when they are within the task's authorized scope. Where the workflow says to ask or wait for approval, proceed only if the task already provides the required decision or approval; otherwise report the blocked state.
+Follow the system instructions' Git and "Working without a human" rules.
 
 ## Steps
 
-1. Read the repository instructions. Run `git status`, `git diff`, and `git diff --cached`. Read new untracked files too; do not infer changes from filenames alone.
-2. Check for secrets, generated output, and unrelated changes before staging. This workflow normally stages all changes with `git add -A`; ask before including anything unexpected. Do not force-add ignored files without permission. If there is nothing to commit, report that and stop.
-3. Run the relevant checks specified by the repository. Report failures; do not claim tests passed if they did not run.
-4. Write a Conventional Commits message: `<type>(<optional-scope>): <summary>`. Use `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, or `build`. Use an imperative, lowercase summary with no trailing period; keep the subject at most 72 characters. Add a body for non-trivial changes to explain what and why. Do not add generated-by text.
-5. Commit the reviewed changes. Prefer one logical commit; ask before splitting clearly unrelated work.
-6. Check the current branch and upstream. Use `git push` when an upstream exists. Otherwise identify the intended remote from `git remote -v` and repository guidance; ask if ambiguous, then push the branch with upstream tracking. Do not assume the remote is `origin`, and do not force-push.
-7. Report the commit hash, subject, push destination, and check results. Stop on a failed command and report the error rather than continuing as if it succeeded.
-
-Git push works with GitHub, Forgejo, and other Git hosts; no platform-specific CLI is required.
+1. Read repository instructions. Run `git status`, `git diff` and
+   `git diff --cached`. Read new untracked files; do not judge by filename.
+2. Decide what belongs in this commit. Stage explicit paths (`git add <paths>`),
+   not `git add -A`. Exclude secrets, build output, caches, screenshots, run
+   artifacts and unrelated changes; never force-add ignored files. If something
+   unexpected looks like it belongs, treat it as a decision (see system
+   instructions). If nothing is left to commit, report that and stop.
+3. Refuse to commit on the base/default branch; create or switch to a feature
+   branch (or the task's assigned branch) first.
+4. Run the relevant checks the repository defines. Report failures; never claim
+   checks passed if they did not run.
+5. Message: `<type>(<optional-scope>): <summary>` with type `feat`, `fix`,
+   `refactor`, `chore`, `docs`, `test`, `perf` or `build`; imperative, lowercase,
+   no trailing period, ≤72 chars. Add a body for non-trivial changes (what and
+   why). No generated-by text.
+6. Prefer one logical commit. Split clearly unrelated work into separate
+   commits rather than mixing it.
+7. Push: `git push` if an upstream exists; otherwise choose the remote from the
+   task, repository guidance or `git remote -v` (do not assume `origin`) and
+   `git push -u <remote> <branch>`. Never force-push.
+8. Report commit hash, subject, push destination and check results. Stop on a
+   failed command and report the error.

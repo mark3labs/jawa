@@ -13,6 +13,11 @@ assert.ok(fixture, 'Set JAWA_CARD_VISUAL_HTML to the exported fixture path');
 const assets = new URL('../assets/', import.meta.url);
 const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
+  // A synthetic destination verifies native navigation, not backend rendering.
+  if (path === '/planning' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html' }).end('<h1>Detail navigation fixture</h1>');
+    return;
+  }
   const asset = /^\/assets\/([a-zA-Z0-9_.-]+)$/.exec(path);
   const file = path === '/board' ? fixture : path === '/archive' ? `${fixture}.archive` :
     asset ? fileURLToPath(new URL(asset[1], assets)) : null;
@@ -71,14 +76,57 @@ try {
         assert.equal(rows.length, 5);
         assert.ok(Math.max(...rows) - Math.min(...rows) <= 1, 'Desktop lane action rows are misaligned');
       }
-      await page.locator('.task-card .icon-btn').first().focus();
-      assert.ok(await page.locator('.task-card .icon-btn').first().evaluate(el => document.activeElement === el));
+      const cards = page.locator('.task-card');
+      for (const card of await cards.all()) {
+        const link = card.locator('.card-view-action');
+        assert.equal(await link.count(), 1);
+        const id = await card.getAttribute('data-card-id');
+        assert.equal(await link.getAttribute('href'), `/planning?card=${encodeURIComponent(id)}`);
+        assert.equal(await link.getAttribute('aria-label'), `View card and plan: ${await card.locator('.card-key').textContent()}`);
+        assert.equal(await link.evaluate(el => getComputedStyle(el).opacity), '1');
+        assert.equal(await link.evaluate(el => el.closest('form')), null);
+        if (width < 768) {
+          const box = await link.boundingBox();
+          assert.ok(box.width >= 44 && box.height >= 44, 'Shortcut touch target too small');
+        }
+      }
+      const shortcut = page.locator('.card-view-action').first();
+      // Reach the link with Tab from the preceding Archive/Restore control.
+      await page.locator('.archive-action').first().focus();
+      await page.keyboard.press('Tab');
+      assert.ok(await shortcut.evaluate(el => document.activeElement === el));
+      assert.ok(await shortcut.evaluate(el => {
+        const style = getComputedStyle(el);
+        return style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0;
+      }), 'Shortcut missing keyboard focus outline');
       if (process.env.JAWA_CARD_SCREENSHOT_DIR) {
         await page.screenshot({ path: `${process.env.JAWA_CARD_SCREENSHOT_DIR}/${view}-${width}.png`, fullPage: true });
       }
-      console.log(`${view} ${width}: overflow, assignment, focus passed`);
+      const destination = new URL(await shortcut.getAttribute('href'), page.url()).href;
+      for (const activation of ['Enter', 'click']) {
+        const requests = [];
+        const record = req => { if (req.isNavigationRequest() || req.method() === 'POST') requests.push([req.method(), req.url()]); };
+        page.on('request', record);
+        await Promise.all([
+          page.waitForURL(destination),
+          activation === 'Enter' ? shortcut.press('Enter') : shortcut.click(),
+        ]);
+        page.off('request', record);
+        assert.deepEqual(requests, [['GET', destination]], 'Shortcut must only navigate, not archive or start work');
+        await page.goBack();
+        assert.equal(await page.locator('.drag-chosen, .drag-ghost').count(), 0);
+      }
+      console.log(`${view} ${width}: overflow, shortcut visibility, focus, target and navigation passed`);
     }
   }
+  // A native link still works when JavaScript (including drag handlers) is disabled.
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const nativePage = await context.newPage();
+  await nativePage.goto(`http://127.0.0.1:${server.address().port}/board`);
+  const nativeLink = nativePage.locator('.card-view-action').first();
+  const destination = new URL(await nativeLink.getAttribute('href'), nativePage.url()).href;
+  await Promise.all([nativePage.waitForURL(destination), nativeLink.click()]);
+  await context.close();
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

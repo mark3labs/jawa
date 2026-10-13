@@ -175,8 +175,9 @@ a waiting update. Installation availability depends on the browser/platform.
 
 Keyboard shortcuts: `c` opens a new card, `/` focuses the board filter, and
 `g` followed by `b`, `r`, `a`, or `s` opens Board, Runs, Agents, or Settings.
-Shortcuts are disabled while typing or using a dialog. Card actions are in the
-ellipsis menu; detailed execution history lives in Runs, not inside board cards.
+Shortcuts are disabled while typing or using a dialog. The eye shortcut opens
+the full card view; remaining card actions are in the ellipsis menu. Detailed
+execution history lives in Runs, not inside board cards.
 See [`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for
 UI regeneration and browser smoke-test instructions.
 
@@ -349,6 +350,8 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | Variable | Default / purpose |
 | --- | --- |
 | `JAWA_NAME` | `jawa`; agent display name (`--name` overrides) |
+| `JAWA_GIT_USER_NAME` | Optional agent-wide Git author and committer name |
+| `JAWA_GIT_USER_EMAIL` | Optional agent-wide Git author and committer email |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |
 | `JAWA_NATS_AGENT_ID` | Required, e.g. `jawa-1` (letters, digits, hyphens); `--nats-agent-id` overrides. |
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
@@ -370,7 +373,41 @@ The root derives `bonnie.tasks`, `bonnie.results`, `bonnie.events`, and the
 `bonnie.answers`, `bonnie.commands`, and `bonnie.queries` control routes.
 
 For GitHub pushes and PRs, give `GITHUB_TOKEN` repository **Contents** and
-**Pull requests** read/write permissions. Commits default to `Jawa <jawa@bonnie>`.
+**Pull requests** read/write permissions.
+
+### Agent Git identity
+
+Set the identity for new ordinary commits at runtime, without rebuilding the image:
+
+```dotenv
+JAWA_GIT_USER_NAME="Jawa Bot"
+JAWA_GIT_USER_EMAIL=jawa-bot@example.com
+```
+
+For Docker, put these settings in `.env` and pass `--env-file .env` to
+`docker run`, or export them and add `-e JAWA_GIT_USER_NAME -e JAWA_GIT_USER_EMAIL`
+to the invocation above. `compose.example.yaml` forwards both settings only to
+the agent service. Native deployments load them from the working directory's
+`.env` or exported environment (exported values take precedence).
+
+Each nonempty setting supplies both the corresponding `GIT_AUTHOR_*` and
+`GIT_COMMITTER_*` variables to coding commands. Name and email are independent:
+an unset or empty component injects nothing and retains Git's normal fallback.
+Explicit Jawa settings override inherited standard Git identity variables and
+repository/global/system identity for ordinary commits. Explicit Git command
+options and operations that preserve an existing author retain their usual
+semantics. Supplied values are not trimmed or shell-interpolated.
+
+The standard Docker image retains `Jawa <jawa@bonnie>` as its system Git fallback;
+native deployments retain their existing Git environment and configuration.
+No Git configuration files or process environment are rewritten. These are
+agent-wide, environment-only settings, not CLI flags; restart the native agent
+or recreate the container after changing them (for Compose, run
+`docker compose -f compose.example.yaml up -d --force-recreate agent`).
+
+Commit identity is metadata, not authentication or signing, and does not change
+task routing or commit/push authorization. Use your desired verified or noreply
+email for Git host attribution; GitHub access still uses `GITHUB_TOKEN`.
 
 Run state and workspaces persist under `/data`. Completed workspaces are retained
 7 days, failed ones 14 days, and cancelled/retired ones 3 days. Export important

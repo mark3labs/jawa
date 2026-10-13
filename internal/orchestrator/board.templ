@@ -96,6 +96,9 @@ templ taskCard(d pageData, c Card) {
 			<a class="card-key" href={ templ.SafeURL(planningPath(c.ID)) } title="View card and plan">{ cardKey(d.projects, c) }</a>
 			<div class="card-tools">
 				@archiveButton(d, c)
+				<a class="icon-btn card-view-action" href={ templ.SafeURL(planningPath(c.ID)) } aria-label={ "View card and plan: " + cardKey(d.projects, c) } title="View card and plan">
+					@icon("eye")
+				</a>
 				@cardMenu(d, c)
 			</div>
 		</div>
