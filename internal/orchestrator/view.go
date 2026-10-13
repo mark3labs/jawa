@@ -488,7 +488,7 @@ func providerConfigs(overrides map[string]string, defaults ...map[string]string)
 	maps.Copy(values, overrides)
 	return []providerConfig{
 		{"GitHub", "--github-token / JAWA_GITHUB_TOKEN or GITHUB_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "github-token", "JAWA_GITHUB_TOKEN")) != ""},
-		{"Forgejo", "--forgejo-token / JAWA_FORGEJO_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "forgejo-token", "JAWA_FORGEJO_TOKEN")) != ""},
+		{"Forgejo", "--forgejo-token / JAWA_FORGEJO_TOKEN or FORGEJO_TOKEN", strings.TrimSpace(effectiveProviderSetting(values, "forgejo-token", "JAWA_FORGEJO_TOKEN")) != ""},
 	}
 }
 

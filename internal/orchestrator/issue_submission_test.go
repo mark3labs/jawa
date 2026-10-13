@@ -273,7 +273,7 @@ func TestIssueRecoveryFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := request(a, "GET", "/board?project="+p.ID, nil, session, csrf)
-	if err = os.WriteFile(path, []byte(page.Body.String()), 0600); err != nil {
+	if err = os.WriteFile(path, page.Body.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest("POST", "/cards", strings.NewReader(form.Encode()))

@@ -66,6 +66,24 @@ func TestProviderFlagsDefaultsPrecedenceAndRedaction(t *testing.T) {
 	}
 }
 
+func TestForgejoTokenFallback(t *testing.T) {
+	t.Setenv("JAWA_FORGEJO_TOKEN", "")
+	t.Setenv("FORGEJO_TOKEN", "fallback-secret")
+	if got := effectiveProviderSetting(nil, "forgejo-token", "JAWA_FORGEJO_TOKEN"); got != "fallback-secret" {
+		t.Fatalf("fallback = %q", got)
+	}
+	if got, _ := Command().Flags().GetString("forgejo-token"); got != "fallback-secret" {
+		t.Fatalf("flag default = %q", got)
+	}
+	t.Setenv("JAWA_FORGEJO_TOKEN", "scoped-secret")
+	if got := effectiveProviderSetting(nil, "forgejo-token", "JAWA_FORGEJO_TOKEN"); got != "scoped-secret" {
+		t.Fatalf("precedence = %q", got)
+	}
+	if got := effectiveProviderSetting(map[string]string{"forgejo-token": ""}, "forgejo-token", "JAWA_FORGEJO_TOKEN"); got != "" {
+		t.Fatal("explicit empty override must not fall back")
+	}
+}
+
 func TestReconcileConnectionFlags(t *testing.T) {
 	t.Setenv("JAWA_ORCHESTRATOR_DATA_DIR", "/tmp/env-dir")
 	t.Setenv("NATS_URL", "nats://user:url-secret@127.0.0.1:1")

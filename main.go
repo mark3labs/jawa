@@ -176,6 +176,9 @@ func codingEnv() map[string]string {
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		env["GITHUB_TOKEN"] = token
 	}
+	if token := forgejoToken(); token != "" {
+		env["FORGEJO_TOKEN"] = token
+	}
 	if name := os.Getenv("JAWA_GIT_USER_NAME"); name != "" {
 		env["GIT_AUTHOR_NAME"] = name
 		env["GIT_COMMITTER_NAME"] = name
@@ -185,6 +188,12 @@ func codingEnv() map[string]string {
 		env["GIT_COMMITTER_EMAIL"] = email
 	}
 	return env
+}
+
+// forgejoToken returns the agent's Forgejo credential: JAWA_FORGEJO_TOKEN,
+// falling back to FORGEJO_TOKEN. Coding commands receive it as FORGEJO_TOKEN.
+func forgejoToken() string {
+	return envOr("JAWA_FORGEJO_TOKEN", os.Getenv("FORGEJO_TOKEN"))
 }
 
 func envOr(key, fallback string) string {

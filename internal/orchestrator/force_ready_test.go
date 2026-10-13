@@ -46,7 +46,7 @@ func TestForceReadyGates(t *testing.T) {
 				if got := canAction(c, all, "force-ready"); got != want {
 					t.Fatalf("got %v want %v", got, want)
 				}
-				d := pageData{uiSnapshot: uiSnapshot{attempts: all, pendingResumes: map[string]bool{}}}
+				d := pageData{attempts: all, pendingResumes: map[string]bool{}}
 				if d.canForceReady(c) != want {
 					t.Fatal("presentation disagrees")
 				}
@@ -298,7 +298,9 @@ func TestProviderIdentity(t *testing.T) {
 					a.TaskJSON = "{}"
 				case "token":
 					t.Setenv("JAWA_GITHUB_TOKEN", "")
+					t.Setenv("GITHUB_TOKEN", "")
 					t.Setenv("JAWA_FORGEJO_TOKEN", "")
+					t.Setenv("FORGEJO_TOKEN", "")
 				}
 				calls := 0
 				client := &http.Client{Transport: providerTransport(func(r *http.Request) (*http.Response, error) {
@@ -487,7 +489,7 @@ func TestForceReadyFencesLateDeliveries(t *testing.T) {
 			t.Fatal("late typed report accepted")
 		}
 	}
-	if err := w.applyStatus(a, client.Status{Target: client.Target{TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "attempt"}, State: runtime.RunRunning}); err != nil {
+	if err := w.applyStatus(a, client.Status{TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "attempt", State: runtime.RunRunning}); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Reconcile(a.TaskID, "run", "attempt"); err == nil {
@@ -576,7 +578,7 @@ func TestForceReadyPersistenceAndViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer func() { _ = reopened.Close() }()
 	again := &Workflow{s: reopened, ctx: t.Context()}
 	check(again, false)
 	if err := again.MarkPRMerged(t.Context(), c.ID, original.ID, "https://github.com/example/repo/pull/55"); err != nil {

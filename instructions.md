@@ -45,6 +45,11 @@ minimal changes that follow the project's conventions.
   authenticated host CLI (`gh` for GitHub; `tea`/`fj` or the documented REST API
   for Forgejo/Gitea; `glab` for GitLab). Check `--help` and auth status before
   use; never guess flags or use GitHub GraphQL against Forgejo.
+- A Forgejo credential, when configured, is in `$FORGEJO_TOKEN`. Send it only to
+  the task's Forgejo host: `Authorization: token $FORGEJO_TOKEN` for the REST
+  API, and for HTTPS Git a host-scoped one-off helper, e.g.
+  `git -c 'credential.https://HOST.helper=!f() { echo username=oauth2; echo "password=$FORGEJO_TOKEN"; }; f' push ...`.
+  Never embed it in remote URLs or write it to Git config or files.
 
 ## Working without a human
 

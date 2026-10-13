@@ -43,6 +43,7 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	root := envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces")
 	image := envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")
 	token := os.Getenv("GITHUB_TOKEN")
+	forgejo := forgejoToken()
 	apiKey, providerURL := "", ""
 	cmd.Flags().BoolVar(&apiEnabled, "nats-api", apiEnabled, "serve authenticated run API over NATS; requires presence (JAWA_NATS_API)")
 	cmd.Flags().BoolVar(&presence, "nats-presence", presence, "announce agent through JetStream KV (JAWA_NATS_PRESENCE)")
@@ -51,6 +52,8 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	cmd.Flags().StringVar(&image, "sandbox-image", image, "microsandbox guest image (JAWA_SANDBOX_IMAGE)")
 	cmd.Flags().StringVar(&token, "github-token", token, "GitHub credential for coding commands (GITHUB_TOKEN); prefer environment")
 	cmd.Flags().Lookup("github-token").DefValue = ""
+	cmd.Flags().StringVar(&forgejo, "forgejo-token", forgejo, "Forgejo credential for coding commands (JAWA_FORGEJO_TOKEN or FORGEJO_TOKEN); prefer environment")
+	cmd.Flags().Lookup("forgejo-token").DefValue = ""
 	cmd.Flags().StringVar(&apiKey, "provider-api-key", "", "override model provider credential; prefer provider environment variables")
 	cmd.Flags().StringVar(&providerURL, "provider-url", "", "override model provider endpoint")
 	servingFlagsE(cmd, func(name string, cfg natschannel.Config) error {
@@ -58,6 +61,10 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 		delete(env, "GITHUB_TOKEN")
 		if token != "" {
 			env["GITHUB_TOKEN"] = token
+		}
+		delete(env, "FORGEJO_TOKEN")
+		if forgejo != "" {
+			env["FORGEJO_TOKEN"] = forgejo
 		}
 		agent.Configure(bonnie.WithSandboxes(codingSandboxesWith(root, image)...), bonnie.WithSandboxEnv(env), bonnie.WithKit(func(o *kit.Options) {
 			o.ProviderAPIKey = apiKey

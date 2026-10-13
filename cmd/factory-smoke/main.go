@@ -154,7 +154,7 @@ func address() (string, error) {
 func run() (runErr error) {
 	// Never inherit provider credentials; the production verifier must fail closed
 	// before opening any HTTP connection. Kit discovery is disabled below too.
-	for _, key := range []string{"JAWA_GITHUB_TOKEN", "GITHUB_TOKEN", "JAWA_FORGEJO_TOKEN"} {
+	for _, key := range []string{"JAWA_GITHUB_TOKEN", "GITHUB_TOKEN", "JAWA_FORGEJO_TOKEN", "FORGEJO_TOKEN"} {
 		if err := os.Unsetenv(key); err != nil {
 			return err
 		}

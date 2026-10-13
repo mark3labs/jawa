@@ -24,10 +24,17 @@ func effectiveProviderSetting(overrides map[string]string, dashboardKey, envKey 
 	if value, ok := overrides[dashboardKey]; ok {
 		return value
 	}
-	if envKey == "JAWA_GITHUB_TOKEN" && os.Getenv(envKey) == "" {
-		return os.Getenv("GITHUB_TOKEN")
+	if value := os.Getenv(envKey); value != "" {
+		return value
 	}
-	return os.Getenv(envKey)
+	// Jawa-scoped provider tokens fall back to the conventional unprefixed names.
+	switch envKey {
+	case "JAWA_GITHUB_TOKEN":
+		return os.Getenv("GITHUB_TOKEN")
+	case "JAWA_FORGEJO_TOKEN":
+		return os.Getenv("FORGEJO_TOKEN")
+	}
+	return ""
 }
 
 func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
@@ -619,7 +626,7 @@ func ProviderIdentity(s *Store, supplied *http.Client) IdentityChecker {
 		if err = p.read(path, &pr); err != nil {
 			return "", err
 		}
-		if !pr.identityMatches(owner+"/"+name, base, branch, number) || !(pr.State == "open" && !pr.Merged || pr.State == "closed" && pr.Merged) {
+		if !pr.identityMatches(owner+"/"+name, base, branch, number) || (pr.State != "open" || pr.Merged) && (pr.State != "closed" || !pr.Merged) {
 			return "", errors.New("provider: PR identity or state invalid")
 		}
 		return pr.Head.SHA, nil

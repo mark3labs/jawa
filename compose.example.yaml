@@ -17,7 +17,7 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       JAWA_GITHUB_TOKEN: "${JAWA_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
-      JAWA_FORGEJO_TOKEN: "${JAWA_FORGEJO_TOKEN:-}"
+      JAWA_FORGEJO_TOKEN: "${JAWA_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
     volumes:
       - orchestrator-data:/data
 
@@ -40,6 +40,7 @@ services:
       JAWA_MODEL: "${JAWA_MODEL:-opencode/glm-5.3-flash}"
       OPENCODE_API_KEY: "${OPENCODE_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      FORGEJO_TOKEN: "${FORGEJO_TOKEN:-}"
     volumes:
       - agent-data:/data
     # The agent's unauthenticated HTTP API is intentionally not host-published.

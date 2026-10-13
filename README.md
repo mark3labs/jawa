@@ -63,7 +63,7 @@ bodyless issue); both fields remain editable. It uses the loaded snapshot.
 **Refresh issues** retries loading or obtains a newer snapshot before copying.
 You can still create a card with **No linked issue** when the list is empty or
 unavailable. The orchestrator needs `JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) with
-repository issue read access for GitHub, or `JAWA_FORGEJO_TOKEN` for Forgejo;
+repository issue read access for GitHub, or `JAWA_FORGEJO_TOKEN` (or `FORGEJO_TOKEN`) for Forgejo;
 these credentials stay on the server. Loading is bounded to 20 seconds and 20
 pages of 100 API entries; larger lists report a loading error rather than show
 an incomplete selector.
@@ -110,7 +110,7 @@ export NATS_USERNAME=agent
 The orchestrator independently verifies PR identity, assigned branch, current-head
 CI and review feedback before moving a card to **Done**. Done means ready for human
 review/merge, not merged or automatically approved. Give the orchestrator
-`JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) and/or `JAWA_FORGEJO_TOKEN` with verification
+`JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) and/or `JAWA_FORGEJO_TOKEN` (or `FORGEJO_TOKEN`) with verification
 read access; agents need their own push/PR credentials. See [PROVIDERS.md](PROVIDERS.md)
 for supported API policy and required permissions. Missing credentials or incomplete
 evidence leaves the card blocked in Building rather than falsely completing it.
@@ -247,6 +247,7 @@ jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
 | `JAWA_SANDBOX_ROOT` | `--sandbox-root` |
 | `JAWA_SANDBOX_IMAGE` | `--sandbox-image` |
 | `GITHUB_TOKEN` | `--github-token` |
+| `JAWA_FORGEJO_TOKEN`, falling back to `FORGEJO_TOKEN` | `--forgejo-token` |
 
 Use `--provider-api-key` to override the selected model provider's credential
 (e.g. `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) and
@@ -271,7 +272,7 @@ the agent connects to embedded NATS over the Compose network.
 
 1. Copy `.env.example` to `.env` if you do not already have one. Set your
    `OPENCODE_API_KEY` (or adapt the agent environment for another model provider)
-   and `GITHUB_TOKEN`. Set `NATS_USERNAME=worker` and choose a `NATS_PASSWORD`
+   and `GITHUB_TOKEN` (and/or `FORGEJO_TOKEN` for Forgejo). Set `NATS_USERNAME=worker` and choose a `NATS_PASSWORD`
    of 12–72 bytes. The sample overrides `NATS_URL` to reach the orchestrator.
 2. Start only the orchestrator:
 
@@ -410,6 +411,12 @@ The root derives `bonnie.tasks`, `bonnie.results`, `bonnie.events`, and the
 For GitHub pushes and PRs, give `GITHUB_TOKEN` repository **Contents** and
 **Pull requests** read/write permissions.
 
+For Forgejo pushes and PRs, set `JAWA_FORGEJO_TOKEN` (or `FORGEJO_TOKEN`) on the
+agent with repository and issue read/write scopes. Coding commands receive it as
+`FORGEJO_TOKEN`; the agent is instructed to send it only to the task's Forgejo
+host (REST API and a host-scoped one-off Git credential helper). No Git
+configuration is written.
+
 ### Agent Git identity
 
 Set the identity for new ordinary commits at runtime, without rebuilding the image:
@@ -442,7 +449,8 @@ or recreate the container after changing them (for Compose, run
 
 Commit identity is metadata, not authentication or signing, and does not change
 task routing or commit/push authorization. Use your desired verified or noreply
-email for Git host attribution; GitHub access still uses `GITHUB_TOKEN`.
+email for Git host attribution; GitHub access still uses `GITHUB_TOKEN` and
+Forgejo access `JAWA_FORGEJO_TOKEN`/`FORGEJO_TOKEN`.
 
 Run state and workspaces persist under `/data`. Completed workspaces are retained
 7 days, failed ones 14 days, and cancelled/retired ones 3 days. Export important

@@ -88,3 +88,24 @@ func TestCodingEnv(t *testing.T) {
 		t.Fatal("empty token should not be injected")
 	}
 }
+
+// TestCodingEnvForgejoToken verifies the Forgejo credential precedence and name.
+func TestCodingEnvForgejoToken(t *testing.T) {
+	t.Setenv("JAWA_FORGEJO_TOKEN", "")
+	t.Setenv("FORGEJO_TOKEN", "")
+	if _, ok := codingEnv()["FORGEJO_TOKEN"]; ok {
+		t.Fatal("empty token should not be injected")
+	}
+	t.Setenv("FORGEJO_TOKEN", "fallback-token")
+	if got := codingEnv()["FORGEJO_TOKEN"]; got != "fallback-token" {
+		t.Fatalf("fallback = %q", got)
+	}
+	t.Setenv("JAWA_FORGEJO_TOKEN", "scoped-token")
+	env := codingEnv()
+	if env["FORGEJO_TOKEN"] != "scoped-token" {
+		t.Fatalf("precedence = %q", env["FORGEJO_TOKEN"])
+	}
+	if _, ok := env["JAWA_FORGEJO_TOKEN"]; ok {
+		t.Fatal("sandbox should receive only FORGEJO_TOKEN")
+	}
+}

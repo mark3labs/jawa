@@ -20,7 +20,7 @@ reports whether a credential is configured, never its value.
 | `--debug` | `JAWA_ORCHESTRATOR_DEBUG` | `false` |
 | `--allow-no-ci` | `JAWA_ALLOW_NO_CI` | `false` |
 | `--github-token` | `JAWA_GITHUB_TOKEN`, falling back to `GITHUB_TOKEN` | empty |
-| `--forgejo-token` | `JAWA_FORGEJO_TOKEN` | empty |
+| `--forgejo-token` | `JAWA_FORGEJO_TOKEN`, falling back to `FORGEJO_TOKEN` | empty |
 
 Boolean environment defaults retain the existing exact `true` convention.
 `--allow-no-ci` permits absent GitHub CI evidence; it does not bypass failing or

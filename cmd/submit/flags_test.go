@@ -57,7 +57,7 @@ func TestHelpRedactsConnectionDefaults(t *testing.T) {
 		t.Fatalf("help: %v", parseErr)
 	}
 	// The root subject is not secret; only credential-bearing flags must redact defaults.
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.Contains(line, "NATS connection setting") && strings.Contains(line, "credential-secret") {
 			t.Fatal("help leaked credential")
 		}

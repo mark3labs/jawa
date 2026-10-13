@@ -37,7 +37,7 @@ func TestReconcileCommandValidation(t *testing.T) {
 func TestReconcileCommandRetainedResult(t *testing.T) {
 	for _, superseded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "selected", true: "superseded"}[superseded], func(t *testing.T) {
-			for _, name := range []string{"NATS_USERNAME", "NATS_PASSWORD", "JAWA_GITHUB_TOKEN", "GITHUB_TOKEN", "JAWA_FORGEJO_TOKEN"} {
+			for _, name := range []string{"NATS_USERNAME", "NATS_PASSWORD", "JAWA_GITHUB_TOKEN", "GITHUB_TOKEN", "JAWA_FORGEJO_TOKEN", "FORGEJO_TOKEN"} {
 				t.Setenv(name, "")
 			}
 			_, nc := workflowFixture(t)

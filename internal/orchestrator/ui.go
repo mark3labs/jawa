@@ -69,13 +69,13 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return snap, err
 		}
 		snap.pendingResumes[id] = true
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return snap, err
 	}

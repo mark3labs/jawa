@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -23,22 +22,22 @@ func (e *issueCreateError) Error() string { return e.Message }
 func issueCreateTarget(p Project, settings map[string]string) (target, canonical, auth string, err error) {
 	host, owner, repo, err := providerRepository(p.Repo)
 	if err != nil {
-		return "", "", "", errors.New("Issue creation does not support this repository URL. Turn Create issue off or correct the project.")
+		return "", "", "", &issueCreateError{Message: "Issue creation does not support this repository URL. Turn Create issue off or correct the project."}
 	}
 	var token, api, prefix string
 	switch p.Provider {
 	case "github":
 		if host != "github.com" {
-			return "", "", "", errors.New("Issue creation supports github.com only.")
+			return "", "", "", &issueCreateError{Message: "Issue creation supports github.com only."}
 		}
 		api, prefix, token = "https://api.github.com", "Bearer ", effectiveProviderSetting(settings, "github-token", "JAWA_GITHUB_TOKEN")
 	case "forgejo":
 		api, prefix, token = "https://"+host+"/api/v1", "token ", effectiveProviderSetting(settings, "forgejo-token", "JAWA_FORGEJO_TOKEN")
 	default:
-		return "", "", "", errors.New("Issue creation provider is unsupported.")
+		return "", "", "", &issueCreateError{Message: "Issue creation provider is unsupported."}
 	}
 	if strings.TrimSpace(token) == "" {
-		return "", "", "", errors.New("Issue creation needs a server provider token with repository Issues read/write permission. Configure Settings or turn Create issue off.")
+		return "", "", "", &issueCreateError{Message: "Issue creation needs a server provider token with repository Issues read/write permission. Configure Settings or turn Create issue off."}
 	}
 	return api + "/repos/" + owner + "/" + repo + "/issues", "https://" + host + "/" + owner + "/" + repo + "/issues/", prefix + token, nil
 }
@@ -47,7 +46,7 @@ func issueCreateTarget(p Project, settings map[string]string) (target, canonical
 func createProjectIssue(ctx context.Context, p Project, title, body string, supplied *http.Client, settings map[string]string) (projectIssue, error) {
 	target, canonical, auth, err := issueCreateTarget(p, settings)
 	if err != nil {
-		return projectIssue{}, &issueCreateError{Message: err.Error()}
+		return projectIssue{}, err
 	}
 	if strings.TrimSpace(title) == "" {
 		return projectIssue{}, &issueCreateError{Message: "Title is required."}

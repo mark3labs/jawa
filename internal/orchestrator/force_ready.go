@@ -34,7 +34,7 @@ func (s *Store) readyOverrides() (map[string]readyOverride, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make(map[string]readyOverride)
 	for rows.Next() {
 		var id string
@@ -126,7 +126,7 @@ func forceReadyPR(c Card, a Attempt, p Project, number string) (string, error) {
 		}
 	}
 	if c.Status == "Fix" && (a.RepairPRURL == "" || stored != a.RepairPRURL) {
-		return "", errors.New("Fix requires its assigned repair PR")
+		return "", errors.New("the Fix status requires its assigned repair PR")
 	}
 	return stored, nil
 }
@@ -152,13 +152,13 @@ func readySnapshot(q readyQuery, id string) (Card, Project, []Attempt, bool, err
 	for rows.Next() {
 		a, e := scanAttempt(rows)
 		if e != nil {
-			rows.Close()
+			_ = rows.Close()
 			return c, p, nil, false, e
 		}
 		all = append(all, a)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return c, p, nil, false, err
 	}
@@ -224,11 +224,11 @@ func (w *Workflow) ForceReady(ctx context.Context, cardID, expected, prNumber, r
 	}
 	c, p, all, pending, err := readySnapshot(read, cardID)
 	if err != nil {
-		read.Rollback()
+		_ = read.Rollback()
 		return err
 	}
 	duplicate, err := readyDuplicate(read, c, all, p, expected)
-	read.Rollback()
+	_ = read.Rollback()
 	if err != nil {
 		return err
 	}
@@ -267,7 +267,7 @@ func (w *Workflow) ForceReady(ctx context.Context, cardID, expected, prNumber, r
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	current, project, history, pending, err := readySnapshot(tx, cardID)
 	if err != nil {
 		return err

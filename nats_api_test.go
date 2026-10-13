@@ -51,7 +51,7 @@ func TestAPIKeyWatchAuthentication(t *testing.T) {
 	token := runapitoken.Sign(key, "agent-1", time.Now())
 	wait := func(f func() bool) {
 		t.Helper()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			if f() {
 				return
 			}

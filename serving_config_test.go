@@ -33,21 +33,22 @@ func TestConnectionFlagsOverrideEnvironment(t *testing.T) {
 func TestServingConfigurationFlags(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("GITHUB_TOKEN", "secret-github-default")
+	t.Setenv("JAWA_FORGEJO_TOKEN", "secret-forgejo-default")
 	t.Setenv("NATS_PASSWORD", "secret-nats-default")
 	t.Setenv("JAWA_NATS_PRESENCE", "true")
 	cmd := &cobra.Command{Use: "jawa", RunE: func(*cobra.Command, []string) error { return nil }}
 	configureServing(cmd, bonnie.New())
-	cmd.SetArgs([]string{"--nats-presence=false", "--nats-agent-id=test-agent", "--sandbox-root=/tmp/custom", "--sandbox-image=custom:image", "--github-token=", "--provider-api-key=flag-key", "--provider-url=http://localhost:8000"})
+	cmd.SetArgs([]string{"--nats-presence=false", "--nats-agent-id=test-agent", "--sandbox-root=/tmp/custom", "--sandbox-image=custom:image", "--github-token=", "--forgejo-token=", "--provider-api-key=flag-key", "--provider-url=http://localhost:8000"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	for _, flag := range []string{"nats-presence-bucket", "sandbox-root", "sandbox-image", "github-token", "provider-api-key", "provider-url"} {
+	for _, flag := range []string{"nats-presence-bucket", "sandbox-root", "sandbox-image", "github-token", "forgejo-token", "provider-api-key", "provider-url"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("missing flag %s", flag)
 		}
 	}
 	help := cmd.UsageString()
-	if strings.Contains(help, "secret-github-default") || strings.Contains(help, "secret-nats-default") {
+	if strings.Contains(help, "secret-github-default") || strings.Contains(help, "secret-nats-default") || strings.Contains(help, "secret-forgejo-default") {
 		t.Fatal("help leaked credentials")
 	}
 }

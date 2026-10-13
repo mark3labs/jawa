@@ -39,18 +39,19 @@ func (a *app) issueCardError(w http.ResponseWriter, r *http.Request, err error) 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusConflict)
 	// Native fallback retains escaped fields and the original reservation token.
-	form := `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>New card recovery</title><link rel="stylesheet" href="/assets/style.css"></head><body><main><h1>New card</h1><form method="post" action="/cards">`
+	var form strings.Builder
+	form.WriteString(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>New card recovery</title><link rel="stylesheet" href="/assets/style.css"></head><body><main><h1>New card</h1><form method="post" action="/cards">`)
 	for _, name := range []string{"_csrf", "project_id", "issue_submission", "view", "project"} {
-		form += `<input type="hidden" name="` + name + `" value="` + html.EscapeString(r.FormValue(name)) + `">`
+		form.WriteString(`<input type="hidden" name="` + name + `" value="` + html.EscapeString(r.FormValue(name)) + `">`)
 	}
-	form += `<label>Title <input name="title" required value="` + html.EscapeString(r.FormValue("title")) + `"></label><label>Description <textarea name="description">` + html.EscapeString(r.FormValue("description")) + `</textarea></label>`
+	form.WriteString(`<label>Title <input name="title" required value="` + html.EscapeString(r.FormValue("title")) + `"></label><label>Description <textarea name="description">` + html.EscapeString(r.FormValue("description")) + `</textarea></label>`)
 	checked := ""
 	if r.FormValue("create_issue") != "" {
 		checked = " checked"
 	}
 	if state == "" || state == "created" {
-		form += `<label><input type="checkbox" name="create_issue" value="yes"` + checked + `>Create issue</label>`
+		form.WriteString(`<label><input type="checkbox" name="create_issue" value="yes"` + checked + `>Create issue</label>`)
 	}
-	form += controls + `<button type="submit">Create card</button><a href="/board">Cancel</a></form></main></body></html>`
-	_, _ = w.Write([]byte(strings.TrimSpace(form)))
+	form.WriteString(controls + `<button type="submit">Create card</button><a href="/board">Cancel</a></form></main></body></html>`)
+	_, _ = w.Write([]byte(strings.TrimSpace(form.String())))
 }

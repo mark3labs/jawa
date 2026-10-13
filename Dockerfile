@@ -62,7 +62,7 @@ ENV LIGHTPANDA_DISABLE_TELEMETRY=true \
     TMPDIR=/tmp \
     PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 EXPOSE 8080
-# Pass NATS_URL, NATS_USERNAME, NATS_PASSWORD, GITHUB_TOKEN and model-provider
+# Pass NATS_URL, NATS_USERNAME, NATS_PASSWORD, GITHUB_TOKEN, FORGEJO_TOKEN and model-provider
 # credentials at runtime. Never use build arguments for credentials.
 USER jawa
 WORKDIR /data

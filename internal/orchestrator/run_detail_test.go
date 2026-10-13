@@ -192,7 +192,7 @@ func TestRunHubCapacityAndEqualSequenceActivity(t *testing.T) {
 	a := testApp(t)
 	pool := a.workflow.runAPI
 	var releases []func()
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		_, release, err := pool.observe(Attempt{AgentID: "capacity-agent", RunID: fmt.Sprintf("run-%d", i)})
 		if err != nil {
 			t.Fatal(err)
@@ -206,7 +206,7 @@ func TestRunHubCapacityAndEqualSequenceActivity(t *testing.T) {
 		release()
 	}
 	var events []runtime.Event
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		events, _ = boundedEvents(events, runtime.Event{Seq: 5, Type: "live", Text: fmt.Sprint(i)})
 	}
 	if len(events) != 256 || events[0].Text != "44" || events[255].Text != "299" {
@@ -225,7 +225,7 @@ func TestFollowupCannotChangeTerminalWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := a.workflow.attemptByID(attempt.ID)
-	event := client.StatusEvent{Version: 1, EventID: "followup-event", Type: "run_state", Seq: 999, State: "running", Target: client.Target{TaskID: before.TaskID, AgentID: before.AgentID, RunID: before.RunID, AttemptID: before.RemoteAttemptID}}
+	event := client.StatusEvent{Version: 1, EventID: "followup-event", Type: "run_state", Seq: 999, State: "running", TaskID: before.TaskID, AgentID: before.AgentID, RunID: before.RunID, AttemptID: before.RemoteAttemptID}
 	if err = a.workflow.event(t.Context(), event); err != nil {
 		t.Fatal(err)
 	}
