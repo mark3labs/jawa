@@ -82,9 +82,21 @@ func TestRefreshPRChecksQueuesWholeBoard(t *testing.T) {
 		extra.ID, extra.TaskID, extra.CardID = fmt.Sprintf("extra%d", i), fmt.Sprintf("extra%d", i), card.ID
 		persistConflictAttempt(t, s, extra)
 	}
+	before := map[string]string{}
+	for i, state := range []string{"", "checking", "conflict"} {
+		extra := addArchivedConflictAttempt(t, s, a, project, fmt.Sprintf("archived%d", i), state)
+		before[extra.ID] = conflictEvidenceSnapshot(t, s, extra.ID)
+	}
 	w := &Workflow{s: s}
 	calls := 0
-	w.SetProviderChecks(nil, func(context.Context, Attempt) (PRCheck, error) { calls++; return PRCheck{State: "clear"}, nil })
+	checker := func(_ context.Context, got Attempt) (PRCheck, error) {
+		if _, excluded := before[got.ID]; excluded {
+			t.Fatalf("archived call %s", got.ID)
+		}
+		calls++
+		return PRCheck{State: "clear"}, nil
+	}
+	w.SetProviderChecks(nil, checker)
 	// Fresh checks on every card must not exclude any board-refresh target.
 	for range 2 {
 		if err := w.PollPRConflicts(context.Background()); err != nil {
@@ -97,13 +109,18 @@ func TestRefreshPRChecksQueuesWholeBoard(t *testing.T) {
 		t.Fatalf("%+v %v", result, err)
 	}
 	var queued int
-	if err := s.db.QueryRow(`SELECT count(*) FROM workflow_pr_checks WHERE state='checking' AND checked_at=0`).Scan(&queued); err != nil || queued != 5 {
+	if err := s.db.QueryRow(`SELECT count(*) FROM workflow_pr_checks WHERE state='checking' AND checked_at=0 AND attempt_id NOT LIKE 'archived%'`).Scan(&queued); err != nil || queued != 5 {
 		t.Fatalf("queued %d %v", queued, err)
 	}
 	restarted := &Workflow{s: s}
-	restarted.SetProviderChecks(nil, func(context.Context, Attempt) (PRCheck, error) { calls++; return PRCheck{State: "clear"}, nil })
+	restarted.SetProviderChecks(nil, checker)
 	if err := restarted.PollPRConflicts(context.Background()); err != nil || calls != 21 {
 		t.Fatalf("eventual %d %v", calls, err)
+	}
+	for id, snapshot := range before {
+		if got := conflictEvidenceSnapshot(t, s, id); got != snapshot {
+			t.Fatalf("archived evidence changed: %s", id)
+		}
 	}
 }
 
@@ -131,5 +148,62 @@ func TestRefreshPRChecksCancellationLeavesQueued(t *testing.T) {
 	check, err := w.CardPRCheck(a.CardID)
 	if err != nil || check.State != "checking" {
 		t.Fatalf("%+v %v", check, err)
+	}
+}
+
+func TestRefreshPRChecksArchivedScopeAndRestore(t *testing.T) {
+	s, a := conflictFixture(t, "github")
+	persistConflictAttempt(t, s, a)
+	var project string
+	if err := s.db.QueryRow(`SELECT project_id FROM cards WHERE id=?`, a.CardID).Scan(&project); err != nil {
+		t.Fatal(err)
+	}
+	archived := addArchivedConflictAttempt(t, s, a, project, "archived", "conflict")
+	unchecked := addArchivedConflictAttempt(t, s, a, project, "unchecked", "")
+	before := conflictEvidenceSnapshot(t, s, archived.ID)
+	other, err := s.CreateProjectDetails("other", "github", "https://github.com/acme/repo.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addArchivedConflictAttempt(t, s, a, other.ID, "other-attempt", "")
+	if _, err := s.db.Exec(`UPDATE cards SET archived=0 WHERE project_id=?`, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	nonReady := addArchivedConflictAttempt(t, s, a, project, "non-ready", "")
+	if _, err := s.db.Exec(`UPDATE cards SET archived=0,status='Fix' WHERE id=?`, nonReady.CardID); err != nil {
+		t.Fatal(err)
+	}
+	calls := []string{}
+	w := &Workflow{s: s}
+	w.SetProviderChecks(nil, func(_ context.Context, got Attempt) (PRCheck, error) {
+		calls = append(calls, got.ID)
+		return PRCheck{State: "clear"}, nil
+	})
+	result, err := w.RefreshPRChecks(t.Context(), project, "")
+	if err != nil || result != (PRRefreshResult{Targeted: 1, Checked: 1}) || len(calls) != 1 || calls[0] != a.ID {
+		t.Fatalf("result=%+v calls=%v err=%v", result, calls, err)
+	}
+	if _, err := w.RefreshPRChecks(t.Context(), project, archived.CardID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("archived selection: %v", err)
+	}
+	if got := conflictEvidenceSnapshot(t, s, archived.ID); got != before {
+		t.Fatal("historical evidence changed")
+	}
+	if got := conflictEvidenceSnapshot(t, s, unchecked.ID); got != "" {
+		t.Fatal("created archived evidence")
+	}
+	if err := s.SetCardArchived(a.CardID, true); err != nil {
+		t.Fatal(err)
+	}
+	result, err = w.RefreshPRChecks(t.Context(), project, "")
+	if err != nil || result != (PRRefreshResult{}) || len(calls) != 1 {
+		t.Fatalf("all archived %+v calls=%v err=%v", result, calls, err)
+	}
+	if err := s.SetCardArchived(archived.CardID, false); err != nil {
+		t.Fatal(err)
+	}
+	result, err = w.RefreshPRChecks(t.Context(), project, archived.CardID)
+	if err != nil || result != (PRRefreshResult{Targeted: 1, Checked: 1}) || len(calls) != 2 || calls[1] != archived.ID {
+		t.Fatalf("restore %+v calls=%v err=%v", result, calls, err)
 	}
 }
