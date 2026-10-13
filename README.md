@@ -134,6 +134,26 @@ equivalent for Planning and never waits on the agent. If the dashboard is
 unavailable, run `jawa orchestrator force-stop --data-dir <dir> --card JAW-XXXX`
 (for example via `docker exec` in the orchestrator container).
 
+**Force ready…** is a separate, audited escape hatch for inactive, unready
+Building/Fix attempts, including failed or force-stopped runs without completion
+reports. Active or pending-resume attempts must be force-stopped first; execution
+identity conflicts require reconciliation. Inspect the PR manually and explicitly
+acknowledge that CI, review and mergeability readiness checks are bypassed.
+The server uses the recorded PR (the assigned PR for Fix), or asks for a positive
+PR number if none is recorded; a browser-supplied URL cannot select the PR.
+It independently validates repository, base, assigned branch, head SHA and open
+or provider-confirmed merged state. Missing credentials, provider failures,
+closed-unmerged PRs and stale confirmation tokens reject the action.
+
+This moves the card to Done without merging, changing GitHub/Forgejo, or sending
+an agent command. Ordinary manual moves to Done remain forbidden. The original
+outcome/run state and typed reports are preserved, alongside durable operator,
+optional reason, observed head and prior-attempt audit evidence. **Manually
+readied** badges show the exact UTC marking time on Board, Archive, Runs and card
+detail, and remain historical provenance after repairs or merged-status changes,
+not evidence of current checks. There is no CLI fallback for this action.
+Back up the database before upgrading to the additive audit migration.
+
 Execution leases, automatic reassignment, and enforced runtime/cost budgets are not
 yet implemented. The agent prompt bounds CI/review repair to 30 minutes, but this
 is guidance, not a scheduler-enforced timeout. Review comments arriving after Done

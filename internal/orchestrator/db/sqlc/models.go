@@ -264,6 +264,17 @@ type WorkflowPrMergeOverride struct {
 	MarkedAt   int64  `json:"marked_at"`
 }
 
+type WorkflowReadyOverride struct {
+	AttemptID     string `json:"attempt_id"`
+	PrUrl         string `json:"pr_url"`
+	HeadSha       string `json:"head_sha"`
+	ActionToken   string `json:"action_token"`
+	PriorSnapshot string `json:"prior_snapshot"`
+	Operator      string `json:"operator"`
+	Reason        string `json:"reason"`
+	MarkedAt      int64  `json:"marked_at"`
+}
+
 type WorkflowReconciliation struct {
 	ID                      int64  `json:"id"`
 	TaskID                  string `json:"task_id"`
