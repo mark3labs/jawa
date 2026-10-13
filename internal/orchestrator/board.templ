@@ -31,7 +31,7 @@ templ boardContent(d pageData) {
 				</div>
 				<div class="view-stats">
 					{{ work := projectWork(d.uiSnapshot, p.ID) }}
-					<span class="stat" title={ work.Label() } aria-label={ work.Label() }><strong>{ strconv.Itoa(work.Total()) }</strong> active</span>
+					<span role="group" class="stat" title={ work.Label() } aria-label={ work.Label() }><strong>{ strconv.Itoa(work.Total()) }</strong> active</span>
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
 				</div>
 			</div>

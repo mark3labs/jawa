@@ -51,7 +51,11 @@ try {
       ]) {
         const badge = page.locator(`[data-project-id="${id}"] .nav-count.live`);
         assert.equal(await badge.textContent(), String(total));
-        const label = await badge.getAttribute('aria-label');
+        const label = await badge.getAttribute('title');
+        const project = page.locator(`[data-project-id="${id}"]`);
+        const name = `${await project.getAttribute('data-project-name')}: ${label}`;
+        assert.equal(await project.getAttribute('aria-label'), name);
+        assert.equal(await page.getByRole('link', { name, exact: true }).count(), 1);
         assert.ok(label.includes(breakdown));
         assert.ok(label.includes('includes queued and archived work'));
         assert.equal(await badge.getAttribute('title'), label);
@@ -59,6 +63,7 @@ try {
       assert.equal(await page.locator('[data-project-id="zero"] .nav-count.live').count(), 0);
       if (view === 'board') {
         assert.match(await page.locator('.view-stats').textContent(), /4 active/);
+        assert.equal(await page.getByRole('group', { name: '4 active work items: 2 planning, 1 building, 1 fixing (includes queued and archived work)', exact: true }).count(), 1);
       }
       const overlaps = await page.locator('[data-project-id]').evaluateAll(links =>
         links.filter(link => {

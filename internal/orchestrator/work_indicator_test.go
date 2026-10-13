@@ -83,7 +83,8 @@ func TestProjectWorkAndRendering(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, html := range []string{full.String(), fragments.String()} {
-		if strings.Count(html, `aria-label="`+want.Label()+`"`) != 2 {
+		if !strings.Contains(html, `role="group" class="stat" title="`+want.Label()+`" aria-label="`+want.Label()+`"`) ||
+			!strings.Contains(html, `aria-label="Project: `+want.Label()+`"`) {
 			t.Fatal("full page/fragments disagree on accessible breakdown")
 		}
 		if !strings.Contains(html, `<strong>3</strong> active`) {
