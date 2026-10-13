@@ -615,7 +615,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return err
 	}
 	a.AgentID, a.RunID, a.RemoteAttemptID = out.AgentID, out.RunID, out.AttemptID
-	a.RunState = string(out.State)
+	a.RunState = outcomeRunState(out)
 	w.logAttempt(log.InfoLevel, "Execution result received", a)
 	return nil
 }
@@ -626,6 +626,22 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 func resumableOutcome(a Attempt) bool {
 	var out client.Outcome
 	return json.Unmarshal([]byte(a.OutcomeJSON), &out) == nil && (string(out.State) == "waiting" || string(out.State) == "cancelled" || string(out.State) == "interrupted")
+}
+
+// outcomeRunState records the run state for a final outcome. BONNIE can end a
+// turn with an error while its snapshot still reads running (e.g. an admitted
+// answer whose resume was interrupted). The outcome is final, and status events
+// stop applying once it is stored, so keeping "running" would leave the attempt
+// looking active forever and block every action. The outcome JSON keeps the
+// original state, so Resume stays unavailable for that refused continuation.
+func outcomeRunState(out client.Outcome) string {
+	switch string(out.State) {
+	case "pending", "queued", "submitted", "running":
+		if out.Error != "" {
+			return "failed"
+		}
+	}
+	return string(out.State)
 }
 
 // applyOutcome is shared by guarded delivery and explicit reconciliation. The
@@ -650,7 +666,7 @@ func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, state, string(out.State), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
+	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, state, outcomeRunState(out), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
 	return err
 }
 func (w *Workflow) verifyPending() {
