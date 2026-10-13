@@ -532,6 +532,10 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	return nil
 }
 func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
+	if transientOutcome(out) {
+		w.noteTransientOutcome(out)
+		return nil
+	}
 	tx, err := w.s.writeTx()
 	if err != nil {
 		return err
@@ -628,12 +632,41 @@ func resumableOutcome(a Attempt) bool {
 	return json.Unmarshal([]byte(a.OutcomeJSON), &out) == nil && (string(out.State) == "waiting" || string(out.State) == "cancelled" || string(out.State) == "interrupted")
 }
 
-// outcomeRunState records the run state for a final outcome. BONNIE can end a
-// turn with an error while its snapshot still reads running (e.g. an admitted
-// answer whose resume was interrupted). The outcome is final, and status events
-// stop applying once it is stored, so keeping "running" would leave the attempt
-// looking active forever and block every action. The outcome JSON keeps the
-// original state, so Resume stays unavailable for that refused continuation.
+// transientOutcome reports a delivery error for a run whose snapshot is still
+// live (pending or running). BONNIE sends these when one delivery fails, for
+// example "admitted answer resume interrupted; cannot auto continue safely"
+// after an agent restart, while the runner itself recovers the run and keeps
+// working. It does not end the run, so it must not end the attempt: doing so
+// rejects every later status event and typed report, including completeTask.
+// Status events keep tracking the run; if it really stalls, resync marks it
+// interrupted and Force stop releases it.
+func transientOutcome(out client.Outcome) bool {
+	switch string(out.State) {
+	case "pending", "queued", "submitted", "running":
+		return true
+	}
+	return false
+}
+
+// transientNoticed logs each transient outcome once per process; result
+// recovery replays retained history every sweep.
+var transientNoticed sync.Map
+
+func (w *Workflow) noteTransientOutcome(out client.Outcome) {
+	key := out.TaskID + "\x00" + out.RunID + "\x00" + out.Error
+	if _, seen := transientNoticed.LoadOrStore(key, true); seen {
+		return
+	}
+	w.log().Warn("Ignoring non-terminal agent outcome; continuing to follow the run", "task_id", out.TaskID, "agent_id", out.AgentID, "run_id", out.RunID, "remote_attempt_id", out.AttemptID, "run_state", string(out.State), "error", out.Error)
+}
+
+// outcomeRunState records the run state for a final outcome that arrives through
+// a trusted path (resume receipts, reconciliation). Live transport outcomes with
+// a pending/running snapshot never get here; see transientOutcome. A trusted
+// receipt describing a still-running snapshot ended that command, and status
+// events stop applying once the outcome is stored, so keeping "running" would
+// leave the attempt looking active forever. The outcome JSON keeps the original
+// state, so Resume stays unavailable for it.
 func outcomeRunState(out client.Outcome) string {
 	switch string(out.State) {
 	case "pending", "queued", "submitted", "running":
