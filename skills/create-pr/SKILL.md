@@ -39,14 +39,16 @@ existing PR number; `REPOSITORY` is its target `OWNER/REPO`.
 # Replace the PR number, repository, and paths with this task's values.
 gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" \
   --body "Screenshots: desktop and mobile views of the updated UI" \
-  --attach ./desktop.png --attach ./mobile.png
+  --attach './desktop.png#Updated screen, after-state, desktop viewport' \
+  --attach './mobile.png#Updated screen, after-state, mobile viewport'
 ```
 
 Repeated `--attach` flags upload the files and append rendered attachments to
 the comment when the body does not reference them. Local paths alone are not
 reviewer-accessible images. Use only relevant captures: the desktop/mobile pair
 is an example, not a requirement. Keep captions identifying each screen, state,
-and viewport.
+and viewport. The `#` suffix supplies per-image alt text; replace these example
+labels with descriptions of the actual captures.
 
 A screenshot comment is valid UI evidence. When practical, link its returned URL
 from the PR body's Screenshots / UI evidence section. Verify the resulting
