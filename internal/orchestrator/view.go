@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"fmt"
 	"maps"
 	"net/http"
 	"net/url"
@@ -312,14 +313,86 @@ func projectByID(projects []Project, id string) (Project, bool) {
 	return Project{}, false
 }
 
-func buildingCount(cards []Card, projectID string) int {
-	n := 0
-	for _, c := range cards {
-		if !c.Archived && c.ProjectID == projectID && c.Status == "Building" {
-			n++
+// workSummary counts cards with durable active work, not live agent processes.
+// Archive visibility does not stop execution, so archived cards are included.
+type workSummary struct {
+	Planning, Building, Fix int
+}
+
+func (s workSummary) Total() int { return s.Planning + s.Building + s.Fix }
+
+func (s workSummary) Label() string {
+	noun := "items"
+	if s.Total() == 1 {
+		noun = "item"
+	}
+	return fmt.Sprintf("%d active work %s: %d planning, %d building, %d fixing (includes queued and archived work)", s.Total(), noun, s.Planning, s.Building, s.Fix)
+}
+
+func workingState(state string) bool {
+	switch state {
+	case "queued", "submitted", "running":
+		return true
+	}
+	return false
+}
+
+// Terminal/paused evidence overrides stale running evidence. Pending resume is
+// the explicit presentation exception, while the resume command is delivered.
+func attemptWorking(a Attempt) bool {
+	if a.Ready || a.State == "ready" {
+		return false
+	}
+	if a.Error == resumePendingNotice {
+		return true
+	}
+	if a.Error == executionConflictNotice {
+		return false
+	}
+	for _, state := range []string{a.State, a.RunState} {
+		switch state {
+		case "ready", "blocked", "waiting", "interrupted", "failed", "cancelled", "completed":
+			return false
 		}
 	}
-	return n
+	return workingState(a.State) && (a.RunState == "" || workingState(a.RunState))
+}
+
+func planningWorking(detail PlanningDetail) bool {
+	if planningDisplayState(detail) == "resuming" {
+		return true
+	}
+	if !workingState(detail.Session.State) {
+		return false
+	}
+	turn, ok := latestPlanningTurn(detail)
+	return ok && (workingState(turn.State) || (turn.State == "waiting" && detail.Session.State == "running"))
+}
+
+func projectWork(s uiSnapshot, projectID string) workSummary {
+	var summary workSummary
+	for _, c := range s.cards {
+		if c.ProjectID != projectID {
+			continue
+		}
+		switch c.Status {
+		case "Planning":
+			if detail, ok := s.planning[c.ID]; ok && planningWorking(detail) {
+				summary.Planning++
+			}
+		case "Building", "Fix":
+			latest := latestAttempt(c.ID, s.attempts)
+			if len(latest) == 0 || !attemptWorking(latest[0]) {
+				continue
+			}
+			if c.Status == "Building" {
+				summary.Building++
+			} else {
+				summary.Fix++
+			}
+		}
+	}
+	return summary
 }
 
 func cardsIn(cards []Card, projectID, status string) []Card {

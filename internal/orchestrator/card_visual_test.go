@@ -42,6 +42,25 @@ func TestCardVisualFixture(t *testing.T) {
 		}
 	}
 	d.attempts = append(d.attempts, Attempt{CardID: "b1", Number: 1, State: "running", AgentID: "builder-agent", UpdatedAt: now})
+	// Sidebar-only projects exercise each mode, archived work, and zero activity.
+	for _, fixture := range []struct {
+		id, name, mode string
+		archived       bool
+	}{
+		{"plan", "Planning-only project with a very long name", "Planning", false},
+		{"fix", "Fix-only project", "Fix", false},
+		{"archive", "Archived active project", "Building", true},
+		{"zero", "No active work", "Todo", false},
+	} {
+		d.projects = append(d.projects, Project{ID: fixture.id, Name: fixture.name})
+		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: fixture.id, Status: fixture.mode, Archived: fixture.archived})
+		if fixture.mode == "Planning" {
+			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "running"}, Turns: []PlanningTurn{{State: "running"}}}
+		} else if fixture.mode == "Fix" || fixture.mode == "Building" {
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running"})
+		}
+	}
+
 	var out bytes.Buffer
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)

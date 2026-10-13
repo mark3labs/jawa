@@ -11,3 +11,11 @@ in Settings only; credentials never enter these snapshots.
 
 GET /activity remains available for JSON inspection/integration assertions, but the
 browser UI does not poll it. See SSE_UI.md for scoped patch roots and lifecycle.
+
+Project badges and the board's **active** total count cards with active planning,
+building, or fixing work, including queued/submitted work and pending resumes.
+Archived cards are included because archiving does not stop execution. The tooltip
+and accessible label break down these modes. Paused/input-waiting, reconciliation-
+blocked, and terminal work are excluded (a planning reply pending delivery counts
+again). This is advisory durable work state, not a count of live agent processes.
+At zero the sidebar badge is hidden; the board still shows `0 active`.
