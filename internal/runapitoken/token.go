@@ -63,7 +63,7 @@ func Verify(key ed25519.PublicKey, token, agent string, now time.Time) error {
 	if d.Decode(&c) != nil || d.Decode(new(any)) != io.EOF {
 		return ErrInvalid
 	}
-	if c.Aud != agent || c.Exp <= now.Unix() || c.Iat > now.Add(30*time.Second).Unix() || c.Exp <= c.Iat || c.Exp-c.Iat > int64(Lifetime/time.Second) {
+	if c.Iat < 0 || c.Exp < 0 || c.Aud != agent || c.Exp <= now.Unix() || c.Iat > now.Add(30*time.Second).Unix() || c.Exp <= c.Iat || c.Exp-c.Iat > int64(Lifetime/time.Second) {
 		return ErrInvalid
 	}
 	return nil
