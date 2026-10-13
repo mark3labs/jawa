@@ -234,11 +234,12 @@ templ runTrace(d runDetail) {
 }
 					</h3>
 					for _,ev:=range group.Events {
-						<details id={ displayKey("event-"+strconv.FormatBool(group.Live), prettyRun(ev), occurrences) } class="run-message" data-trace-entry data-preserve-attr="open" data-show={ traceMatch }>
+						{{ raw := prettyRun(ev) }}
+						<details id={ displayKey("event-"+strconv.FormatBool(group.Live), raw, occurrences) } class="run-message" data-trace-entry data-preserve-attr="open" data-show={ traceMatch }>
 							<summary>{ ev.Type } · #{ strconv.Itoa(ev.Seq) } · { runTime(ev.Time) }</summary>
 							<pre class="result">{ ev.Text }{ string(ev.State) }</pre>
 							<pre class="result">{ string(ev.Data) }</pre>
-							<details id={ displayKey("event-raw-"+strconv.FormatBool(group.Live), prettyRun(ev), occurrences) } data-preserve-attr="open"><summary>Raw event</summary><pre class="result">{ prettyRun(ev) }</pre></details>
+							<details id={ displayKey("event-raw-"+strconv.FormatBool(group.Live), raw, occurrences) } data-preserve-attr="open"><summary>Raw event</summary><pre class="result">{ raw }</pre></details>
 						</details>
 					}
 				</section>

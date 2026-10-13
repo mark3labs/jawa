@@ -1393,14 +1393,15 @@ func runTrace(d runDetail) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			for _, ev := range group.Events {
+				raw := prettyRun(ev)
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<details id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var70 string
-				templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayKey("event-"+strconv.FormatBool(group.Live), prettyRun(ev), occurrences))
+				templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayKey("event-"+strconv.FormatBool(group.Live), raw, occurrences))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 237, Col: 99}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 238, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 				if templ_7745c5c3_Err != nil {
@@ -1413,7 +1414,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var71 string
 				templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue(traceMatch)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 237, Col: 187}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 238, Col: 177}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
 				if templ_7745c5c3_Err != nil {
@@ -1426,7 +1427,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var72 string
 				templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(ev.Type)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 238, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 239, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 				if templ_7745c5c3_Err != nil {
@@ -1439,7 +1440,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(ev.Seq))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 238, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 239, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 				if templ_7745c5c3_Err != nil {
@@ -1452,7 +1453,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var74 string
 				templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(runTime(ev.Time))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 238, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 239, Col: 78}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 				if templ_7745c5c3_Err != nil {
@@ -1465,7 +1466,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(ev.Text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 239, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 240, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 				if templ_7745c5c3_Err != nil {
@@ -1474,7 +1475,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var76 string
 				templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(string(ev.State))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 239, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 240, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 				if templ_7745c5c3_Err != nil {
@@ -1487,7 +1488,7 @@ func runTrace(d runDetail) templ.Component {
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(string(ev.Data))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 240, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 241, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 				if templ_7745c5c3_Err != nil {
@@ -1498,9 +1499,9 @@ func runTrace(d runDetail) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var78 string
-				templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayKey("event-raw-"+strconv.FormatBool(group.Live), prettyRun(ev), occurrences))
+				templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayKey("event-raw-"+strconv.FormatBool(group.Live), raw, occurrences))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 241, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 242, Col: 94}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 				if templ_7745c5c3_Err != nil {
@@ -1511,9 +1512,9 @@ func runTrace(d runDetail) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var79 string
-				templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(prettyRun(ev))
+				templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(raw)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 241, Col: 196}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 242, Col: 176}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
 				if templ_7745c5c3_Err != nil {
@@ -1548,7 +1549,7 @@ func runTrace(d runDetail) templ.Component {
 			var templ_7745c5c3_Var80 string
 			templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayKey("delivery", prettyRun(ev), storedOccurrences))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 255, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 256, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 			if templ_7745c5c3_Err != nil {
@@ -1561,7 +1562,7 @@ func runTrace(d runDetail) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue(traceMatch)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 255, Col: 162}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 256, Col: 162}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -1596,7 +1597,7 @@ func runTrace(d runDetail) templ.Component {
 			var templ_7745c5c3_Var83 string
 			templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(ev.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 258, Col: 11}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 259, Col: 11}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 			if templ_7745c5c3_Err != nil {
@@ -1609,7 +1610,7 @@ func runTrace(d runDetail) templ.Component {
 			var templ_7745c5c3_Var84 string
 			templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(runTime(ev.Time))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 258, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 259, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 			if templ_7745c5c3_Err != nil {
@@ -1622,7 +1623,7 @@ func runTrace(d runDetail) templ.Component {
 			var templ_7745c5c3_Var85 string
 			templ_7745c5c3_Var85, templ_7745c5c3_Err = templ.JoinStringErrs(ev.Raw)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 259, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 260, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var85))
 			if templ_7745c5c3_Err != nil {
@@ -1646,7 +1647,7 @@ func runTrace(d runDetail) templ.Component {
 		var templ_7745c5c3_Var86 string
 		templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.ResolveAttributeValue(traceNoMatches)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 266, Col: 93}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/run_detail.templ`, Line: 267, Col: 93}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 		if templ_7745c5c3_Err != nil {

@@ -132,7 +132,7 @@ func TestRunDetailEmptyOfflineAndErrors(t *testing.T) {
 
 func TestRunDisplayUnsupportedAndFullOutput(t *testing.T) {
 	messages := projectRunMessages([]kit.LLMMessage{{Role: "other", Content: []kit.LLMMessagePart{nil, kit.LLMTextPart{Text: "Following unsupported content"}}}})
-	if !strings.Contains(messages[0].Parts[0].Text, "Unsupported content; inspect raw message in Trace") || !strings.Contains(messages[0].Parts[0].Text, "Following unsupported content") {
+	if len(messages[0].Parts) != 2 || messages[0].Parts[0].Text != "Unsupported content; inspect raw message in Trace" || messages[0].Parts[1].Text != "Following unsupported content" {
 		t.Fatal("unknown part or following text lost")
 	}
 	sections := outputSections(`{"stdout":"ok","stderr":"warning","exit_code":1,"extra":"retained"}`)

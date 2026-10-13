@@ -18,6 +18,7 @@ type runMessage struct {
 type runPart struct {
 	Text, HTML, Key string
 	Tool            *runTool
+	Unsupported     bool
 }
 type runTool struct {
 	Name, Kind, Summary, Raw, CallID string
@@ -82,7 +83,7 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 		for _, part := range msg.Content {
 			switch p := part.(type) {
 			case kit.LLMTextPart:
-				if len(m.Parts) > 0 && m.Parts[len(m.Parts)-1].Tool == nil {
+				if len(m.Parts) > 0 && m.Parts[len(m.Parts)-1].Tool == nil && !m.Parts[len(m.Parts)-1].Unsupported {
 					m.Parts[len(m.Parts)-1].Text += p.Text
 				} else {
 					m.Parts = append(m.Parts, runPart{Text: p.Text})
@@ -110,13 +111,13 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 				}
 				m.Parts = append(m.Parts, runPart{Tool: &runTool{CallID: p.ToolCallID, Name: name, Kind: "result", Summary: summary, Raw: prettyRun(p), Sections: sections}})
 			default:
-				m.Parts = append(m.Parts, runPart{Text: "Unsupported content; inspect raw message in Trace"})
+				m.Parts = append(m.Parts, runPart{Text: "Unsupported content; inspect raw message in Trace", Unsupported: true})
 			}
 		}
 		for i := range m.Parts {
 			m.Parts[i].Key = m.Key + "-part-" + fmt.Sprint(i)
 			if m.Parts[i].Tool != nil && m.Parts[i].Tool.CallID != "" {
-				m.Parts[i].Key += fmt.Sprintf("-%x", sha256.Sum256([]byte(m.Parts[i].Tool.CallID)))[:13]
+				m.Parts[i].Key += "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(m.Parts[i].Tool.CallID)))[:12]
 			}
 		}
 		if m.Role == "assistant" {
