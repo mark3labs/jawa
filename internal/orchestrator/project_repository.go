@@ -30,14 +30,13 @@ func projectRepositoryURL(provider, name, host string) (string, error) {
 		return "", errors.New("invalid provider")
 	}
 	u, err := url.Parse(host)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.ContainsAny(host, " \t\r\n") {
-		return "", errors.New("forgejo URL must be an http or https URL without credentials, query or fragment")
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || strings.ContainsAny(host, " \t\r\n") {
+		//nolint:staticcheck // ST1005: Forgejo is a proper noun in this user-facing error.
+		return "", errors.New("Forgejo instance URL must be HTTPS at the host root (ports supported); HTTP and deployment subpaths are unsupported")
 	}
-	// Keep deployment subpaths while avoiding ambiguous escaped or traversal paths.
-	for part := range strings.SplitSeq(strings.Trim(u.EscapedPath(), "/"), "/") {
-		if part != "" && (!repositoryNamePart.MatchString(part) || part == "." || part == "..") {
-			return "", errors.New("invalid Forgejo URL path")
-		}
+	repo := strings.TrimRight(u.String(), "/") + "/" + strings.Join(parts, "/")
+	if _, _, _, err := providerRepository(repo); err != nil {
+		return "", err
 	}
-	return strings.TrimRight(u.String(), "/") + "/" + strings.Join(parts, "/"), nil
+	return repo, nil
 }

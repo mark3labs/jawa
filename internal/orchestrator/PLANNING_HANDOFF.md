@@ -21,6 +21,11 @@ Migration 7 replaces the task-primary-key receipt table with report-primary-key 
 
 An interaction ACK can arrive before BONNIE writes RecordSuspend. User input may be queued immediately but cannot publish until an exact matching waiting outcome is persisted: task/agent/run/attempt, suspension TurnID, ToolCallID, version, error-free state and configured agent answer route. Dispatch calls BONNIE `Answer` with that original outcome and response TurnID/Text/Approved. Broker ACK marks dispatch, NOT model consumption. Failed/offline dispatch leaves the immutable outbox queued. BONNIE deduplicates answers by route/run/tool identity. Bridge intent/receipt recovery repairs the accepted-report-before-suspend crash window; runtime SQLite journal retains context and suspension across restart. Startup replays retained waiting outcomes for ready/questions/running and approved sessions. Waiting never becomes planning failure; unexpected natural completion before approval does.
 
+While an intent is unconfirmed, identical-payload tool retries reuse the original
+complete identity and report ID; changed payloads reject. Once a receipt resolves
+an interaction, later identical planning calls are distinct interactions. Restart
+recovery replays original intents before model prompting.
+
 Approval and build can run concurrently after commit: neither completion ordering nor a shared provider script may be assumed. Approved planning finish is bookkeeping only. Planner prompt instructs natural acknowledgement after approval (completeTask requires a PR and is not a zero-PR planning completion API).
 
 ## Deployment and limits
@@ -34,4 +39,4 @@ Read-only scope is prompt-level; deploy restricted credentials/tools/sandbox for
 - Real KIT testmodel + BONNIE runtime + SQLite journal + Bridge + local JetStream + production backend DB ACK: clarify → restart both owners → answer on same run → propose → reject/revise → propose → approve → natural planning completion plus distinct typed build.
 - Reply-before-suspend race, wrong waiting identities/route, disconnected reply outbox/replay, stale/double replies, cancellation, unexpected completion, exact receipt replay and v6→v7 migration constraints.
 - Full-cycle Playwright factory smoke with real host and backend: Questions without proposal, answer, proposal, revision, approval, separate build; existing desktop/mobile/SSE/presence/verification smoke retained.
-- Full Go suite/race suite, vet, golangci-lint. No paid providers, live repository or database writes; no commits.
+- Full Go suite/race suite, vet, golangci-lint. These offline checks do not exercise paid providers or live repository writes.

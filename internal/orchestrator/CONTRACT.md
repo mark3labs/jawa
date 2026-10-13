@@ -48,6 +48,12 @@ https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rock
 It includes Datastar v1.0.4 and Rocket beta.2 (beta API). Datastar's license is in
 frontend/DATASTAR-LICENSE.md, Inter's OFL license in frontend/INTER-LICENSE.
 
+All browser scripts share `frontend/browser.mjs`, including the persistent-profile
+authentication check. With `CHROMIUM_PATH` unset, they use Playwright's bundled
+Chromium: run `npx playwright install chromium` in `frontend` after `npm ci`.
+Set `CHROMIUM_PATH` to use an existing executable. `npm run test:browser` checks
+the shared launch options without starting a browser.
+
 ## First-paint and card fixture checks
 
 Export deterministic **real Board and Archive pages** (the Archive export uses

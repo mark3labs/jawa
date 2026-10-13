@@ -11,8 +11,7 @@ func TestProjectRepositoryURL(t *testing.T) {
 	for _, tc := range []struct{ provider, name, host, want string }{
 		{"github", " acme/repo ", "https://ignored.example", "https://github.com/acme/repo"},
 		{"forgejo", "acme/repo", "https://codeberg.org", "https://codeberg.org/acme/repo"},
-		{"forgejo", "team/my_repo.git", " https://forge.example:3000/git/ ", "https://forge.example:3000/git/team/my_repo.git"},
-		{"forgejo", "team/repo", "http://localhost:3000", "http://localhost:3000/team/repo"},
+		{"forgejo", "team/my_repo.git", " https://forge.example:3000/ ", "https://forge.example:3000/team/my_repo.git"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			got, err := projectRepositoryURL(tc.provider, tc.name, tc.host)
@@ -26,7 +25,7 @@ func TestProjectRepositoryURL(t *testing.T) {
 			t.Errorf("accepted invalid repository name %q", name)
 		}
 	}
-	for _, host := range []string{"", "forge.example", "ssh://forge.example", "https://", "https://user:pass@forge.example", "https://forge.example?x=1", "https://forge.example?", "https://forge.example#x", "https://forge.example/a/../b", "https://forge.example/%2f", "https://forge.example/has space"} {
+	for _, host := range []string{"http://localhost:3000", "https://forge.example/git/", "", "forge.example", "ssh://forge.example", "https://", "https://user:pass@forge.example", "https://forge.example?x=1", "https://forge.example?", "https://forge.example#x", "https://forge.example/a/../b", "https://forge.example/%2f", "https://forge.example/has space"} {
 		if _, err := projectRepositoryURL("forgejo", "a/b", host); err == nil {
 			t.Errorf("accepted invalid Forgejo URL %q", host)
 		}

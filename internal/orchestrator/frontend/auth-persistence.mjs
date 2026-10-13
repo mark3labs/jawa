@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { launchPersistentContext } from './browser.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,10 +11,7 @@ const origin = new URL(base).origin;
 const profile = await mkdtemp(join(tmpdir(), 'jawa-auth-profile-'));
 let context;
 const launch = async () => {
-  context = await chromium.launchPersistentContext(profile, {
-    ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
-    headless: true, args: ['--no-sandbox'], timeout: 20000,
-  });
+  context = await launchPersistentContext(profile, { timeout: 20000 });
   context.setDefaultTimeout(20000);
   context.setDefaultNavigationTimeout(20000);
   return context.pages()[0] || await context.newPage();

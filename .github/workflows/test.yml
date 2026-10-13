@@ -1,0 +1,57 @@
+name: Test and lint
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Race tests
+        run: go test -race ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          args: ./...
+      - name: Verify generated templates are current
+        run: |
+          go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate ./internal/orchestrator
+          git diff --exit-code -- internal/orchestrator
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: internal/orchestrator/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: internal/orchestrator/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test:browser
+      - run: npx playwright install --with-deps chromium
+      - name: Browser fixtures with bundled Chromium
+        run: |
+          npm run test:fix
+          npm run test:pr-refresh
+          npm run test:issues

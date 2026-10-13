@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
-
 	"net/url"
 	"os"
 	"regexp"
@@ -151,17 +151,8 @@ func (s *Store) CreateProject(name string) (Project, error) {
 var scpRepo = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s:]+$`)
 
 func validRepository(repo string) bool {
-	if strings.ContainsAny(repo, " \t\r\n\x00") {
-		return false
-	}
-	if scpRepo.MatchString(repo) {
-		return true
-	}
-	u, err := url.Parse(repo)
-	if err != nil || u.Hostname() == "" || u.Path == "" || u.Path == "/" || u.RawQuery != "" || u.Fragment != "" {
-		return false
-	}
-	return u.Scheme == "https" || u.Scheme == "ssh" || u.Scheme == "git"
+	_, _, _, err := providerRepository(repo)
+	return err == nil
 }
 
 func (s *Store) CreateProjectDetails(name, provider, repo, base string) (Project, error) {
@@ -173,7 +164,8 @@ func (s *Store) CreateProjectDetails(name, provider, repo, base string) (Project
 		return Project{}, errors.New("invalid provider")
 	}
 	if repo != "" && !validRepository(repo) {
-		return Project{}, errors.New("invalid repository URL: use git, https or ssh")
+		_, _, _, err := providerRepository(repo)
+		return Project{}, fmt.Errorf("invalid repository URL: %w", err)
 	}
 	p := Project{ID: newID(), Name: name, Provider: provider, Repo: repo, BaseBranch: base, CreatedAt: time.Now().UTC().Truncate(time.Second)}
 	_, err := s.db.Exec(`INSERT INTO projects(id,name,created_at,provider,repo,base_branch) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.CreatedAt.Unix(), p.Provider, p.Repo, p.BaseBranch)

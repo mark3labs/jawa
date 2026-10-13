@@ -22,6 +22,12 @@ import (
 	"github.com/subosito/gotenv"
 )
 
+const (
+	defaultSandboxRoot    = ".bonnie/workspaces"
+	defaultSandboxImage   = "ghcr.io/mark3labs/jawa:latest"
+	defaultPresenceBucket = "jawa_agents"
+)
+
 // Load preserves exported environment values and ignores an absent file.
 // Parser errors may contain secrets, so do not include them in diagnostics.
 func loadEnvFile(path string) error {
@@ -119,7 +125,7 @@ func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) e
 }
 
 func codingSandboxes() []sandbox.Provider {
-	return codingSandboxesWith(envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces"), envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest"))
+	return codingSandboxesWith(envOr("JAWA_SANDBOX_ROOT", defaultSandboxRoot), envOr("JAWA_SANDBOX_IMAGE", defaultSandboxImage))
 }
 
 func codingSandboxesWith(root, image string) []sandbox.Provider {

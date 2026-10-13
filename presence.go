@@ -39,9 +39,9 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	}
 	apiEnabled := envOr("JAWA_NATS_API", "true") == "true"
 	presence := envOr("JAWA_NATS_PRESENCE", "true") == "true"
-	bucket := envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents")
-	root := envOr("JAWA_SANDBOX_ROOT", ".bonnie/workspaces")
-	image := envOr("JAWA_SANDBOX_IMAGE", "ghcr.io/mark3labs/jawa:latest")
+	bucket := envOr("JAWA_NATS_PRESENCE_BUCKET", defaultPresenceBucket)
+	root := envOr("JAWA_SANDBOX_ROOT", defaultSandboxRoot)
+	image := envOr("JAWA_SANDBOX_IMAGE", defaultSandboxImage)
 	token := os.Getenv("GITHUB_TOKEN")
 	forgejo := forgejoToken()
 	apiKey, providerURL := "", ""
@@ -119,7 +119,7 @@ func natsAuthConfig(c natschannel.Config) natschannel.Config {
 }
 
 func openNATSPresence(ctx context.Context, cfg natschannel.Config) (natschannel.Config, bonnie.PresenceConfig, func(), error) {
-	return openNATSPresenceWithBucket(ctx, natsAuthConfig(cfg), envOr("JAWA_NATS_PRESENCE_BUCKET", "jawa_agents"))
+	return openNATSPresenceWithBucket(ctx, natsAuthConfig(cfg), envOr("JAWA_NATS_PRESENCE_BUCKET", defaultPresenceBucket))
 }
 
 func openNATSPresenceWithBucket(ctx context.Context, cfg natschannel.Config, bucket string) (natschannel.Config, bonnie.PresenceConfig, func(), error) {

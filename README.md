@@ -48,8 +48,9 @@ for disposable browser automation and physical-device validation.
 Add projects by
 selecting a provider and entering a repository name (`owner/repo`). GitHub uses
 `https://github.com` automatically. For Forgejo, also enter the instance URL;
-it defaults to `https://codeberg.org` and supports self-hosted HTTP(S) instances,
-including ports and deployment subpaths. Then create cards. The Todo / Planning /
+it defaults to `https://codeberg.org` and supports trusted self-hosted HTTPS instances
+at the host root, including ports (HTTP and deployment subpaths are unsupported).
+Then create cards. The Todo / Planning /
 Building / Done board supports drag-and-drop and keyboard moves, persistent ordering, and optional
 issue links. Open **Agent connection settings** to set NATS credentials before
 connecting agents; initial random credentials deliberately cannot be used.
