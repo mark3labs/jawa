@@ -54,9 +54,10 @@ func TestCardVisualFixture(t *testing.T) {
 	} {
 		d.projects = append(d.projects, Project{ID: fixture.id, Name: fixture.name, Provider: "github", Repo: p.Repo, BaseBranch: "main"})
 		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: fixture.id, Status: fixture.status, Title: fixture.name, Archived: fixture.archived, CreatedAt: now})
-		if fixture.status == "Planning" {
+		switch fixture.status {
+		case "Planning":
 			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "queued"}, Turns: []PlanningTurn{{State: "submitted"}}}
-		} else if fixture.status == "Fix" {
+		case "Fix":
 			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, State: "submitted"})
 		}
 	}
