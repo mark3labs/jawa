@@ -558,7 +558,10 @@ repair dialog stays open with its draft; on success it closes and clears.
 ### Refresh pull request status
 
 The **Refresh ready PRs** button at the top of **Ready for review** checks
-all eligible cards in that project, rather than adding a refresh button to each card.
+all eligible non-archived Ready cards in that project, rather than adding a refresh
+button to each card. Background PR status polling has the same non-archived Ready
+scope. Archive preserves the last recorded evidence and history; Restore makes
+cards eligible again under the normal refresh and polling rules.
 While the request is pending, the button shows **Refreshing ready PRs…** and a
 loading indicator and prevents another submission. It becomes available again
 when the request finishes, even if cards remain queued for background checking.

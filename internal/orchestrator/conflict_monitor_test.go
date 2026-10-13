@@ -86,7 +86,7 @@ func TestConflictMonitorPersistenceAndFreshness(t *testing.T) {
 }
 
 func TestConflictMonitorDiscardsRaces(t *testing.T) {
-	for _, change := range []string{"lane", "attempt", "project"} {
+	for _, change := range []string{"lane", "attempt", "project", "archive"} {
 		t.Run(change, func(t *testing.T) {
 			s, a := conflictFixture(t, "github")
 			persistConflictAttempt(t, s, a)
@@ -94,6 +94,8 @@ func TestConflictMonitorDiscardsRaces(t *testing.T) {
 			w.SetProviderChecks(nil, func(context.Context, Attempt) (PRCheck, error) {
 				var err error
 				switch change {
+				case "archive":
+					err = s.SetCardArchived(a.CardID, true)
 				case "lane":
 					_, err = s.db.Exec(`UPDATE cards SET status='Fix' WHERE id=?`, a.CardID)
 				case "attempt":
@@ -164,5 +166,120 @@ func TestConflictMonitorBatchAndCancellation(t *testing.T) {
 	defer cancel()
 	if err := w.PollPRConflicts(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("inflight cancel: %v", err)
+	}
+}
+
+// addArchivedConflictAttempt includes optional historical evidence, including queued work.
+func addArchivedConflictAttempt(t *testing.T, s *Store, a Attempt, project, id, state string) Attempt {
+	t.Helper()
+	c, err := s.CreateCard(project, id, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID, a.TaskID, a.CardID = id, id, c.ID
+	persistConflictAttempt(t, s, a)
+	if state != "" {
+		_, err = s.db.Exec(`INSERT INTO workflow_pr_checks(attempt_id,pr_url,provider,repo,base_branch,state,head_sha,base_sha,error,checked_at)
+ SELECT ?,?,p.provider,p.repo,p.base_branch,?,'old-head','old-base','old-error',CASE WHEN ?='checking' THEN 0 ELSE 1 END FROM projects p WHERE p.id=?`, a.ID, a.PRURL, state, state, project)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetCardArchived(c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+// Snapshot every persisted field, not just the UI-visible evidence.
+func conflictEvidenceSnapshot(t *testing.T, s *Store, id string) string {
+	t.Helper()
+	var snapshot string
+	err := s.db.QueryRow(`SELECT json_array(attempt_id,pr_url,provider,repo,base_branch,state,head_sha,base_sha,error,checked_at) FROM workflow_pr_checks WHERE attempt_id=?`, id).Scan(&snapshot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func TestConflictMonitorArchivedAndRestore(t *testing.T) {
+	s, a := conflictFixture(t, "github")
+	persistConflictAttempt(t, s, a)
+	var project string
+	if err := s.db.QueryRow(`SELECT project_id FROM cards WHERE id=?`, a.CardID).Scan(&project); err != nil {
+		t.Fatal(err)
+	}
+	w := &Workflow{s: s}
+	archived := []Attempt{}
+	before := map[string]string{}
+	for i, state := range []string{"", "conflict", "checking"} {
+		extra := addArchivedConflictAttempt(t, s, a, project, fmt.Sprintf("archived%d", i), state)
+		archived = append(archived, extra)
+		before[extra.ID] = conflictEvidenceSnapshot(t, s, extra.ID)
+	}
+	calls := []string{}
+	w.SetProviderChecks(nil, func(_ context.Context, got Attempt) (PRCheck, error) {
+		calls = append(calls, got.ID)
+		return PRCheck{State: "clear"}, nil
+	})
+	if err := w.PollPRConflicts(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0] != a.ID {
+		t.Fatalf("calls %v", calls)
+	}
+	for _, extra := range archived {
+		if got := conflictEvidenceSnapshot(t, s, extra.ID); got != before[extra.ID] {
+			t.Fatalf("archived evidence changed: %s", got)
+		}
+	}
+	for _, extra := range archived[1:] {
+		if err := s.SetCardArchived(extra.CardID, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.PollPRConflicts(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("restored calls %v", calls)
+	}
+}
+
+func TestConflictMonitorSkipsArchivedSelectedAttempt(t *testing.T) {
+	s, a := conflictFixture(t, "github")
+	persistConflictAttempt(t, s, a)
+	var project string
+	if err := s.db.QueryRow(`SELECT project_id FROM cards WHERE id=?`, a.CardID).Scan(&project); err != nil {
+		t.Fatal(err)
+	}
+	later := addArchivedConflictAttempt(t, s, a, project, "later", "conflict")
+	if err := s.SetCardArchived(later.CardID, false); err != nil {
+		t.Fatal(err)
+	}
+	before := conflictEvidenceSnapshot(t, s, later.ID)
+	calls := 0
+	monitor := &conflictMonitor{checker: func(_ context.Context, got Attempt) (PRCheck, error) {
+		calls++
+		if got.ID != a.ID {
+			t.Fatalf("ineligible call %s", got.ID)
+		}
+		if err := s.SetCardArchived(later.CardID, true); err != nil {
+			t.Fatal(err)
+		}
+		return PRCheck{State: "clear"}, nil
+	}}
+	w := &Workflow{s: s}
+	monitor.mu.Lock()
+	defer monitor.mu.Unlock()
+	completed, err := w.checkPRBatch(t.Context(), monitor, []string{a.ID, later.ID})
+	if err != nil || completed != 1 || calls != 1 {
+		t.Fatalf("completed=%d calls=%d err=%v", completed, calls, err)
+	}
+	if got := conflictEvidenceSnapshot(t, s, later.ID); got != before {
+		t.Fatal("skipped evidence changed")
 	}
 }
