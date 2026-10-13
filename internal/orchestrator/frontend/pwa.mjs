@@ -1,12 +1,9 @@
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 
 const base = process.env.JAWA_SMOKE_URL;
 assert.ok(base, 'Set JAWA_SMOKE_URL to a disposable live server');
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
-  headless: true, args: ['--no-sandbox'],
-});
+const browser = await launchBrowser();
 try {
   const context = await browser.newContext();
   const page = await context.newPage();

@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -68,8 +68,7 @@ async function styled(page) {
 }
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, args: ['--no-sandbox'],
-    ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
+  browser = await launchBrowser();
   console.log(`Chromium ${browser.version()}`);
   for (const width of [390, 1440]) {
     for (const mode of ['failed-css', 'held-css', 'held-js', 'disabled-js']) {

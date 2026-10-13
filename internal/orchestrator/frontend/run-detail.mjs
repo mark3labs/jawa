@@ -1,4 +1,5 @@
-import { chromium, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -29,7 +30,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
 const url = `http://127.0.0.1:${server.address().port}/runs/11111111-1111-4111-8111-111111111111`;
 try {
-  browser = await chromium.launch({headless:true,args:['--no-sandbox'], ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {})});
+  browser = await launchBrowser();
   const context = await browser.newContext({serviceWorkers:'block'});
   const page = await context.newPage();
   page.setDefaultTimeout(10000);

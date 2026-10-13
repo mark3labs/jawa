@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 
 // Run against an authenticated live server; setup is opt-in for a disposable DB:
@@ -7,10 +7,7 @@ import assert from 'node:assert/strict';
 const base = process.env.JAWA_SMOKE_URL;
 assert.ok(base, 'Set JAWA_SMOKE_URL to the live server URL');
 const setup = process.env.JAWA_RESPONSIVE_SETUP === '1';
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
-  headless: true, args: ['--no-sandbox'],
-});
+const browser = await launchBrowser();
 const context = await browser.newContext({
   ...(process.env.JAWA_RESPONSIVE_STORAGE_STATE ? { storageState: process.env.JAWA_RESPONSIVE_STORAGE_STATE } : {}),
   viewport: { width: 390, height: 844 }, hasTouch: true,
