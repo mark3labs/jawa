@@ -572,7 +572,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		// Keep the pinned identity and run state, but surface unusable terminal
 		// reports. Never infer a missing AgentID or readiness from a conflict.
 		if !a.Ready && (string(out.State) == "failed" || string(out.State) == "completed" || string(out.State) == "cancelled") {
-			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>?`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
+			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>? AND run_state<>'abandoned'`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
 				return err
 			}
 		}

@@ -473,6 +473,9 @@ Issue: %s`, p.Title, p.ID, p.Revision, p.RepoCommit, string(specJSON), p.Repo, p
 
 // Cancellation revokes local authority immediately. It does not assert remote execution stopped.
 // Any already-published read-only investigation may finish, but cannot change the board/spec.
+// It is also the Planning escape hatch, so it never waits on agent evidence: a
+// pending resume is abandoned (late receipts only apply while pending), and a
+// card left in Planning without an active session still returns to Todo.
 func (w *Workflow) CancelPlanning(id string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
@@ -482,26 +485,34 @@ func (w *Workflow) CancelPlanning(id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err = noPendingResume(tx, id); err != nil {
-		return err
-	}
-	p, err := currentPlanning(tx, w.ctx, id)
-	if err != nil {
-		return err
-	}
 	c, err := sqlc.New(tx).GetCard(w.ctx, id)
 	if err != nil {
+		return workflowCardError(err)
+	}
+	if c.Status != "Planning" {
+		return errors.New("card has no active planning session")
+	}
+	if _, err = tx.Exec(`UPDATE failed_resumes SET status='abandoned' WHERE card_id=? AND status='pending'`, id); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM auto_resumes WHERE card_id=?`, id); err != nil {
+		return err
+	}
+	p, err := sqlc.New(tx).GetPlanningSession(w.ctx, id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err = tx.Exec(`UPDATE planning_sessions SET state='cancelled',updated_at=? WHERE id=?`, now, p.ID); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE planning_turns SET state='cancelled',updated_at=? WHERE session_id=? AND state IN ('queued','submitted','running','waiting')`, now, p.ID); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE planning_interactions SET status='cancelled' WHERE task_id IN (SELECT id FROM planning_turns WHERE session_id=?) AND status IN ('pending','queued')`, p.ID); err != nil {
-		return err
+	if err == nil && p.State != "approved" && p.State != "cancelled" {
+		if _, err = tx.Exec(`UPDATE planning_sessions SET state='cancelled',updated_at=? WHERE id=?`, now, p.ID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE planning_turns SET state='cancelled',updated_at=? WHERE session_id=? AND state IN ('queued','submitted','running','waiting')`, now, p.ID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE planning_interactions SET status='cancelled' WHERE task_id IN (SELECT id FROM planning_turns WHERE session_id=?) AND status IN ('pending','queued')`, p.ID); err != nil {
+			return err
+		}
 	}
 	if err = moveWorkflowCard(tx, id, c.ProjectID, "Planning", "Todo", int(^uint(0)>>1)); err != nil {
 		return err

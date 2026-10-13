@@ -239,6 +239,9 @@ func runLabel(a Attempt) string {
 	if a.RunState == "cancelled" && !a.Ready {
 		return "Cancelled"
 	}
+	if a.RunState == abandonedRunState && !a.Ready {
+		return "Force-stopped"
+	}
 	switch runTone(a) {
 	case "resuming":
 		return "Resuming…"

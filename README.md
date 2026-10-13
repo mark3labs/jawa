@@ -120,7 +120,21 @@ New branches use `jawa/<title-slug>-<6-char-card-id>-a<attempt>`, for example
 
 Retry creates another numbered branch/attempt after a terminal failed/blocked
 outcome. Legacy Building cards without attempts offer Start work. Reset to Todo
-preserves history; Delete requires confirmation. Active attempts cannot be reset/deleted. Active attempts cannot be manually moved out of Building: cancellation may be requested for a pinned active agent run, but the request is not confirmation and cannot undo external actions already taken. Execution leases, automatic reassignment, and enforced runtime/cost budgets are not
+preserves history; Delete requires confirmation. Active attempts cannot be reset/deleted. Active attempts cannot be manually moved out of Building: cancellation may be requested for a pinned active agent run, but the request is not confirmation and cannot undo external actions already taken.
+
+Force stop is the escape hatch for runs that never finish on their own (agent gone,
+restarted under a new identity, resume never confirmed, guidance never delivered).
+It is offered whenever an attempt still holds authority that no other action can
+release. It requires an explicit acknowledgement, fences the attempt so later
+events, results, typed reports and resume receipts from that run are ignored, asks
+the agent to stop on a best-effort basis, and leaves the card in its lane with
+Retry, Reset to Todo and Delete available. It does not prove the agent stopped: a
+still-running agent may push commits or update its PR. Cancel planning is the
+equivalent for Planning and never waits on the agent. If the dashboard is
+unavailable, run `jawa orchestrator force-stop --data-dir <dir> --card JAW-XXXX`
+(for example via `docker exec` in the orchestrator container).
+
+Execution leases, automatic reassignment, and enforced runtime/cost budgets are not
 yet implemented. The agent prompt bounds CI/review repair to 30 minutes, but this
 is guidance, not a scheduler-enforced timeout. Review comments arriving after Done
 do not automatically reopen work. Use one orchestrator per database and NATS scope;
