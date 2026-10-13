@@ -363,3 +363,66 @@ func TestResumeStaleDuration(t *testing.T) {
 		})
 	}
 }
+
+// A receipt that arrives after the resumed run already reported completion
+// must not restore the pre-resume failure over a ready attempt.
+func TestResumeReconcileLateReceiptKeepsAcceptedReport(t *testing.T) {
+	for _, planning := range []bool{false, true} {
+		mode := "build"
+		if planning {
+			mode = "planning"
+		}
+		for _, automatic := range []bool{false, true} {
+			kind := "manual"
+			if automatic {
+				kind = "auto"
+			}
+			t.Run(mode+"/"+kind, func(t *testing.T) {
+				w, _, _, req, _ := reconcileResumeFixture(t, planning, automatic)
+				task := req.Target.TaskID
+				now := time.Now().UnixMilli()
+				const report = `{"kind":"complete_task"}`
+				if _, err := w.s.db.Exec(`INSERT INTO typed_reports(task_id,report_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+					task, "report-"+task, "call", req.Target.AgentID, req.Target.RunID, req.Target.AttemptID, "turn", "complete_task", report, now); err != nil {
+					t.Fatal(err)
+				}
+				wantState := "ready"
+				if planning {
+					wantState = "completed"
+					if _, err := w.s.db.Exec(`UPDATE planning_turns SET state='completed',result=?,outcome_json=?,error='' WHERE id=?`, report, report, task); err != nil {
+						t.Fatal(err)
+					}
+				} else if _, err := w.s.db.Exec(`UPDATE workflow_attempts SET state='ready',run_state='completed',ready=1,result=?,outcome_json=?,error='' WHERE task_id=?`, report, report, task); err != nil {
+					t.Fatal(err)
+				}
+				reply := reportprotocol.FailedResumeReply{Version: 1, ID: req.ID, Target: req.Target, Status: "ambiguous", Error: "resume execution could not be confirmed"}
+				if err := w.finishFailedResume(req.ID, reply); err != nil {
+					t.Fatal(err)
+				}
+				var status, state, outcome, notice string
+				if err := w.s.db.QueryRow(`SELECT status FROM failed_resumes WHERE id=?`, req.ID).Scan(&status); err != nil {
+					t.Fatal(err)
+				}
+				table, key := "workflow_attempts", "task_id"
+				if planning {
+					table, key = "planning_turns", "id"
+				}
+				if err := w.s.db.QueryRow(`SELECT state,outcome_json,error FROM `+table+` WHERE `+key+`=?`, task).Scan(&state, &outcome, &notice); err != nil {
+					t.Fatal(err)
+				}
+				if status != "ambiguous" || state != wantState || outcome != report || notice != "" {
+					t.Fatalf("status/state/outcome/error = %q/%q/%q/%q", status, state, outcome, notice)
+				}
+				if automatic {
+					var n int
+					if err := w.s.db.QueryRow(`SELECT count(*) FROM auto_resumes WHERE task_id=? AND state IN ('reserved','stopped')`, task).Scan(&n); err != nil {
+						t.Fatal(err)
+					}
+					if n != 0 {
+						t.Fatalf("auto resume schedule left %d rows", n)
+					}
+				}
+			})
+		}
+	}
+}

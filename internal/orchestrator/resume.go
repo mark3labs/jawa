@@ -296,7 +296,8 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	defer func() { _ = tx.Rollback() }()
 	var task, previous, requestJSON string
 	var planning, automatic bool
-	err = tx.QueryRow(`SELECT task_id,previous_outcome,planning,request_json,automatic FROM failed_resumes WHERE id=? AND status='pending'`, id).Scan(&task, &previous, &planning, &requestJSON, &automatic)
+	var created int64
+	err = tx.QueryRow(`SELECT task_id,previous_outcome,planning,request_json,automatic,created_at FROM failed_resumes WHERE id=? AND status='pending'`, id).Scan(&task, &previous, &planning, &requestJSON, &automatic, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -321,7 +322,17 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	if _, err = tx.Exec(`UPDATE failed_resumes SET status=?,reply_json=? WHERE id=?`, reply.Status, raw, id); err != nil {
 		return err
 	}
+	// A late non-completed receipt must not roll back progress the resumed run
+	// already reported through typed tools (for example a verified ready PR).
+	superseded := false
 	if reply.Status != "completed" {
+		if superseded, err = resumeSuperseded(tx, task, created); err != nil {
+			return err
+		}
+	}
+	if superseded {
+		w.log().Warn("Ignoring late resume receipt; typed report already accepted", "resume_id", id, "task_id", task, "status", reply.Status)
+	} else if reply.Status != "completed" {
 		notice := "Resume rejected: " + reply.Error
 		if reply.Status == "ambiguous" {
 			notice = "Resume could not be confirmed: " + reply.Error
@@ -359,12 +370,12 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	if err != nil {
 		return err
 	}
-	if reply.Status == "completed" {
+	if reply.Status == "completed" || superseded {
 		if _, err = tx.Exec(`DELETE FROM auto_resumes WHERE task_id=? AND state='reserved'`, task); err != nil {
 			return err
 		}
 	}
-	if automatic && reply.Status != "completed" {
+	if automatic && reply.Status != "completed" && !superseded {
 		var a Attempt
 		if planning {
 			t, e := sqlc.New(tx).GetPlanningTurn(w.ctx, task)
@@ -383,6 +394,15 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 		}
 	}
 	return tx.Commit()
+}
+
+// resumeSuperseded reports whether the task already has an accepted terminal
+// typed report, or any typed report accepted after the resume was requested.
+// Either proves the continuation ran, so its previous failure is stale.
+func resumeSuperseded(tx *sql.Tx, task string, created int64) (bool, error) {
+	var found bool
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND (kind IN ('complete_task','report_blocker') OR accepted_at>=?))`, task, created).Scan(&found)
+	return found, err
 }
 
 // BONNIE's cached pre-resume outcome lacks a journal cursor. Once a JAWA
