@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,26 +21,21 @@ func (e *issueCreateError) Error() string { return e.Message }
 
 // Preflight resolves only trusted configuration. No provider response controls a target.
 func issueCreateTarget(p Project, settings map[string]string) (target, canonical, auth string, err error) {
-	host, owner, repo, err := providerRepository(p.Repo)
+	endpoint, err := resolveProviderEndpoint(p.Provider, p.Repo, settings)
 	if err != nil {
-		return "", "", "", &issueCreateError{Message: "Issue creation does not support this repository URL. Turn Create issue off or correct the project."}
-	}
-	var token, api, prefix string
-	switch p.Provider {
-	case "github":
-		if host != "github.com" {
-			return "", "", "", &issueCreateError{Message: "Issue creation supports github.com only."}
+		message := "Issue creation does not support this repository URL. Use HTTPS with root-path owner/repo (no HTTP or deployment subpaths), or turn Create issue off."
+		if errors.Is(err, errUnsupportedHost) {
+			message = "Issue creation supports github.com only."
 		}
-		api, prefix, token = "https://api.github.com", "Bearer ", effectiveProviderSetting(settings, "github-token", "JAWA_GITHUB_TOKEN")
-	case "forgejo":
-		api, prefix, token = "https://"+host+"/api/v1", "token ", effectiveProviderSetting(settings, "forgejo-token", "JAWA_FORGEJO_TOKEN")
-	default:
-		return "", "", "", &issueCreateError{Message: "Issue creation provider is unsupported."}
+		if errors.Is(err, errUnsupportedProvider) {
+			message = "Issue creation provider is unsupported."
+		}
+		return "", "", "", &issueCreateError{Message: message}
 	}
-	if strings.TrimSpace(token) == "" {
+	if endpoint.requireCredentials() != nil {
 		return "", "", "", &issueCreateError{Message: "Issue creation needs a server provider token with repository Issues read/write permission. Configure Settings or turn Create issue off."}
 	}
-	return api + "/repos/" + owner + "/" + repo + "/issues", "https://" + host + "/" + owner + "/" + repo + "/issues/", prefix + token, nil
+	return endpoint.API + "/repos/" + endpoint.Owner + "/" + endpoint.Name + "/issues", endpoint.WebBase + "/issues/", endpoint.AuthPrefix + endpoint.Token, nil
 }
 
 // A POST is never retried. Any ambiguous evidence is a potentially completed write.

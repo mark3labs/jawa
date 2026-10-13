@@ -400,7 +400,7 @@ func TestGitHubCISkipped(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			reader := providerReader{ctx: t.Context(), client: server.Client(), api: server.URL, token: "test-secret", allowNoCI: tc.allowNoCI}
+			reader := providerReader{ctx: t.Context(), client: server.Client(), api: server.URL, token: "test-secret", authPrefix: "Bearer ", allowNoCI: tc.allowNoCI}
 			err := reader.githubCI("/repos/acme/repo", "main", sha)
 			if tc.wantErr == "" {
 				if err != nil {
@@ -455,7 +455,7 @@ func TestProviderReaderSafety(t *testing.T) {
 			defer server.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
-			p := providerReader{ctx: ctx, client: server.Client(), api: server.URL, token: "secret"}
+			p := providerReader{ctx: ctx, client: server.Client(), api: server.URL, token: "secret", authPrefix: "Bearer "}
 			var out any
 			if err := p.read("/", &out); err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("unsafe response %v", err)

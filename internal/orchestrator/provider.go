@@ -18,8 +18,6 @@ import (
 	client "github.com/mark3labs/bonnie/client/nats"
 )
 
-// ProviderVerifier independently reads provider state on every invocation. The
-// supplied client supplies transport only; redirects and cookies are disabled.
 func effectiveProviderSetting(overrides map[string]string, dashboardKey, envKey string) string {
 	if value, ok := overrides[dashboardKey]; ok {
 		return value
@@ -37,6 +35,50 @@ func effectiveProviderSetting(overrides map[string]string, dashboardKey, envKey 
 	return ""
 }
 
+var (
+	errUnsupportedHost     = errors.New("only github.com is supported")
+	errUnsupportedProvider = errors.New("unsupported provider")
+	errMissingCredentials  = errors.New("credentials missing")
+)
+
+type providerEndpoint struct {
+	Host, Owner, Name, API, WebBase, AuthPrefix, Token, PullKind string
+	Forgejo                                                      bool
+}
+
+// resolveProviderEndpoint uses only configured coordinates. Link-only callers do
+// not require credentials; network callers must call requireCredentials first.
+func resolveProviderEndpoint(provider, repo string, settings map[string]string) (providerEndpoint, error) {
+	host, owner, name, err := providerRepository(repo)
+	if err != nil {
+		return providerEndpoint{}, err
+	}
+	e := providerEndpoint{Host: host, Owner: owner, Name: name, WebBase: "https://" + host + "/" + owner + "/" + name, PullKind: "pull"}
+	switch provider {
+	case "github":
+		if host != "github.com" {
+			return providerEndpoint{}, errUnsupportedHost
+		}
+		e.API, e.AuthPrefix = "https://api.github.com", "Bearer "
+		e.Token = effectiveProviderSetting(settings, "github-token", "JAWA_GITHUB_TOKEN")
+	case "forgejo":
+		e.API, e.AuthPrefix, e.PullKind, e.Forgejo = "https://"+host+"/api/v1", "token ", "pulls", true
+		e.Token = effectiveProviderSetting(settings, "forgejo-token", "JAWA_FORGEJO_TOKEN")
+	default:
+		return providerEndpoint{}, errUnsupportedProvider
+	}
+	return e, nil
+}
+
+func (e providerEndpoint) requireCredentials() error {
+	if strings.TrimSpace(e.Token) == "" {
+		return errMissingCredentials
+	}
+	return nil
+}
+
+// ProviderVerifier independently reads provider state on every invocation. The
+// supplied client supplies transport only; redirects and cookies are disabled.
 func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 	c := http.Client{}
 	if supplied != nil {
@@ -139,18 +181,16 @@ func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (p
 	if branchErr != nil {
 		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", branchErr)
 	}
-	host, owner, name, err := providerRepository(repo)
+	endpoint, err := resolveProviderEndpoint(provider, repo, overrides)
 	if err != nil {
-		return providerReader{}, "", "", "", "", "", 0, err
+		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", err)
 	}
+	host, owner, name := endpoint.Host, endpoint.Owner, endpoint.Name
 	u, err := url.Parse(a.PRURL)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Host != host || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
 		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR URL does not match configured host")
 	}
-	kind := "pull"
-	if provider == "forgejo" {
-		kind = "pulls"
-	}
+	kind := endpoint.PullKind
 	prefix := "/" + owner + "/" + name + "/" + kind + "/"
 	if !strings.HasPrefix(u.Path, prefix) {
 		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR repository mismatch")
@@ -159,24 +199,10 @@ func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (p
 	if err != nil || number < 1 || u.Path != prefix+strconv.Itoa(number) {
 		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: invalid PR number")
 	}
-	token, api := "", ""
-	switch provider {
-	case "github":
-		if host != "github.com" {
-			return providerReader{}, "", "", "", "", "", 0, errors.New("provider: only github.com is supported")
-		}
-		token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
-		api = "https://api.github.com"
-	case "forgejo":
-		token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
-		api = "https://" + host + "/api/v1"
-	default:
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: unsupported provider")
+	if err := endpoint.requireCredentials(); err != nil {
+		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", err)
 	}
-	if strings.TrimSpace(token) == "" {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: credentials missing")
-	}
-	p := providerReader{ctx: ctx, client: c, token: token, api: api, forgejo: provider == "forgejo", allowNoCI: false}
+	p := providerReader{ctx: ctx, client: c, token: endpoint.Token, api: endpoint.API, forgejo: endpoint.Forgejo, authPrefix: endpoint.AuthPrefix}
 	root := "/repos/" + owner + "/" + name
 	path := root + "/pulls/" + strconv.Itoa(number)
 	return p, root, path, owner, name, base, number, nil
@@ -190,12 +216,12 @@ func providerRepository(raw string) (host, owner, name string, err error) {
 		raw = "ssh://" + strings.Replace(raw, ":", "/", 1)
 	}
 	u, e := url.Parse(raw)
-	if e != nil || u.Hostname() == "" || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" || (u.Scheme != "https" && u.Scheme != "ssh" && u.Scheme != "git") || (u.User != nil && (u.Scheme != "ssh" || strings.Contains(u.User.String(), ":"))) {
-		return "", "", "", errors.New("provider: unsafe repository URL")
+	if strings.ContainsAny(raw, " \t\r\n\x00") || e != nil || u.ForceQuery || u.Hostname() == "" || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" || (u.Scheme != "https" && u.Scheme != "ssh" && u.Scheme != "git") || (u.User != nil && (u.Scheme != "ssh" || strings.Contains(u.User.String(), ":"))) {
+		return "", "", "", errors.New("provider: unsupported repository URL: use HTTPS (or SSH/git identity) with root-path owner/repo, without credentials, query or fragment")
 	}
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	if len(parts) != 2 {
-		return "", "", "", errors.New("provider: repository must be owner/name")
+		return "", "", "", errors.New("provider: repository must be root-path owner/name; Forgejo deployment subpaths are unsupported")
 	}
 	owner, name = parts[0], strings.TrimSuffix(parts[1], ".git")
 	if !providerPart.MatchString(owner) || !providerPart.MatchString(name) || owner == "." || owner == ".." || name == "." || name == ".." {
@@ -243,6 +269,7 @@ type providerReader struct {
 	ctx        context.Context
 	client     *http.Client
 	token, api string
+	authPrefix string
 	forgejo    bool
 	allowNoCI  bool
 }
@@ -255,11 +282,7 @@ func (p providerReader) request(method, target string, body []byte, out any) err
 	if err != nil {
 		return errors.New("provider: invalid request")
 	}
-	auth := "Bearer "
-	if p.forgejo {
-		auth = "token "
-	}
-	req.Header.Set("Authorization", auth+p.token)
+	req.Header.Set("Authorization", p.authPrefix+p.token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)

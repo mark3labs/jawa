@@ -95,11 +95,11 @@ func (s *Store) finalizeIssueSubmission(token, recoveryURL string, recovery bool
 	return tx.Commit()
 }
 func canonicalRecoveryIssue(p Project, raw string) (string, error) {
-	host, owner, repo, err := providerRepository(p.Repo)
+	endpoint, err := resolveProviderEndpoint(p.Provider, p.Repo, nil)
 	if err != nil {
 		return "", uiError("Unsupported project repository for issue recovery.")
 	}
-	prefix := "https://" + host + "/" + owner + "/" + repo + "/issues/"
+	prefix := endpoint.WebBase + "/issues/"
 	raw = strings.TrimSpace(raw)
 	number, err := strconv.Atoi(strings.TrimPrefix(raw, prefix))
 	if !strings.HasPrefix(raw, prefix) || err != nil || number < 1 || raw != prefix+strconv.Itoa(number) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -22,30 +23,20 @@ type projectIssue struct {
 // listProjectIssues uses only configured repository coordinates, never API-supplied
 // issue or pagination URLs. The supplied client provides transport, not policy.
 func listProjectIssues(ctx context.Context, project Project, supplied *http.Client, settings ...map[string]string) ([]projectIssue, error) {
-	host, owner, name, err := providerRepository(project.Repo)
-	if err != nil {
-		return nil, err
-	}
 	overrides := map[string]string{}
 	if len(settings) > 0 {
 		overrides = settings[0]
 	}
-	var api, token, auth, pageSize string
-	switch project.Provider {
-	case "github":
-		if host != "github.com" {
-			return nil, errors.New("issues: only github.com is supported")
-		}
-		api, auth, pageSize = "https://api.github.com", "Bearer ", "per_page=100"
-		token = effectiveProviderSetting(overrides, "github-token", "JAWA_GITHUB_TOKEN")
-	case "forgejo":
-		api, auth, pageSize = "https://"+host+"/api/v1", "token ", "limit=100&type=issues"
-		token = effectiveProviderSetting(overrides, "forgejo-token", "JAWA_FORGEJO_TOKEN")
-	default:
-		return nil, errors.New("issues: unsupported provider")
+	endpoint, err := resolveProviderEndpoint(project.Provider, project.Repo, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("issues: %w", err)
 	}
-	if strings.TrimSpace(token) == "" {
-		return nil, errors.New("issues: credentials missing")
+	if err := endpoint.requireCredentials(); err != nil {
+		return nil, fmt.Errorf("issues: %w", err)
+	}
+	pageSize := "per_page=100"
+	if endpoint.Forgejo {
+		pageSize = "limit=100&type=issues"
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -59,12 +50,12 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 	issues := []projectIssue{}
 	seen := map[int]bool{}
 	for page := 1; page <= 20; page++ {
-		target := api + "/repos/" + owner + "/" + name + "/issues?state=open&" + pageSize + "&page=" + strconv.Itoa(page)
+		target := endpoint.API + "/repos/" + endpoint.Owner + "/" + endpoint.Name + "/issues?state=open&" + pageSize + "&page=" + strconv.Itoa(page)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 		if err != nil {
 			return nil, errors.New("issues: invalid request")
 		}
-		req.Header.Set("Authorization", auth+token)
+		req.Header.Set("Authorization", endpoint.AuthPrefix+endpoint.Token)
 		req.Header.Set("Accept", "application/json")
 		resp, err := c.Do(req)
 		if err != nil {
@@ -101,7 +92,7 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 				return nil, errors.New("issues: invalid issue number or title")
 			}
 			if !seen[entry.Number] {
-				issues = append(issues, projectIssue{Number: entry.Number, Title: entry.Title, Body: entry.Body, URL: "https://" + host + "/" + owner + "/" + name + "/issues/" + strconv.Itoa(entry.Number)})
+				issues = append(issues, projectIssue{Number: entry.Number, Title: entry.Title, Body: entry.Body, URL: endpoint.WebBase + "/issues/" + strconv.Itoa(entry.Number)})
 				seen[entry.Number] = true
 			}
 		}
