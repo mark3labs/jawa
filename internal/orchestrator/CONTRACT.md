@@ -83,6 +83,47 @@ worker registration, public-only cache contents, offline navigation and recovery
 Set `CHROMIUM_PATH` for both scripts if needed. Physical iOS/Android installation
 and device-specific browser chrome still require manual testing.
 
+### Authentication persistence
+
+New setup/login sessions last exactly 30 × 24 hours, without sliding renewal.
+Existing rows retain their expiry; log in again after upgrading. Logout revokes
+access immediately. Retain the same origin, profile and server data directory;
+storage deletion/eviction may require login. A missing CSRF cookie is regenerated
+without renewing authentication.
+
+Against a **separate fresh disposable server/data directory**, run:
+
+```sh
+JAWA_SMOKE_URL=http://127.0.0.1:18081 npm run test:auth-persistence
+```
+
+This creates test-only administrator and NATS credentials through the forms.
+It closes/relaunches Chromium with a temporary persistent profile (no exported
+storageState), verifies worker control, 30-day cookies, refresh, protected reads,
+CSRF-protected logout and public-only caches. Set `CHROMIUM_PATH` if needed.
+This is browser-profile/service-worker coverage, not native installed-PWA proof.
+The existing `test:pwa` remains an independent unauthenticated check.
+
+Manual installed-PWA acceptance (record unavailable platforms as **untested**):
+
+1. Record OS/browser versions and installation origin. On available iOS standalone
+   Safari and Android installed Chrome, log in **inside the installed app**;
+   browser/app cookie-store separation may require this initial login.
+2. Close the app completely and reopen from its icon at the same origin. Require
+   authenticated workspace access and a CSRF-protected action.
+3. Repeat with refresh, device/app restart and server restart within the 30-day
+   window, retaining the profile and server data directory.
+4. Log out, close and reopen; require login. Do not persist passwords or bearer
+   tokens in localStorage/IndexedDB as a workaround.
+
+If immediate authentication loss persists, acceptance is not satisfied. Collect
+only redacted metadata: cookie presence before/after relaunch, expiry/security
+attributes (no values), whether the launch request sends a session cookie,
+response status/redirect location, and whether the same database is retained.
+Distinguish cookie loss, origin mismatch, server row loss and actual expiry before
+proposing another change. Do not weaken SameSite without reproduction and review.
+Physical iOS/Android lifecycle validation is untested by this automated check.
+
 ## Full offline browser smoke
 
 Run `go run ./cmd/factory-smoke` after installing frontend dependencies. Set
