@@ -61,7 +61,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 	observed, err := w.client.Status(queryCtx, target)
 	stop()
 	if err != nil || observed.Version != 1 || observed.Target != target || observed.TurnID == "" || observed.Error != "" {
-		return w.cancelRecordFailure(a, "uncertain", cancelErrorText)
+		return w.cancelRecordFailure(a)
 	}
 	if observed.State == "cancelled" || observed.State == "failed" || observed.State == "completed" {
 		w.logAttempt(log.InfoLevel, "workflow cancellation target already terminal", a)
@@ -70,7 +70,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 	// Waiting/interrupted turns can be durably cancelled even when no local
 	// model call is active. The observed TurnID still scopes the command.
 	if !observed.Active && observed.State != "waiting" && observed.State != "interrupted" && observed.State != "running" {
-		return w.cancelRecordFailure(a, "uncertain", cancelErrorText)
+		return w.cancelRecordFailure(a)
 	}
 	if err = w.checkCancelLatest(a); err != nil {
 		return err
@@ -82,7 +82,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 	reply, callErr := w.client.CancelTurn(callCtx, target, observed.TurnID)
 	cancel()
 	if callErr != nil || reply.Version != 1 || reply.Target != target || reply.TurnID != observed.TurnID || reply.Error != "" {
-		return w.cancelRecordFailure(a, "uncertain", cancelErrorText)
+		return w.cancelRecordFailure(a)
 	}
 	if reply.State == "cancelled" {
 		if err = w.applyStatus(a, reply); err != nil {
@@ -91,7 +91,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 		return w.cancelAudit(a, observed.TurnID, "cancelled", "")
 	}
 	if reply.CancelStatus != "requested" {
-		return w.cancelRecordFailure(a, "uncertain", cancelErrorText)
+		return w.cancelRecordFailure(a)
 	}
 	return w.recordCancelNotice(a, observed.TurnID, "requested", "Cancellation requested; waiting for the agent to confirm it stopped.")
 }
@@ -121,12 +121,14 @@ func (w *Workflow) cancelAudit(a Attempt, turnID, status, msg string) error {
 	}
 	return err
 }
-func (w *Workflow) cancelRecordFailure(a Attempt, status, msg string) error {
+func (w *Workflow) cancelRecordFailure(a Attempt) error {
 	w.logAttempt(log.WarnLevel, "workflow cancellation could not be confirmed", a)
-	if err := w.recordCancelNotice(a, "", status, msg); err != nil {
+	if err := w.recordCancelNotice(a, "", "uncertain", cancelErrorText); err != nil {
 		return err
 	}
-	return errors.New(msg)
+	// Preserve the existing user-facing cancellation notice verbatim.
+	//nolint:staticcheck // ST1005: this error is also the dashboard notice.
+	return errors.New(cancelErrorText)
 }
 
 func (w *Workflow) recordCancelNotice(a Attempt, turnID, status, msg string) error {

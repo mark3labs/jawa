@@ -12,9 +12,6 @@ import (
 func TestResyncOrphanedRun(t *testing.T) {
 	t.Parallel()
 	s, nc := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	cl, err := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true})
 	if err != nil {
 		t.Fatal(err)

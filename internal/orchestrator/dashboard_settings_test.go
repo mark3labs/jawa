@@ -47,12 +47,12 @@ func TestDashboardOverridesPersistAndReset(t *testing.T) {
 func TestValidatedListenAddressPort(t *testing.T) {
 	t.Parallel()
 	for _, address := range []string{"127.0.0.1:0", "[::1]:65535"} {
-		if _, _, err := validatedListenAddress(address); err != nil {
+		if err := validatedListenAddress(address); err != nil {
 			t.Errorf("%q rejected: %v", address, err)
 		}
 	}
 	for _, address := range []string{"127.0.0.1", "127.0.0.1:-1", "127.0.0.1:65536", "127.0.0.1:abc"} {
-		if _, _, err := validatedListenAddress(address); err == nil {
+		if err := validatedListenAddress(address); err == nil {
 			t.Errorf("%q unexpectedly accepted", address)
 		}
 	}

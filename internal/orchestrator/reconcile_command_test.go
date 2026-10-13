@@ -47,9 +47,6 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = s.Close() })
-			if err = migrateWorkflow(s); err != nil {
-				t.Fatal(err)
-			}
 			w := &Workflow{s: s, ctx: t.Context()}
 			card := workflowCard(t, s)
 			if err = w.MoveCard(card.ID, "Building", 0); err != nil {

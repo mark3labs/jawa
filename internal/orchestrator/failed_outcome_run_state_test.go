@@ -17,9 +17,6 @@ const interruptedAnswer = "admitted answer resume interrupted; cannot auto conti
 func TestTransientOutcomeKeepsFollowingTheRun(t *testing.T) {
 	t.Parallel()
 	s, _ := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	w := &Workflow{s: s, ctx: t.Context(), observeReport: fakeReportObserver}
 	c := workflowCard(t, s)
 	if err := w.MoveCard(c.ID, "Building", 0); err != nil {
@@ -109,10 +106,7 @@ func TestTransientOutcomeOnDeadRunIsReleasable(t *testing.T) {
 
 func TestTransientOutcomeDoesNotFailPlanning(t *testing.T) {
 	t.Parallel()
-	s, w, c := planningLocal(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
+	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)
 	}

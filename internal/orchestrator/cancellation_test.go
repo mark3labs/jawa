@@ -13,9 +13,6 @@ func TestWorkflowCancelledRunRestarts(t *testing.T) {
 	for _, action := range []string{"resume", "retry", "reset"} {
 		t.Run(action, func(t *testing.T) {
 			s, _ := workflowFixture(t)
-			if err := migrateWorkflow(s); err != nil {
-				t.Fatal(err)
-			}
 			w := &Workflow{s: s, ctx: t.Context()}
 			c := workflowCard(t, s)
 			if err := w.MoveCard(c.ID, "Building", 0); err != nil {

@@ -31,6 +31,7 @@ func projectRepositoryURL(provider, name, host string) (string, error) {
 	}
 	u, err := url.Parse(host)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || strings.ContainsAny(host, " \t\r\n") {
+		//nolint:staticcheck // ST1005: Forgejo is a proper noun in this user-facing error.
 		return "", errors.New("Forgejo instance URL must be HTTPS at the host root (ports supported); HTTP and deployment subpaths are unsupported")
 	}
 	repo := strings.TrimRight(u.String(), "/") + "/" + strings.Join(parts, "/")

@@ -23,9 +23,6 @@ func actionWorkflow(t *testing.T) *Workflow {
 			t.Error(err)
 		}
 	})
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	return &Workflow{s: s, ctx: t.Context()}
 }
 

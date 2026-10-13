@@ -13,9 +13,6 @@ import (
 func TestRecoverRunningEventWithoutPinnedIdentity(t *testing.T) {
 	t.Parallel()
 	s, nc := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	w := &Workflow{s: s, ctx: t.Context()}
 	c := workflowCard(t, s)
 	if err := w.MoveCard(c.ID, "Building", 0); err != nil {

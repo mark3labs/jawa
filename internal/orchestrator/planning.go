@@ -465,7 +465,7 @@ Issue: %s`, p.Title, p.ID, p.Revision, p.RepoCommit, string(specJSON), p.Repo, p
 	if _, err = tx.Exec(`UPDATE planning_sessions SET state='approved',approved_revision=revision,approved_spec=spec,updated_at=? WHERE id=?`, now, p.ID); err != nil {
 		return err
 	}
-	if err = moveWorkflowCard(tx, id, c.ProjectID, "Planning", "Building", int(^uint(0)>>1)); err != nil {
+	if err = moveWorkflowCard(tx, id, c.ProjectID, "Planning", "Building", laneEnd); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -514,7 +514,7 @@ func (w *Workflow) CancelPlanning(id string) error {
 			return err
 		}
 	}
-	if err = moveWorkflowCard(tx, id, c.ProjectID, "Planning", "Todo", int(^uint(0)>>1)); err != nil {
+	if err = moveWorkflowCard(tx, id, c.ProjectID, "Planning", "Todo", laneEnd); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -2,15 +2,17 @@ package orchestrator
 
 import (
 	"context"
-	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"jawa/internal/orchestrator/db/sqlc"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -106,14 +108,40 @@ func (s *Store) HasAdmin() (bool, error) {
 	return exists, err
 }
 
-// First setup wins. A concurrent setup must never replace existing credentials.
-func (s *Store) setPassword(hash string) error {
-	_, err := s.db.Exec(`INSERT INTO admin(id,username,password_hash) VALUES(1,'admin',?)`, hash)
+// CreateAdmin inserts the singleton account. First setup wins, including concurrent setup.
+func (s *Store) CreateAdmin(user, hash string) error {
+	_, err := s.db.Exec(`INSERT INTO admin(id,username,password_hash) VALUES(1,?,?)`, user, hash)
 	return err
 }
-func (s *Store) checkPassword(hash string) bool {
-	var stored string
-	return s.db.QueryRow(`SELECT password_hash FROM admin WHERE id=1`).Scan(&stored) == nil && subtle.ConstantTimeCompare([]byte(stored), []byte(hash)) == 1
+
+func (s *Store) AdminCredentials() (user, hash string, err error) {
+	err = s.db.QueryRow(`SELECT username,password_hash FROM admin WHERE id=1`).Scan(&user, &hash)
+	return
+}
+
+func (s *Store) CreateSession(hash string, exp int64) error {
+	_, err := s.db.Exec(`INSERT INTO sessions(token_hash,expires_at) VALUES(?,?)`, hash, exp)
+	return err
+}
+
+func (s *Store) SessionExpiry(hash string) (exp int64, err error) {
+	err = s.db.QueryRow(`SELECT expires_at FROM sessions WHERE token_hash=?`, hash).Scan(&exp)
+	return
+}
+
+func (s *Store) DeleteSession(hash string) error {
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash=?`, hash)
+	return err
+}
+
+func (s *Store) PruneSessions(now int64) error {
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE expires_at<=?`, now)
+	return err
+}
+
+func (s *Store) SessionOperator(ctx context.Context, hash string, now int64) (user string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT a.username FROM admin a WHERE a.id=1 AND EXISTS(SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?)`, hash, now).Scan(&user)
+	return
 }
 
 func (s *Store) CreateProject(name string) (Project, error) {
@@ -218,10 +246,17 @@ func insertCardDetails(tx *sql.Tx, project, title, desc, issue string) (Card, er
 		return Card{}, errors.New("unknown project")
 	}
 	c := Card{ID: newID(), ProjectID: project, Title: title, Description: desc, IssueURL: issue, Status: "Todo", CreatedAt: time.Now().UTC().Truncate(time.Second)}
-	if err := tx.QueryRow(`SELECT coalesce(max(position)+1,0) FROM cards WHERE project_id=? AND status='Todo'`, project).Scan(&c.Position); err != nil {
+	q := sqlc.New(tx)
+	ctx := context.Background()
+	position, err := q.NextCardPosition(ctx, sqlc.NextCardPositionParams{ProjectID: project, Status: c.Status})
+	if err != nil {
 		return Card{}, err
 	}
-	_, err := tx.Exec(`INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url) VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.ProjectID, c.Title, c.Description, c.Status, c.Position, c.CreatedAt.Unix(), c.IssueURL)
+	c.Position = int(position)
+	err = q.InsertCard(ctx, sqlc.InsertCardParams{
+		ID: c.ID, ProjectID: c.ProjectID, Title: c.Title, Description: c.Description,
+		Status: c.Status, Position: position, CreatedAt: c.CreatedAt.Unix(), IssueUrl: c.IssueURL,
+	})
 	return c, err
 }
 
@@ -240,6 +275,9 @@ func (s *Store) SetCardArchived(id string, archived bool) error {
 	}
 	return nil
 }
+
+// MoveCard is a non-workflow primitive kept for tests and fixtures. Production
+// mutations must use Workflow.MoveCard to enforce execution rules.
 func (s *Store) MoveCard(id, status string, position int) error {
 	if status != "Todo" && status != "Planning" && status != "Building" && status != "Fix" && status != "Done" {
 		return errors.New("invalid status")
@@ -267,45 +305,8 @@ func (s *Store) MoveCard(id, status string, position int) error {
 	if (status == "Fix" || source == "Fix") && source != status {
 		return errors.New("fix transitions require workflow")
 	}
-	// Rebuild both affected lanes in their stable order. Excluding the moving
-	// card first makes position mean its final zero-based index in all cases.
-	lanes := []string{source}
-	if source != status {
-		lanes = append(lanes, status)
-	}
-	for _, lane := range lanes {
-		rows, err := tx.Query(`SELECT id FROM cards WHERE project_id=? AND status=? AND id<>? ORDER BY position,created_at,id`, project, lane, id)
-		if err != nil {
-			return err
-		}
-		ids := []string{}
-		for rows.Next() {
-			var cardID string
-			if err = rows.Scan(&cardID); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			ids = append(ids, cardID)
-		}
-		err = rows.Err()
-		closeErr := rows.Close()
-		if err != nil {
-			return err
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if lane == status {
-			pos := min(position, len(ids))
-			ids = append(ids, "")
-			copy(ids[pos+1:], ids[pos:])
-			ids[pos] = id
-		}
-		for i, cardID := range ids {
-			if _, err = tx.Exec(`UPDATE cards SET status=?,position=? WHERE id=? AND project_id=?`, lane, i, cardID, project); err != nil {
-				return err
-			}
-		}
+	if err = moveWorkflowCard(tx, id, project, source, status, position); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -362,20 +363,6 @@ func (s *Store) ReplaceDashboardOverrides(values map[string]string) error {
 	return tx.Commit()
 }
 
-func (s *Store) DeleteDashboardOverrides(keys ...string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, key := range keys {
-		if _, err = tx.Exec(`DELETE FROM settings WHERE key=?`, "dashboard:"+key); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func (s *Store) NATSConfig() NATSConfig {
 	var c NATSConfig
 	// One statement provides a consistent snapshot of both public settings.
@@ -408,4 +395,59 @@ func (s *Store) saveNATS(url, user, pass string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// laneEnd appends a card after all other cards in its destination lane.
+const laneEnd = math.MaxInt
+
+// moveWorkflowCard compacts both affected lanes in the caller's transaction.
+func moveWorkflowCard(tx *sql.Tx, id, project, source, status string, position int) error {
+	q := sqlc.New(tx)
+	ctx := context.Background()
+	// Excluding the moving card makes position its final zero-based index.
+	lanes := []string{source}
+	if source != status {
+		lanes = append(lanes, status)
+	}
+	for _, lane := range lanes {
+		ids, err := q.ListCardLane(ctx, sqlc.ListCardLaneParams{ProjectID: project, Status: lane, ExcludeID: id})
+		if err != nil {
+			return err
+		}
+		if lane == status {
+			pos := min(position, len(ids))
+			ids = append(ids, "")
+			copy(ids[pos+1:], ids[pos:])
+			ids[pos] = id
+		}
+		for i, cardID := range ids {
+			if _, err = q.UpdateCardLane(ctx, sqlc.UpdateCardLaneParams{Status: lane, Position: int64(i), ID: cardID, ProjectID: project}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// rotateNATSSettings keeps persistence and listener reload in one transaction.
+// A failed commit restores the previous listener configuration via rollback.
+func (s *Store) rotateNATSSettings(url, user, hash string, reload func() error, rollback func()) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, kv := range [][2]string{{"nats_url", url}, {"nats_username", user}, {"nats_password", hash}, {"nats_configured", "true"}} {
+		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	if err = reload(); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		rollback()
+		return err
+	}
+	return nil
 }

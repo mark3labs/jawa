@@ -206,26 +206,25 @@ func (a *app) authed(r *http.Request) bool {
 	if e != nil {
 		return false
 	}
-	var exp int64
-	e = a.s.db.QueryRow("SELECT expires_at FROM sessions WHERE token_hash=?", tokenHash(c.Value)).Scan(&exp)
+	exp, e := a.s.SessionExpiry(tokenHash(c.Value))
 	return e == nil && exp > time.Now().Unix()
 }
 func (a *app) clear(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("session"); e == nil {
-		_, _ = a.s.db.Exec("DELETE FROM sessions WHERE token_hash=?", tokenHash(c.Value))
+		_ = a.s.DeleteSession(tokenHash(c.Value))
 	}
 	http.SetCookie(w, &http.Cookie{Name: "session", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 }
 func (a *app) issue(w http.ResponseWriter, r *http.Request) error {
 	t := newID()
 	exp := time.Now().Add(sessionLifetime)
-	if _, err := a.s.db.Exec("INSERT INTO sessions(token_hash,expires_at) VALUES(?,?)", tokenHash(t), exp.Unix()); err != nil {
+	if err := a.s.CreateSession(tokenHash(t), exp.Unix()); err != nil {
 		return err
 	}
 	if c, e := r.Cookie("session"); e == nil {
-		_, _ = a.s.db.Exec("DELETE FROM sessions WHERE token_hash=?", tokenHash(c.Value))
+		_ = a.s.DeleteSession(tokenHash(c.Value))
 	}
-	_, _ = a.s.db.Exec("DELETE FROM sessions WHERE expires_at<=?", time.Now().Unix())
+	_ = a.s.PruneSessions(time.Now().Unix())
 	http.SetCookie(w, &http.Cookie{Name: "session", Value: t, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: int(sessionLifetime / time.Second)})
 	http.SetCookie(w, &http.Cookie{Name: "csrf", Value: newID(), Path: "/", Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: exp, MaxAge: int(sessionLifetime / time.Second)})
 	return nil
@@ -270,7 +269,7 @@ func (a *app) setup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unable to create account", http.StatusInternalServerError)
 		return
 	}
-	_, err = a.s.db.Exec("INSERT INTO admin(id,username,password_hash) VALUES(1,?,?)", user, string(h))
+	err = a.s.CreateAdmin(user, string(h))
 	if err != nil {
 		http.Error(w, "setup could not be completed", http.StatusConflict)
 		return
@@ -344,8 +343,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
 		return
 	}
-	var user, h string
-	err := a.s.db.QueryRow("SELECT username,password_hash FROM admin WHERE id=1").Scan(&user, &h)
+	user, h, err := a.s.AdminCredentials()
 	hash := []byte(h)
 	if err != nil {
 		hash = dummyLoginHash
@@ -414,40 +412,33 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	if err != nil {
 		return err
 	}
-	tx, err := a.s.db.Begin()
-	if err != nil {
-		return err
-	}
-	// Rollback is best-effort; after Commit it returns sql.ErrTxDone.
-	defer func() { _ = tx.Rollback() }()
-	for _, kv := range [][2]string{{"nats_url", url}, {"nats_username", user}, {"nats_password", string(hash)}, {"nats_configured", "true"}} {
-		if _, err = tx.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", kv[0], kv[1]); err != nil {
-			return err
-		}
-	}
 	var next *server.Options
-	if a.ns != nil {
-		next = a.options.Clone()
-		if len(next.Users) > 0 {
-			for i, u := range next.Users {
-				if u.Username != "jawa-internal" {
-					next.Users[i] = &server.User{Username: user, Password: string(hash), Permissions: workerPermissions()}
+	err = a.s.rotateNATSSettings(url, user, string(hash), func() error {
+		if a.ns != nil {
+			next = a.options.Clone()
+			if len(next.Users) > 0 {
+				for i, u := range next.Users {
+					if u.Username != "jawa-internal" {
+						next.Users[i] = &server.User{Username: user, Password: string(hash), Permissions: workerPermissions()}
+					}
 				}
+				next.Username, next.Password = "", ""
+			} else {
+				next.Username, next.Password = user, string(hash)
 			}
-			next.Username, next.Password = "", ""
-		} else {
-			next.Username, next.Password = user, string(hash)
+			if err = a.ns.ReloadOptions(next); err != nil {
+				return fmt.Errorf("NATS reload failed")
+			}
 		}
-		if err = a.ns.ReloadOptions(next); err != nil {
-			return fmt.Errorf("NATS reload failed")
-		}
-	}
-	if err = tx.Commit(); err != nil {
+		return nil
+	}, func() {
 		if a.ns != nil {
 			if rollbackErr := a.ns.ReloadOptions(a.options.Clone()); rollbackErr != nil {
 				a.ns.Shutdown()
 			}
 		}
+	})
+	if err != nil {
 		return err
 	}
 	if next != nil {
@@ -510,10 +501,10 @@ func Command() *cobra.Command {
 		} else if v == "false" {
 			logger.SetLevel(log.InfoLevel)
 		}
-		if _, _, err := validatedListenAddress(listen); err != nil {
+		if err := validatedListenAddress(listen); err != nil {
 			return err
 		}
-		if _, _, err := validatedListenAddress(natsListen); err != nil {
+		if err := validatedListenAddress(natsListen); err != nil {
 			return err
 		}
 		if value, ok := overrides["debug"]; ok {
@@ -625,16 +616,16 @@ func orchestratorEnv(key, fallback string) string {
 	return fallback
 }
 
-func validatedListenAddress(address string) (string, int, error) {
-	host, portText, err := net.SplitHostPort(address)
+func validatedListenAddress(address string) error {
+	_, portText, err := net.SplitHostPort(address)
 	if err != nil {
-		return "", 0, err
+		return err
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 0 || port > 65535 {
-		return "", 0, errors.New("port must be between 0 and 65535")
+		return errors.New("port must be between 0 and 65535")
 	}
-	return host, port, nil
+	return nil
 }
 
 func (a *app) activity(w http.ResponseWriter, r *http.Request) {
@@ -720,8 +711,7 @@ func (a *app) requestOperator(r *http.Request) (string, error) {
 	if err != nil {
 		return "", errors.New("authenticated operator required")
 	}
-	var user string
-	err = a.s.db.QueryRowContext(r.Context(), `SELECT a.username FROM admin a WHERE a.id=1 AND EXISTS(SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?)`, tokenHash(c.Value), time.Now().Unix()).Scan(&user)
+	user, err := a.s.SessionOperator(r.Context(), tokenHash(c.Value), time.Now().Unix())
 	if err != nil || strings.TrimSpace(user) == "" {
 		return "", errors.New("authenticated operator required")
 	}

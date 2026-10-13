@@ -70,9 +70,6 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := migrateWorkflow(s); err != nil {
-		return nil, err
-	}
 	consumerID, err := workflowConsumerID(s)
 	if err != nil {
 		return nil, err
@@ -479,7 +476,7 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 		) UPDATE cards SET position=(SELECT position FROM positions WHERE positions.id=cards.id)
 		WHERE id IN (SELECT id FROM positions)`, project, source)
 	} else {
-		err = moveWorkflowCard(tx, id, project, source, "Todo", int(^uint(0)>>1))
+		err = moveWorkflowCard(tx, id, project, source, "Todo", laneEnd)
 	}
 	if err != nil {
 		return err
@@ -853,7 +850,7 @@ func (w *Workflow) markReady(a Attempt) error {
 	if (status != "Building" && status != "Fix") || latest != a.Number {
 		return nil
 	}
-	if err = moveWorkflowCard(tx, a.CardID, project, status, "Done", int(^uint(0)>>1)); err != nil {
+	if err = moveWorkflowCard(tx, a.CardID, project, status, "Done", laneEnd); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`UPDATE workflow_attempts SET ready=1,state='ready',error='',updated_at=? WHERE id=?`, time.Now().UnixMilli(), a.ID); err != nil {

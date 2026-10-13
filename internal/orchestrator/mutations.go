@@ -281,7 +281,7 @@ func (a *app) mutateSettingsOrchestrator(w http.ResponseWriter, r *http.Request,
 	}
 	for _, key := range []string{"listen", "nats-listen"} {
 		if value := strings.TrimSpace(r.FormValue(key)); value != "" {
-			if _, _, e := validatedListenAddress(value); e != nil {
+			if e := validatedListenAddress(value); e != nil {
 				err = fmt.Errorf("invalid %s address", key)
 				break
 			}
