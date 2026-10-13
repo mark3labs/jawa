@@ -50,7 +50,7 @@ try {
     await page.locator('.topbar').getByRole('button', { name: 'New card', exact: true }).click();
     await page.getByLabel('Title', { exact: true }).fill(`Responsive ${'long-title-'.repeat(15)}`);
     await page.getByLabel('Description', {exact: true}).fill('Long description for responsive layout');
-    await page.locator('#card-create-issue').uncheck();
+    await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
     await page.getByRole('button', { name: 'Create card', exact: true }).click();
     await page.locator('.task-card').waitFor();
     await page.locator('.task-card button[aria-haspopup="menu"]').click();

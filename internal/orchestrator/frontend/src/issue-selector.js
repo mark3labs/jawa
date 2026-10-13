@@ -14,6 +14,7 @@ export function setupIssueSelector(host, cleanup) {
 
   const create = form.querySelector('[name="create_issue"]');
   const token = form.querySelector('[name="issue_submission"]');
+  const createRoot = host.querySelector('[data-slot="checkbox"]');
   const createLabel = host.querySelector('[data-create-issue]');
   const createHelp = host.querySelector('[data-create-help]');
   const recovery = () => host.querySelector('#card-issue-recovery');
@@ -30,6 +31,13 @@ export function setupIssueSelector(host, cleanup) {
     if (create) {
       create.disabled = pending || linked || recovering || blocked;
       if (linked || recovering || blocked) create.checked = false;
+    }
+    if (createRoot && create) {
+      // Programmatic resets/locks must also update the shadcn visible control.
+      window.templ?.checkbox?.setChecked(createRoot, create.checked);
+      createRoot.setAttribute('aria-disabled', String(create.disabled));
+      createRoot.toggleAttribute('data-disabled', create.disabled);
+      createRoot.tabIndex = create.disabled ? -1 : 0;
     }
     if (createLabel) createLabel.hidden = linked;
     if (createHelp) createHelp.hidden = linked;

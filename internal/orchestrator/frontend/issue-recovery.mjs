@@ -23,7 +23,7 @@ const server = createServer(async (req, res) => {
   } else if (req.url === '/events' || req.url === '/snapshot') {
     res.setHeader('Content-Type', 'text/event-stream'); res.end();
   } else if (req.url === '/sw.js') res.writeHead(404).end();
-  else res.setHeader('Content-Type', 'text/html'), res.end(markup);
+  else res.setHeader('Content-Type', 'text/html'), res.end(req.url === '/native' ? markup.toString().replace('<dialog id="card-dialog"', '<dialog open id="card-dialog"') : markup);
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
 const browser = await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {})});
@@ -37,16 +37,20 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}/board`);
     await page.locator('.topbar').getByRole('button',{name:'New card',exact:true}).click();
     await page.locator('#card-issue option').nth(1).waitFor({state:'attached'});
-    const create=page.locator('#card-create-issue');const autofill=page.locator('[data-issue-autofill]');
-    assert.equal(await create.isChecked(),true);assert.equal(await autofill.isVisible(),false);
+    const input=page.locator('#card-create-issue');
+    const create=page.getByRole('checkbox',{name:'Create issue',exact:true});const autofill=page.locator('[data-issue-autofill]');
+    assert.equal(await create.getAttribute('data-slot'),'checkbox');
+    assert.equal(await create.isChecked(),true);
+    assert.equal(await input.isChecked(),true);assert.equal(await autofill.isVisible(),false);
     await page.locator('#card-title').fill('Retained 日本語 title');
     await page.locator('#card-description').fill('  **Markdown**\nretained body  ');
     if (screenshotDir) await page.screenshot({path:`${screenshotDir}/create-${width}.png`});
     // Keyboard toggle (desktop) and tap (mobile) never submit.
     if (width===1440) { await create.focus();await page.keyboard.press('Space'); } else await create.tap();
     assert.equal(await create.isChecked(),false);
+    assert.equal(await input.isChecked(),false);
     await page.locator('#card-issue').selectOption('https://github.com/acme/repo/issues/17');
-    assert.equal(await create.isVisible(),false);assert.equal(await autofill.isVisible(),true);
+    assert.equal(await page.locator('[data-create-issue]').isVisible(),false);assert.equal(await autofill.isVisible(),true);
     if (screenshotDir) await page.screenshot({path:`${screenshotDir}/linked-${width}.png`});
     await page.locator('#card-issue').selectOption('');await create.check();
     const before=posts;
@@ -59,7 +63,9 @@ try {
     assert.match(submission.get('issue_submission'),/^[a-f0-9]{64}$/);
     assert.equal(await page.locator('#card-dialog').evaluate(el=>el.open),true);
     assert.equal(await page.locator('#card-title').inputValue(),'Retained 日本語 title');
-    assert.equal(await create.isDisabled(),true);
+    assert.equal(await create.isDisabled(),true);assert.equal(await input.isDisabled(),true);
+    assert.equal(await create.getAttribute('tabindex'),'-1');
+    await create.dispatchEvent('click');assert.equal(await input.isChecked(),false);
     await page.locator('[name="issue_recovery"]').selectOption('link');
     await page.locator('[name="recovery_url"]').fill('https://github.com/acme/repo/issues/17');
     const fits=await page.locator('#card-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1);
@@ -69,7 +75,21 @@ try {
     await page.waitForFunction(()=>!document.querySelector('#card-dialog form').hasAttribute('data-pending'));
     assert.equal(submission.get('create_issue'),null);assert.equal(submission.get('issue_recovery'),'link');
     assert.equal(posts,before+2);assert.deepEqual(errors,[]);
+    // The next draft restores both the native value and visible shadcn state.
+    await page.locator('#card-dialog form').evaluate(el=>el.reset());
+    await page.waitForFunction(()=>document.querySelector('[data-slot="checkbox"]').getAttribute('aria-checked')==='true');
+    assert.equal(await input.isChecked(),true);assert.equal(await create.isEnabled(),true);
+    assert.equal(await create.getAttribute('tabindex'),'0');
+    assert.equal(await page.locator('#card-issue-recovery').textContent(),'');
     await context.close();
   }
+  const nativeContext = await browser.newContext({javaScriptEnabled:false,viewport:{width:390,height:1000}});
+  const nativePage = await nativeContext.newPage();nativePage.setDefaultTimeout(5000);
+  // Serve an open dialog because script-disabled browsers cannot open it.
+  await nativePage.goto(`http://127.0.0.1:${server.address().port}/native`);
+  const nativeCreate = nativePage.locator('#card-create-issue');
+  assert.equal(await nativeCreate.isVisible(),true);
+  await nativeCreate.uncheck();assert.equal(await nativeCreate.isChecked(),false);
+  await nativeContext.close();
   console.log('Real New card creation/recovery UI passed at 1440/390/320px; keyboard/touch and exact submit fields checked.');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve)); }

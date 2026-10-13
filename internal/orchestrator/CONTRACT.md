@@ -30,8 +30,8 @@ for isolated selector browser tests (including stale-response races).
 
 Templates are separated into `layout.templ`, `board.templ`, `runs.templ`,
 `agents.templ`, and `settings.templ`. Prebuilt shadcn-templ Card, Empty, Avatar,
-Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator
-and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
+Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator,
+Checkbox and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
 Rocket light-DOM components encapsulate Sortable, native popover actions, shortcuts,
 relative timestamps and clipboard behavior; templ retains ownership of markup.
 
@@ -40,7 +40,8 @@ Regenerate templates from repository root:
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
 Generated templ output and frontend assets are intentionally checked in and embedded;
 production requires neither Node nor CDN access. The build locates shadcn components
-using `go list -m` and copies the self-hosted Inter Latin variable font.
+using `go list -m`, bundles the pinned checkbox runtime and lifecycle with the
+application (no CDN), and copies the self-hosted Inter Latin variable font.
 
 Datastar/Rocket is vendored from the official v1.0.4 bundle:
 https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rocket.js.
