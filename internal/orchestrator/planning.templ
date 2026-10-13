@@ -37,8 +37,13 @@ templ planningContent(d pageData) {
  if note := d.automaticResumeNote(c); note != "" {
  <p class="muted small" role="status">{ note }</p>
  }
-					if detail.Session.Error != "" {
+					if detail.Session.Error != "" && detail.Session.Error != detail.Blocker {
 						<p class="plan-text tone-failed" role="status">{ detail.Session.Error }</p>
+					}
+					if detail.Blocker != "" {
+						<h3>Blocked — the planner needs guidance</h3>
+						@planningMarkdownText(detail.Blocker)
+						<p class="meta">Reply below; the planner continues this same run with your guidance.</p>
 					}
 					if len(detail.Questions) > 0 {
 						<h3>Questions</h3>
@@ -71,7 +76,13 @@ templ planningContent(d pageData) {
 						<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
 							@planningFields(d, c)
                             <input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
-							<div class="field"><label for="planning-reply">Reply or request a revision</label><textarea id="planning-reply" name="reply" required maxlength="65536"></textarea></div>
+							<div class="field"><label for="planning-reply">
+								if detail.Blocker != "" {
+									Reply with guidance
+								} else {
+									Reply or request a revision
+								}
+							</label><textarea id="planning-reply" name="reply" required maxlength="65536"></textarea></div>
 							@submit("Send reply")
 						</form>
 					}

@@ -501,7 +501,7 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 // Either proves the continuation ran, so its previous failure is stale.
 func resumeSuperseded(tx *sql.Tx, task string, created int64) (bool, error) {
 	var found bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND (kind IN ('complete_task','report_blocker') OR accepted_at>=?))`, task, created).Scan(&found)
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports r WHERE r.task_id=? AND (`+terminalReportClause+` OR r.accepted_at>=?))`, task, created).Scan(&found)
 	return found, err
 }
 

@@ -218,17 +218,28 @@ func TestTypedPlanningProposalQuestionsReceiptAndBlocker(t *testing.T) {
 	}
 	a, _ := w.CardResult(c.ID)
 	blocker := reportRequest(t, a.TaskID, reportprotocol.ReportBlocker, reportprotocol.Payload{Reason: "Missing repository access"})
-	if ack, err = w.acceptReport(t.Context(), blocker); err != nil || !ack.Accepted {
+	if ack, err = w.acceptReport(t.Context(), blocker); err != nil || !ack.Accepted || !ack.AwaitGuidance {
 		t.Fatal(ack, err)
 	}
+	// The blocker parks the run for guidance; it is not a terminal failure.
 	a, _ = w.CardResult(c.ID)
-	if a.Error != blocker.Payload.Reason || a.PRURL != "" || !terminalFailure(a) {
+	if a.State != "blocked" || a.Error != blocker.Payload.Reason || a.PRURL != "" || terminalFailure(a) {
+		t.Fatal(a)
+	}
+	if err = w.Retry(c.ID); err == nil {
+		t.Fatal("fresh retry replaced a run awaiting guidance")
+	}
+	// Ending the parked run (for example by cancellation) restores fresh Retry.
+	if err = w.result(t.Context(), client.Outcome{Version: 1, TaskID: a.TaskID, AgentID: "agent", RunID: "run", AttemptID: "attempt", State: runtime.RunCancelled}); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ = w.CardResult(c.ID); !terminalFailure(a) {
 		t.Fatal(a)
 	}
 	if err = w.Retry(c.ID); err != nil {
 		t.Fatal(err)
 	}
-	if ack, err = w.acceptReport(t.Context(), blocker); err != nil || !ack.Duplicate {
+	if ack, err = w.acceptReport(t.Context(), blocker); err != nil || !ack.Duplicate || !ack.AwaitGuidance {
 		t.Fatal("original receipt replay lost on retry", ack, err)
 	}
 }
@@ -274,18 +285,29 @@ func TestTypedPlanningBlockerAndPayloadRejections(t *testing.T) {
 		t.Fatal("build report accepted in planning")
 	}
 	blocker := reportRequest(t, r.TaskID, reportprotocol.ReportBlocker, reportprotocol.Payload{Reason: "Cannot inspect repository"})
-	if ack, err := w.acceptReport(t.Context(), blocker); err != nil || !ack.Accepted {
+	if ack, err := w.acceptReport(t.Context(), blocker); err != nil || !ack.Accepted || !ack.AwaitGuidance {
 		t.Fatal(ack, err)
 	}
+	// The planner waits for guidance in the same run instead of failing.
 	d = planningDetails(t, w, c.ID)
-	if d.Session.State != "failed" || d.Session.Error != blocker.Payload.Reason || len(d.Revisions) != 0 || len(d.Messages) != 2 {
+	if d.Session.State != "questions" || d.Session.Error != blocker.Payload.Reason || d.Blocker != blocker.Payload.Reason || d.InteractionToken != blocker.ReportID || len(d.Revisions) != 0 || len(d.Messages) != 2 || len(d.Discussion) != 1 {
 		t.Fatal(d)
 	}
-	if err := w.RetryPlanning(c.ID); err != nil {
+	if err := w.RetryPlanning(c.ID); err == nil {
+		t.Fatal("fresh retry replaced a planner awaiting guidance")
+	}
+	if err := w.ReplyPlanning(c.ID, "Use the public mirror", blocker.ReportID); err != nil {
 		t.Fatal(err)
 	}
+	var status, reply string
+	if err := w.s.db.QueryRow(`SELECT status,reply FROM planning_interactions WHERE report_id=?`, blocker.ReportID).Scan(&status, &reply); err != nil || status != "queued" || reply != "Use the public mirror" {
+		t.Fatal(status, reply, err)
+	}
+	if d = planningDetails(t, w, c.ID); d.Session.State != "running" || d.Blocker != "" {
+		t.Fatal(d)
+	}
 	if _, err := w.acceptReport(t.Context(), r); err == nil {
-		t.Fatal("old conflicting proposal accepted after retry")
+		t.Fatal("old conflicting proposal accepted after guidance")
 	}
 	if ack, err := w.acceptReport(t.Context(), blocker); err != nil || !ack.Duplicate {
 		t.Fatal("original blocker receipt unavailable", ack, err)

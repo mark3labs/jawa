@@ -170,6 +170,16 @@ templ cardNote(d pageData, c Card) {
 	if canAction(c, d.attempts, "fix") {
 		@cardPRStatus(d, c)
 	}
+	if b, ok := d.blocker(c); ok {
+		<div class="card-note tone-blocked" role="status">
+			<p><strong>Blocked:</strong> { b.Reason }</p>
+			if b.Queued {
+				<p class="muted small">{ guidanceQueuedNotice }</p>
+			} else {
+				<button type="button" class="btn small" data-on:click={ guideDialogAction(c.ID, b.Token) }>Reply with guidance…</button>
+			}
+		</div>
+	}
 	if note, tone := d.cardDiagnostic(c); note != "" {
 		<p class={ "card-note", "tone-" + tone }>{ note }</p>
 	}
@@ -210,6 +220,13 @@ templ cardMenu(d pageData, c Card) {
 				}
 			} else if canAction(c, d.attempts, "resume") {
 				@menuPost(d, c, "/cards/resume", "Resume failed run", "play", [][2]string{{"expected_resume", resumeToken(latestAttempt(c.ID, d.attempts)[0])}})
+			}
+			if d.canGuide(c) {
+				{{ b, _ := d.blocker(c) }}
+				<button type="button" class="menu-item" role="menuitem" data-on:click={ guideDialogAction(c.ID, b.Token) }>
+					@icon("play")
+					<span>Reply with guidance…</span>
+				</button>
 			}
 			if canAction(c, d.attempts, "retry") {
 				@menuPost(d, c, "/cards/retry", "Retry attempt", "retry", nil)

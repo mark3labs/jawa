@@ -217,6 +217,16 @@ type WorkflowExecutionEvent struct {
 	ReceivedAt      int64  `json:"received_at"`
 }
 
+type WorkflowInteraction struct {
+	ReportID    string `json:"report_id"`
+	TaskID      string `json:"task_id"`
+	Status      string `json:"status"`
+	WaitingJson string `json:"waiting_json"`
+	Reply       string `json:"reply"`
+	CreatedAt   int64  `json:"created_at"`
+	AnsweredAt  int64  `json:"answered_at"`
+}
+
 type WorkflowPrCheck struct {
 	AttemptID  string `json:"attempt_id"`
 	PrUrl      string `json:"pr_url"`

@@ -51,7 +51,22 @@ type Ack struct {
 	ReportID  string `json:"report_id"`
 	Accepted  bool   `json:"accepted"`
 	Duplicate bool   `json:"duplicate"`
-	Error     string `json:"error,omitempty"`
+	// AwaitGuidance is the receiver's durable decision that an accepted
+	// reportBlocker parks the run for operator guidance instead of ending it.
+	// Absent (older receivers) means the blocker is terminal.
+	AwaitGuidance bool   `json:"await_guidance,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
+// Suspends reports whether an accepted report parks its run until an operator
+// answers in the same conversation.
+func (a Ack) Suspends(kind Kind) bool {
+	return a.Accepted && (kind == Clarify || kind == ProposeSpec || (kind == ReportBlocker && a.AwaitGuidance))
+}
+
+// Terminal reports whether an accepted report ends its task's execution.
+func (a Ack) Terminal(kind Kind) bool {
+	return a.Accepted && (kind == CompleteTask || (kind == ReportBlocker && !a.AwaitGuidance))
 }
 
 func Subject(root string) string { return root + ".reports.submit" }

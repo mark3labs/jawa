@@ -220,7 +220,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',goto:''}"
+	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -441,6 +441,32 @@ templ dialogs(d pageData) {
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$fixMessage.trim()"}}) {
 					Send to Fix
+				}
+			}
+		</form>
+	</dialog>
+	<dialog id="guide-dialog" aria-labelledby="guide-dialog-title" data-effect="if ($guideOpen && !el.open) el.showModal(); else if (!$guideOpen && el.open) el.close()" data-on:close="$guideOpen = false" data-on:cancel="$guideOpen = false">
+		@dialog.Title(dialog.TitleProps{ID: "guide-dialog-title"}) {
+			Reply with guidance
+		}
+		@dialog.Description() {
+			The agent paused on a blocker. Your guidance resumes the same run, keeping its conversation, branch and work so far.
+		}
+		<form method="post" action="/cards/guide" data-on:submit__prevent="@post('/cards/guide', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" data-bind:guide-card/>
+			<input type="hidden" name="expected_interaction" data-bind:guide-token/>
+			<div class="field">
+				<label for="guide-message">Guidance (required)</label>
+				<textarea id="guide-message" name="message" rows="5" required maxlength="64000" data-bind:guide-message autofocus></textarea>
+			</div>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$guideOpen = false"}}) {
+					Not now
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$guideMessage.trim()"}}) {
+					Send guidance
 				}
 			}
 		</form>

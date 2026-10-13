@@ -474,9 +474,21 @@ command, not standalone agent/`serve` or administrative subcommands.
 Planning, Building and Fix card menus can offer **Resume failed run** for eligible
 execution failures; the planning detail action remains available. Resume preserves
 the same run, saved context and branch, including the original Fix repair branch,
-PR assignment and context. **Retry attempt / Retry planning** still starts fresh work. Explicit blockers, completed/cancelled runs and ambiguous ownership cannot
+PR assignment and context. **Retry attempt / Retry planning** still starts fresh work. Blockers use
+guidance instead (below); completed/cancelled runs and ambiguous ownership cannot
 be resumed. See [failed-run recovery](internal/orchestrator/FAILED_RESUME.md) for
 agent compatibility, pending-command safety and operational limitations.
+
+### Guide a blocked agent
+
+An agent that calls `reportBlocker` pauses its run instead of ending it. The
+card shows **Blocked:** with the agent's reason and offers **Reply with
+guidance…** (card note and menu). Your guidance is delivered into the *same*
+run, keeping its conversation, branch and work so far; the agent may then
+finish, ask again, or block again. Planning blockers appear on the planning
+page with a **Reply with guidance** form. To abandon a paused build instead,
+choose **Cancel run…**, then **Retry attempt** or **Reset to Todo**. See
+[blocker guidance](internal/orchestrator/BLOCKER_GUIDANCE.md) for details.
 
 ### Repair an existing pull request
 

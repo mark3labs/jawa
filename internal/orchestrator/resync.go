@@ -119,10 +119,10 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 		state = "submitted"
 	case "running":
 		if !status.Active {
-			state, reason = "blocked", "agent run interrupted; awaiting agent recovery"
+			state, reason = "blocked", interruptedNotice
 		}
 	case "interrupted":
-		state, reason = "blocked", "agent run interrupted; awaiting agent recovery"
+		state, reason = "blocked", interruptedNotice
 	case "waiting":
 		state, reason = "blocked", "agent run waiting for input"
 	case "cancelled":
@@ -134,8 +134,11 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 	default:
 		return nil
 	}
+	if state, reason, err = guidedStatus(tx, a.TaskID, string(status.State), state, reason); err != nil {
+		return err
+	}
 	if a.State == state && a.RunState == string(status.State) && a.Error == reason && a.EventSeq == status.Seq {
-		return nil
+		return tx.Commit()
 	}
 	_, err = tx.Exec(`UPDATE workflow_attempts SET state=?,run_state=?,error=?,event_seq=?,updated_at=? WHERE id=?`, state, string(status.State), reason, status.Seq, time.Now().UnixMilli(), a.ID)
 	if err != nil {

@@ -204,6 +204,8 @@ func attemptActive(a Attempt) bool {
 }
 
 // runTone maps an attempt to the one visual state shown on lists and cards.
+const interruptedNotice = "agent run interrupted; awaiting agent recovery"
+
 const executionConflictNotice = "Terminal agent report could not be applied: execution identity is missing or conflicts with the pinned run. Reconciliation required."
 
 func runTone(a Attempt) string {
@@ -228,7 +230,9 @@ func runLabel(a Attempt) string {
 	if !a.Ready && a.Error == executionConflictNotice {
 		return "Needs reconciliation"
 	}
-	if a.State == "blocked" && (a.RunState == "running" || a.RunState == "interrupted") {
+	// A parked blocker can briefly report running before BONNIE records its
+	// suspension; only the interruption notice marks a stalled running turn.
+	if a.State == "blocked" && (a.RunState == "interrupted" || (a.RunState == "running" && a.Error == interruptedNotice)) {
 		return "Interrupted"
 	}
 	if a.RunState == "cancelled" && !a.Ready {

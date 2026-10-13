@@ -24,6 +24,7 @@ var uiAssets embed.FS
 // uiSnapshot is shared by full pages and SSE, so both show the same guards.
 type uiSnapshot struct {
 	autoResumes    map[string]autoResumeStatus
+	blockers       map[string]BlockerGuidance // open build blockers by card
 	projects       []Project
 	cards          []Card
 	agents         []presence.Record
@@ -56,6 +57,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	}
 	if snap.autoResumes, err = s.autoResumeStatuses(); err != nil {
 		return snap, err
+	}
+	if snap.blockers, err = s.blockerGuidance(); err != nil {
+		return snap, fmt.Errorf("load blockers: %w", err)
 	}
 	if snap.projects, err = s.Projects(); err != nil {
 		return snap, fmt.Errorf("load projects: %w", err)
@@ -241,7 +245,7 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 			return false
 		}
 		a := latest[0]
-		return a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.State == "running" || a.State == "waiting" || a.State == "interrupted")
+		return a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.State == "running" || a.State == "waiting" || a.State == "interrupted" || a.RunState == "waiting")
 	}
 	return false
 }
@@ -352,6 +356,26 @@ func planningInteractionLabel(status string) string {
 }
 
 const conflictFixMessage = "Resolve merge conflicts with the current base branch, run project tests, and push fixes to the existing pull request."
+
+// blocker returns the open blocker of a card's latest Building/Fix run.
+func (d pageData) blocker(c Card) (BlockerGuidance, bool) {
+	b, ok := d.blockers[c.ID]
+	if !ok || (c.Status != "Building" && c.Status != "Fix") {
+		return b, false
+	}
+	latest := latestAttempt(c.ID, d.attempts)
+	return b, len(latest) > 0 && latest[0].TaskID == b.TaskID && !latest[0].Ready
+}
+
+// canGuide matches GuideBlocked: only an unanswered blocker accepts guidance.
+func (d pageData) canGuide(c Card) bool {
+	b, ok := d.blocker(c)
+	return ok && !b.Queued
+}
+
+func guideDialogAction(cardID, token string) string {
+	return "$guideCard = " + strconv.Quote(cardID) + "; $guideToken = " + strconv.Quote(token) + "; $guideMessage = ''; $guideOpen = true"
+}
 
 func fixDialogAction(cardID, message string) string {
 	return "$fixCard = " + strconv.Quote(cardID) + "; $fixMessage = " + strconv.Quote(message) + "; $fixOpen = true"
