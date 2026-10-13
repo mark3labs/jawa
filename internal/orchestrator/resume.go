@@ -158,7 +158,7 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 			_, err = tx.Exec(`UPDATE planning_sessions SET state='running',error='Resume pending confirmation',updated_at=? WHERE id=?`, now, session)
 		}
 	} else {
-		_, err = tx.Exec(`UPDATE workflow_attempts SET state='running',run_state='running',outcome_json='',error='Resume pending confirmation',event_seq=?,updated_at=? WHERE id=?`, status.Seq, now, a.ID)
+		_, err = tx.Exec(`UPDATE workflow_attempts SET report_turn='',state='running',run_state='running',outcome_json='',error='Resume pending confirmation',event_seq=?,updated_at=? WHERE id=?`, status.Seq, now, a.ID)
 	}
 	if err != nil {
 		return err
@@ -375,7 +375,7 @@ func (w *Workflow) resumeNeedsReconcile(id string, target client.Target, created
 		w.resumeChecks[id] = now.Add(threshold)
 		w.log().Debug("Resume pending; owning agent still running", "resume_id", id, "task_id", target.TaskID, "seq", status.Seq)
 		return false, &status
-	case confirmed && status.State == runtime.RunFailed:
+	case confirmed && (status.State == runtime.RunFailed || (status.State == runtime.RunCompleted && w.isUnblockResume(id))):
 		// If the fence is not yet durable the next attempt re-confirms first.
 		w.resumeChecks[id] = now.Add(retry)
 		w.log().Warn("Resume stalled on idle failed run; reconciling", "resume_id", id, "task_id", target.TaskID)
@@ -442,6 +442,19 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 			if err == nil {
 				_, err = tx.Exec(`UPDATE planning_sessions SET state='failed',error=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?)`, notice, task)
 			}
+		} else if req.Mode == "unblock" {
+			var snapshot string
+			if err = tx.QueryRow(`SELECT previous_snapshot FROM failed_resumes WHERE id=?`, id).Scan(&snapshot); err != nil {
+				return err
+			}
+			var a Attempt
+			if err = json.Unmarshal([]byte(snapshot), &a); err != nil {
+				return err
+			}
+			_, err = tx.Exec(`UPDATE workflow_attempts SET state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,report_generation=?,report_turn=?,updated_at=? WHERE task_id=? AND report_generation=?`, a.State, a.RunState, a.Result, a.OutcomeJSON, a.Error, a.PRURL, a.ReportGeneration, a.ReportTurn, time.Now().UnixMilli(), task, req.Generation)
+			if err == nil {
+				_, err = tx.Exec(`UPDATE typed_reports SET superseded_by='' WHERE report_id=? AND superseded_by=?`, req.BlockerReportID, req.ID)
+			}
 		} else {
 			_, err = tx.Exec(`UPDATE workflow_attempts SET state='failed',run_state='failed',outcome_json=?,error=?,updated_at=? WHERE task_id=?`, previous, notice, time.Now().UnixMilli(), task)
 		}
@@ -501,7 +514,7 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 // Either proves the continuation ran, so its previous failure is stale.
 func resumeSuperseded(tx *sql.Tx, task string, created int64) (bool, error) {
 	var found bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND (kind IN ('complete_task','report_blocker') OR accepted_at>=?))`, task, created).Scan(&found)
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND generation=COALESCE((SELECT report_generation FROM workflow_attempts WHERE task_id=?),0) AND (kind IN ('complete_task','report_blocker') OR accepted_at>=?)) OR EXISTS(SELECT 1 FROM workflow_attempts WHERE task_id=? AND ready=1)`, task, task, created, task).Scan(&found)
 	return found, err
 }
 
@@ -552,4 +565,9 @@ func noPendingResume(tx *sql.Tx, card string) error {
 		return errors.New("resume is pending confirmation; wait for its owning agent")
 	}
 	return nil
+}
+
+func (w *Workflow) isUnblockResume(id string) bool {
+	var mode string
+	return w.s.db.QueryRow(`SELECT mode FROM failed_resumes WHERE id=?`, id).Scan(&mode) == nil && mode == "unblock"
 }

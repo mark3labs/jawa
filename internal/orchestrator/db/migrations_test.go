@@ -224,15 +224,15 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 	if err := database.QueryRow(`SELECT request_json,tool_call_id FROM typed_reports WHERE report_id='receipt'`).Scan(&raw, &call); err != nil || raw != "original JSON" || call != "legacy:receipt" {
 		t.Fatal(raw, call, err)
 	}
-	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('other','task','other-call','agent','run','attempt','turn','report_blocker','{}',124)`); err == nil {
+	if _, err := database.Exec(`INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES('other','task','other-call','agent','run','attempt','turn','report_blocker','{}',124)`); err == nil {
 		t.Fatal("second terminal accepted")
 	}
-	execTest(t, database, `INSERT INTO typed_reports VALUES('interaction','task','new-call','agent','run','attempt','turn','clarify','{}',124)`)
-	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('conflict','task','new-call','agent','run','attempt','turn','clarify','{}',125)`); err == nil {
+	execTest(t, database, `INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES('interaction','task','new-call','agent','run','attempt','turn','clarify','{}',124)`)
+	if _, err := database.Exec(`INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES('conflict','task','new-call','agent','run','attempt','turn','clarify','{}',125)`); err == nil {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 14 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 15 {
 		t.Fatal(version, err)
 	}
 }
@@ -257,7 +257,18 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE auto_resumes;
  ALTER TABLE failed_resumes DROP COLUMN automatic;
  DROP TABLE workflow_pr_merge_overrides;
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14)`)
+ DROP TABLE workflow_ready_overrides;
+ ALTER TABLE workflow_attempts DROP COLUMN report_generation;
+ ALTER TABLE workflow_attempts DROP COLUMN report_turn;
+ ALTER TABLE typed_reports DROP COLUMN superseded_by;
+ DROP INDEX typed_reports_terminal;
+ ALTER TABLE typed_reports DROP COLUMN generation;
+ CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+ ALTER TABLE failed_resumes DROP COLUMN mode;
+ ALTER TABLE failed_resumes DROP COLUMN generation;
+ ALTER TABLE failed_resumes DROP COLUMN previous_snapshot;
+ ALTER TABLE failed_resumes DROP COLUMN blocker_report_id;
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +296,18 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 	}
 	execTest(t, database, `DROP TABLE auto_resumes; ALTER TABLE failed_resumes DROP COLUMN automatic;
  DROP TABLE workflow_pr_merge_overrides;
- DELETE FROM goose_db_version WHERE version_id IN (13,14);
+ DROP TABLE workflow_ready_overrides;
+ ALTER TABLE workflow_attempts DROP COLUMN report_generation;
+ ALTER TABLE workflow_attempts DROP COLUMN report_turn;
+ ALTER TABLE typed_reports DROP COLUMN superseded_by;
+ DROP INDEX typed_reports_terminal;
+ ALTER TABLE typed_reports DROP COLUMN generation;
+ CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+ ALTER TABLE failed_resumes DROP COLUMN mode;
+ ALTER TABLE failed_resumes DROP COLUMN generation;
+ ALTER TABLE failed_resumes DROP COLUMN previous_snapshot;
+ ALTER TABLE failed_resumes DROP COLUMN blocker_report_id;
+ DELETE FROM goose_db_version WHERE version_id IN (13,14,15);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -314,5 +336,24 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		t.Fatal("foreign key violation")
+	}
+}
+
+func TestUnblockGenerationConstraints(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES('blocker','task','call0','agent','run','remote','turn0','report_blocker','{}',1)`)
+	if _, err := database.Exec(`INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES('duplicate','task','call1','agent','run','remote','turn1','complete_task','{}',2)`); err == nil {
+		t.Fatal("duplicate generation zero terminal")
+	}
+	execTest(t, database, `INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at,generation) VALUES('completion','task','call1','agent','run','remote','turn1','complete_task','{}',2,1)`)
+	if _, err := database.Exec(`INSERT INTO typed_reports(report_id,task_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at,generation) VALUES('duplicate','task','call2','agent','run','remote','turn1','report_blocker','{}',3,1)`); err == nil {
+		t.Fatal("duplicate new generation terminal")
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM typed_reports WHERE task_id='task'`).Scan(&count); err != nil || count != 2 {
+		t.Fatal(count, err)
 	}
 }

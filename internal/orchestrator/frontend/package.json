@@ -10,6 +10,7 @@
     "test:smoke": "node smoke.mjs",
     "test:issues": "node issues.mjs",
     "test:fix": "node fix.mjs",
+    "test:unblock": "node unblock.mjs",
     "test:responsive": "node responsive.mjs",
     "test:pwa": "node pwa.mjs",
     "test:pr-refresh": "node pr-refresh.mjs",

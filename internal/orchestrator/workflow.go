@@ -19,6 +19,9 @@ import (
 
 // Attempt is a durable board execution, distinct from a agent's remote attempt.
 type Attempt struct {
+	ReportGeneration                                   int
+	ReportTurn                                         string
+	ManualReady                                        bool
 	Branch, RepairMessage, RepairPRURL                 string
 	RepairSourceNumber                                 int
 	ID, CardID                                         string
@@ -161,12 +164,12 @@ func (w *Workflow) Agents(ctx context.Context) ([]presence.Record, error) {
 	return w.presence.Discover(ctx, presence.Filter{})
 }
 
-const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at,branch,repair_message,repair_pr_url,repair_source_number`
+const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at,branch,repair_message,repair_pr_url,repair_source_number,report_generation,report_turn,id IN (SELECT attempt_id FROM workflow_ready_overrides)`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var created, updated int64
-	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated, &a.Branch, &a.RepairMessage, &a.RepairPRURL, &a.RepairSourceNumber)
+	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated, &a.Branch, &a.RepairMessage, &a.RepairPRURL, &a.RepairSourceNumber, &a.ReportGeneration, &a.ReportTurn, &a.ManualReady)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	a.UpdatedAt = time.UnixMilli(updated).UTC()
 	return a, err
@@ -614,6 +617,9 @@ func resumableOutcome(a Attempt) bool {
 // applyOutcome is shared by guarded delivery and explicit reconciliation. The
 // caller owns the transaction and must check identity and readiness first.
 func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
+	if a.Ready {
+		return nil
+	}
 	reported, err := acceptedReport(tx, a.TaskID)
 	if err != nil {
 		return err

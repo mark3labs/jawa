@@ -156,7 +156,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/cards/unblock", "/cards/force-ready", "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -273,6 +273,18 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				err = errors.New("refresh before resuming")
 			} else {
 				err = a.workflow.resumeFailed(r.FormValue("card_id"), false, r.FormValue("expected_resume"))
+			}
+		}
+	case "/cards/unblock", "/cards/force-ready":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else if r.URL.Path == "/cards/unblock" {
+			err = a.workflow.Unblock(r.FormValue("card_id"), r.FormValue("expected_unblock"), r.FormValue("prompt"))
+		} else {
+			var operator string
+			err = a.s.db.QueryRow(`SELECT username FROM admin WHERE id=1`).Scan(&operator)
+			if err == nil {
+				err = a.workflow.ForceReady(r.FormValue("card_id"), r.FormValue("expected_unblock"), operator, r.FormValue("acknowledged") == "true")
 			}
 		}
 	case "/cards/mark-merged":

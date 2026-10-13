@@ -545,3 +545,14 @@ The native/enhanced form sends `card_id`, `expected_attempt_id`,
 `expected_pr_url`, `_csrf`, and the standard view/project fields. Stale or
 ineligible submissions fail without writing metadata. Already effectively
 merged cards omit the action.
+
+### Unblocking a task
+
+For a blocked Building/Fix card, use **Unblock and resume…** to continue the existing
+run/branch with an editable operator prompt when no PR is attached. Completion still
+requires a real PR and normal readiness checks. With an attached PR, **Force ready…**
+requires confirmation and moves it to Done for review without CI/review verification
+or merging. These cards display **Ready (manual override)** with durable provenance;
+independent PR checks remain unchanged. Both actions require a reachable, idle owning
+agent and reject ambiguous/cancelled/active work. Planning is unchanged. Upgrade
+backend and agents together; see [explicit unblock operations](internal/orchestrator/FAILED_RESUME.md).

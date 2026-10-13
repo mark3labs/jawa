@@ -87,3 +87,10 @@ failure tokens persist across restart; budgets are derived from automatic comman
 reservations, never a separate counter. Card deletion cascades scheduling hints.
 The default-enabled setting requires no data rewrite; absent overrides mean true.
 See `../FAILED_RESUME.md` for budget, rejection and disable semantics.
+
+Version `00015_unblock.sql` adds build report generations and supersession audit,
+extends the resume ledger with explicit mode/prompt authorization and restoration
+snapshot, and adds durable manual readiness provenance. Legacy reports and failed
+resumes remain generation 0; planning reports never change generation. Terminal
+uniqueness is per task/generation; report-ID and task/tool-call uniqueness remain.
+See `../FAILED_RESUME.md` for the two explicit operator actions and deployment.

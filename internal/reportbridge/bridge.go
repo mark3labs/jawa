@@ -311,6 +311,14 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 			}
 		}
 	}
+	checkTurn := request.TurnID
+	if _, exists := prior[request.ReportID]; exists {
+		checkTurn = ""
+	}
+	superseded, err := supersededBlockers(records, checkTurn)
+	if err != nil {
+		return reportprotocol.Ack{}, err
+	}
 	for id, old := range prior {
 		ack, resolved := receipts[id]
 		if old.ToolCallID == request.ToolCallID && id != request.ReportID {
@@ -321,7 +329,7 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 				return reportprotocol.Ack{}, errors.New("report retry owner mismatch")
 			}
 			request = old
-		} else if !resolved || (ack.Accepted && (old.Kind == reportprotocol.CompleteTask || old.Kind == reportprotocol.ReportBlocker)) {
+		} else if !resolved || (ack.Accepted && !superseded[id] && (old.Kind == reportprotocol.CompleteTask || old.Kind == reportprotocol.ReportBlocker)) {
 			return reportprotocol.Ack{}, errors.New("task has a terminal report or unconfirmed interaction; retry the identical payload")
 		}
 	}

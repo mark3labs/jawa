@@ -37,16 +37,20 @@ type Card struct {
 }
 
 type FailedResume struct {
-	ID              string `json:"id"`
-	TaskID          string `json:"task_id"`
-	CardID          string `json:"card_id"`
-	Planning        int64  `json:"planning"`
-	RequestJson     string `json:"request_json"`
-	PreviousOutcome string `json:"previous_outcome"`
-	Status          string `json:"status"`
-	ReplyJson       string `json:"reply_json"`
-	CreatedAt       int64  `json:"created_at"`
-	Automatic       int64  `json:"automatic"`
+	ID               string `json:"id"`
+	TaskID           string `json:"task_id"`
+	CardID           string `json:"card_id"`
+	Planning         int64  `json:"planning"`
+	RequestJson      string `json:"request_json"`
+	PreviousOutcome  string `json:"previous_outcome"`
+	Status           string `json:"status"`
+	ReplyJson        string `json:"reply_json"`
+	CreatedAt        int64  `json:"created_at"`
+	Automatic        int64  `json:"automatic"`
+	Mode             string `json:"mode"`
+	Generation       int64  `json:"generation"`
+	PreviousSnapshot string `json:"previous_snapshot"`
+	BlockerReportID  string `json:"blocker_report_id"`
 }
 
 type PlanningDelivery struct {
@@ -145,16 +149,18 @@ type Setting struct {
 }
 
 type TypedReport struct {
-	ReportID    string `json:"report_id"`
-	TaskID      string `json:"task_id"`
-	ToolCallID  string `json:"tool_call_id"`
-	AgentID     string `json:"agent_id"`
-	RunID       string `json:"run_id"`
-	AttemptID   string `json:"attempt_id"`
-	TurnID      string `json:"turn_id"`
-	Kind        string `json:"kind"`
-	RequestJson string `json:"request_json"`
-	AcceptedAt  int64  `json:"accepted_at"`
+	ReportID     string `json:"report_id"`
+	TaskID       string `json:"task_id"`
+	ToolCallID   string `json:"tool_call_id"`
+	AgentID      string `json:"agent_id"`
+	RunID        string `json:"run_id"`
+	AttemptID    string `json:"attempt_id"`
+	TurnID       string `json:"turn_id"`
+	Kind         string `json:"kind"`
+	RequestJson  string `json:"request_json"`
+	AcceptedAt   int64  `json:"accepted_at"`
+	Generation   int64  `json:"generation"`
+	SupersededBy string `json:"superseded_by"`
 }
 
 type WorkflowAttempt struct {
@@ -179,6 +185,8 @@ type WorkflowAttempt struct {
 	RepairMessage      string `json:"repair_message"`
 	RepairPrUrl        string `json:"repair_pr_url"`
 	RepairSourceNumber int64  `json:"repair_source_number"`
+	ReportGeneration   int64  `json:"report_generation"`
+	ReportTurn         string `json:"report_turn"`
 	CreatedAt          int64  `json:"created_at"`
 	UpdatedAt          int64  `json:"updated_at"`
 }
@@ -237,6 +245,16 @@ type WorkflowPrMergeOverride struct {
 	Repo       string `json:"repo"`
 	BaseBranch string `json:"base_branch"`
 	MarkedAt   int64  `json:"marked_at"`
+}
+
+type WorkflowReadyOverride struct {
+	AttemptID     string `json:"attempt_id"`
+	PrUrl         string `json:"pr_url"`
+	Generation    int64  `json:"generation"`
+	ActionToken   string `json:"action_token"`
+	PriorSnapshot string `json:"prior_snapshot"`
+	Operator      string `json:"operator"`
+	MarkedAt      int64  `json:"marked_at"`
 }
 
 type WorkflowReconciliation struct {

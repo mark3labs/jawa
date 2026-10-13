@@ -151,3 +151,13 @@ requires confirmation and Reset preserves attempt history. Time/cost bounds are 
 guidance rather than scheduler enforcement. Done is PR-ready, not merged, and later
 review changes do not automatically reopen the card. Remote HTTP/NATS require external
 TLS/network controls; do not share the orchestrator's data or credentials with agents.
+
+## Explicit operator unblock
+
+Building/Fix terminal blockers can be explicitly reopened in the same owned run
+with an operator prompt and a durable report-generation authorization. Historical
+reports remain immutable receipts; only the authorized new runtime turn may commit
+a new terminal report. This is not permission to complete without a real PR, merge,
+or exceed approved scope. Planning and automatic blocker retries are unchanged.
+Force ready is a separate confirmed, audited local readiness override for an
+assigned project PR, not evidence of successful CI/review verification.

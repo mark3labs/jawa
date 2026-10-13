@@ -24,7 +24,7 @@ fallback *before* resume is reserved, or after an explicit host rejection.
 
 ## Installed APIs and host adapter
 
-Verified against BONNIE **v0.22.1** source in the installed module:
+Verified against BONNIE **v0.23.0** source in the installed module:
 
 - client/nats exports Status, Cancel/CancelTurn, Submit, Answer; it has no failed-run
   Resume method. Answer requires the trusted waiting suspension.
@@ -126,3 +126,33 @@ Default-on continuation can incur provider cost and repeat external side effects
 the cap limits additional execution but does not roll back side effects. Wall-clock
 changes can affect deadlines. The original agent, journal, sandbox and compatible
 control route are still required; upgrade agents with the orchestrator.
+
+## Explicit unblock (Building and Fix only)
+
+Blocked owned terminal executions now offer **Unblock and resume…** when no PR
+is assigned, or **Force ready…** when there is a stored project PR (including a
+Fix attempt's original repair PR). Planning remains unchanged. Both require a
+bounded exact-owner Status confirmation of an idle completed/failed run and reject
+conflicts, unresolved cancellation, competing work, and pending commands. Missing
+agents/journals fail closed; this is not a fresh Retry fallback.
+
+Unblock accepts an editable, required operator prompt (1–2048 UTF-8 bytes after
+trimming). BONNIE v0.23.0 `StartRetry` restores the existing run/context and appends
+that prompt as the new Text exactly once per durable command. The task, run,
+remote attempt, branch and conversation are preserved. Migration 15 retains old
+terminal reports and authorizes a new build report generation. The host journals a
+distinct `jawa_unblock_authorization_v1` boundary before execution; old duplicate
+reports retain their original ACK, while old turns cannot report into the new
+generation. Rejection/ambiguity restores the blocked snapshot unless newer typed
+progress has already committed. Explicit unblock is never automatic. A new blocker
+requires another explicit action. Natural completion is not success; `completeTask`
+and normal PR verification still apply.
+
+Force ready requires explicit confirmation that CI/review/readiness verification
+is bypassed. It atomically moves the card to Done and records the previous blocked
+snapshot, stored PR, timestamp, action token, generation and authenticated admin
+username (never session secrets). It does not merge or mutate the remote provider.
+**Ready (manual override)** distinguishes it from verified readiness; independent
+PR check/conflict evidence is not rewritten. Send to Fix and local Mark as merged
+remain available. Deploy the updated backend and agents together and back up the
+SQLite database before upgrade; older agents cannot admit explicit unblock.

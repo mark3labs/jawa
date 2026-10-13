@@ -18,7 +18,7 @@ import (
 
 func acceptedReport(tx *sql.Tx, task string) (bool, error) {
 	var found bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND kind IN ('complete_task','report_blocker'))`, task).Scan(&found)
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND generation=COALESCE((SELECT report_generation FROM workflow_attempts WHERE task_id=?),0) AND kind IN ('complete_task','report_blocker'))`, task, task).Scan(&found)
 	return found, err
 }
 
@@ -169,12 +169,31 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		return ack, errors.New("typed report does not match active BONNIE task/run/attempt/turn")
 	}
 
+	generation := 0
+	if !planning {
+		generation = a.ReportGeneration
+		if generation > 0 && a.ReportTurn == "" {
+			var raw string
+			if err = tx.QueryRow(`SELECT request_json FROM failed_resumes WHERE task_id=? ORDER BY created_at DESC LIMIT 1`, a.TaskID).Scan(&raw); err != nil {
+				return ack, err
+			}
+			var authorization reportprotocol.FailedResume
+			if json.Unmarshal([]byte(raw), &authorization) != nil || authorization.Target != target || status.Seq <= authorization.Seq || r.TurnID == authorization.TurnID {
+				return ack, errors.New("report does not belong to authorized unblock turn")
+			}
+			if _, err = tx.Exec(`UPDATE workflow_attempts SET report_turn=? WHERE id=? AND report_generation=?`, r.TurnID, a.ID, generation); err != nil {
+				return ack, err
+			}
+		} else if generation > 0 && a.ReportTurn != r.TurnID {
+			return ack, errors.New("report belongs to a previous unblock turn")
+		}
+	}
 	now := time.Now().UnixMilli()
 	raw, err := json.Marshal(r)
 	if err != nil {
 		return ack, err
 	}
-	if _, err = tx.Exec(`INSERT INTO typed_reports(task_id,report_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, r.TaskID, r.ReportID, r.ToolCallID, r.AgentID, r.RunID, r.AttemptID, r.TurnID, r.Kind, string(raw), now); err != nil {
+	if _, err = tx.Exec(`INSERT INTO typed_reports(task_id,report_id,tool_call_id,agent_id,run_id,attempt_id,turn_id,kind,request_json,accepted_at,generation) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, r.TaskID, r.ReportID, r.ToolCallID, r.AgentID, r.RunID, r.AttemptID, r.TurnID, r.Kind, string(raw), now, generation); err != nil {
 		return ack, err
 	}
 	if planning {

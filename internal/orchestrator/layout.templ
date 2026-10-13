@@ -220,7 +220,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',goto:''}"
+	return "{filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',unblockOpen:false,unblockCard:'',unblockToken:'',unblockPR:'',unblockReason:'',unblockPrompt:'',unblockAcknowledged:false,fixOpen:false,fixCard:'',fixMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -420,6 +420,30 @@ templ notification(message, tone string) {
 }
 
 templ dialogs(d pageData) {
+ <dialog id="unblock-dialog" aria-labelledby="unblock-dialog-title" data-effect="if ($unblockOpen && !el.open) el.showModal(); else if (!$unblockOpen && el.open) el.close()" data-on:close="$unblockOpen = false" data-on:cancel="$unblockOpen = false">
+  <h2 id="unblock-dialog-title" data-text="$unblockPR ? 'Force ready' : 'Unblock and resume'"></h2>
+  <p class="card-note" data-text="$unblockReason"></p>
+  <form method="post" action="/cards/unblock" data-attr:action="$unblockPR ? '/cards/force-ready' : '/cards/unblock'" data-on:submit__prevent="@post($unblockPR ? '/cards/force-ready' : '/cards/unblock', {contentType:'form'})">
+   <input type="hidden" name="_csrf" value={ d.csrf }/>
+   @viewFields(d.v)
+   <input type="hidden" name="card_id" data-bind:unblock-card/>
+   <input type="hidden" name="expected_unblock" data-bind:unblock-token/>
+   <div class="field" data-show="!$unblockPR">
+    <p>Continue the same run and branch. Completion still requires a real PR and normal verification.</p>
+    <label for="unblock-prompt">Operator prompt (1–2048 UTF-8 bytes)</label>
+    <textarea id="unblock-prompt" name="prompt" rows="6" maxlength="2048" data-bind:unblock-prompt data-attr:required="!$unblockPR" data-attr:disabled="!!$unblockPR" autofocus></textarea>
+   </div>
+   <div data-show="$unblockPR">
+    <p>Attached PR: <span data-text="$unblockPR"></span></p>
+    <p>Force ready bypasses CI, review, and normal readiness checks. It moves this card to Done for review, does not merge, and does not change remote provider status. A manual override is recorded.</p>
+    <label><input type="checkbox" name="acknowledged" value="true" data-bind:unblock-acknowledged data-attr:required="!!$unblockPR" data-attr:disabled="!$unblockPR"/> I acknowledge this verification bypass.</label>
+   </div>
+   <div class="dialog-actions">
+    <button type="button" class="btn" data-on:click="$unblockOpen = false">Keep blocked</button>
+    <button type="submit" class="btn primary" data-attr:disabled="$unblockPR ? !$unblockAcknowledged : !$unblockPrompt.trim()" data-text="$unblockPR ? 'Force ready' : 'Unblock and resume'"></button>
+   </div>
+  </form>
+ </dialog>
 	<dialog id="fix-dialog" aria-labelledby="fix-dialog-title" data-effect="if ($fixOpen && !el.open) el.showModal(); else if (!$fixOpen && el.open) el.close()" data-on:close="$fixOpen = false" data-on:cancel="$fixOpen = false">
 		@dialog.Title(dialog.TitleProps{ID: "fix-dialog-title"}) {
 			Send to Fix

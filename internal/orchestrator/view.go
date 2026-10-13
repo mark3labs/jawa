@@ -225,6 +225,9 @@ func runTone(a Attempt) string {
 }
 
 func runLabel(a Attempt) string {
+	if a.Ready && a.ManualReady {
+		return "Ready (manual override)"
+	}
 	if !a.Ready && a.Error == executionConflictNotice {
 		return "Needs reconciliation"
 	}
@@ -466,7 +469,7 @@ func laneHint(status string) string {
 	case "Building":
 		return "Cards an agent is working on appear here."
 	case "Done":
-		return "Verified pull requests arrive here."
+		return "Ready pull requests arrive here (verified or explicitly overridden)."
 	}
 	return "Your next idea starts here."
 }

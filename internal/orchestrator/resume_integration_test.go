@@ -22,7 +22,8 @@ import (
 // No model/network provider: an exhausted real KIT provider fails, then the
 // same SQLite run is restored on a new host and continues with a healthy model.
 func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
-	for _, mode := range []string{"build", "planning", "fix", "auto-build", "auto-planning", "auto-fix"} {
+	for _, mode := range []string{"build", "planning", "fix", "auto-build", "auto-planning", "auto-fix", "unblock", "repeat-unblock"} {
+		explicit := strings.Contains(mode, "unblock")
 		planning := strings.Contains(mode, "planning")
 		automatic := strings.HasPrefix(mode, "auto-")
 		repair := strings.HasSuffix(mode, "fix")
@@ -85,7 +86,18 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			start(testmodel.New())
+			var explicitModel *testmodel.Model
+			if explicit {
+				replies := []testmodel.Reply{testmodel.Call("reportBlocker", `{"reason":"need operator help"}`)}
+				if mode == "repeat-unblock" {
+					replies = append(replies, testmodel.Call("reportBlocker", `{"reason":"still need help"}`))
+				}
+				replies = append(replies, testmodel.Call("completeTask", `{"pr_number":7}`))
+				explicitModel = testmodel.New(replies...)
+				start(explicitModel)
+			} else {
+				start(testmodel.New())
+			}
 			lane := "Building"
 			if planning {
 				lane = "Planning"
@@ -106,7 +118,7 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 					return e == nil
 				}
 				a, e := w.CardResult(card.ID)
-				if e == nil && executionFailure(a) {
+				if e == nil && (executionFailure(a) || (explicit && a.State == "blocked" && a.RunState == "completed")) {
 					task, run, attempt, taskJSON = a.TaskID, a.RunID, a.RemoteAttemptID, a.TaskJSON
 					return true
 				}
@@ -132,10 +144,26 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if planning {
 				reply = testmodel.Call("clarify", `{"questions":["Continue with API v2?"]}`)
 			}
+			if mode == "repeat-unblock" {
+				reply = testmodel.Call("reportBlocker", `{"reason":"still need help"}`)
+			}
 			healthy := testmodel.New(reply)
+			if explicit {
+				healthy = explicitModel
+			}
+			beforeRequests := len(healthy.Requests())
 			start(healthy)
 			defer stop()
 			action := w.ResumeFailed
+			if explicit {
+				action = func(id string) error {
+					a, e := w.CardResult(id)
+					if e != nil {
+						return e
+					}
+					return w.Unblock(id, unblockToken(a, "Building"), "operator-continuation-marker")
+				}
+			}
 			if planning {
 				action = w.ResumeFailedPlanning
 			}
@@ -187,10 +215,10 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if e != nil || duplicate.Status != "completed" {
 				t.Fatal(duplicate, e)
 			}
-			if len(healthy.Requests()) != 1 {
+			if len(healthy.Requests()) != beforeRequests+1 {
 				t.Fatalf("duplicate executed provider: %d", len(healthy.Requests()))
 			}
-			text := healthy.Requests()[0].Text()
+			text := healthy.Requests()[beforeRequests].Text()
 			if !strings.Contains(text, "saved-context-marker") {
 				t.Fatal("saved context lost", text)
 			}
@@ -211,7 +239,7 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				}
 			} else {
 				a, e := w.CardResult(card.ID)
-				if e != nil || a.TaskID != task || a.RunID != run || a.RemoteAttemptID != attempt || a.TaskJSON != taskJSON || a.Number != expectedNumber || a.PRURL == "" {
+				if e != nil || a.TaskID != task || a.RunID != run || a.RemoteAttemptID != attempt || a.TaskJSON != taskJSON || a.Number != expectedNumber || (!explicit && a.PRURL == "") {
 					t.Fatal("build identity/branch/report changed", a, e)
 				}
 			}
@@ -219,6 +247,19 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				a, e := w.CardResult(card.ID)
 				if e != nil || a.Branch != repairAssignment.Branch || a.RepairMessage != repairAssignment.RepairMessage || a.RepairPRURL != repairAssignment.RepairPRURL || a.RepairSourceNumber != repairAssignment.RepairSourceNumber {
 					t.Fatal("repair assignment lost", a, e)
+				}
+			}
+			if explicit {
+				a, e := w.CardResult(card.ID)
+				if e != nil || a.ReportGeneration != 1 {
+					t.Fatal(a, e)
+				}
+				if strings.Count(text, "operator-continuation-marker") != 1 {
+					t.Fatal("operator prompt lost/duplicated", text)
+				}
+				var count int
+				if e = s.db.QueryRow(`SELECT count(*) FROM typed_reports WHERE task_id=?`, task).Scan(&count); e != nil || count != 2 {
+					t.Fatal("report history lost", count, e)
 				}
 			}
 			// Old terminal outcome and event cannot undo the new typed state.
@@ -232,15 +273,39 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			if e = w.event(t.Context(), client.StatusEvent{Version: 1, Target: req.Target, EventID: "stale-failure", Seq: req.Seq, State: runtime.RunFailed}); e != nil {
 				t.Fatal(e)
 			}
-			if e = action(card.ID); e == nil {
+			if e = w.ResumeFailed(card.ID); e == nil {
 				t.Fatal("resumed nonfailure again")
 			}
 			// Host journal receipt survives host restart too.
 			stop()
 			start(healthy)
 			duplicate, e = reportprotocol.ResumeFailed(ctx, nc, "bonnie", req)
-			if e != nil || duplicate.Status != "completed" || len(healthy.Requests()) != 1 {
+			if e != nil || duplicate.Status != "completed" || len(healthy.Requests()) != beforeRequests+1 {
 				t.Fatal("restart dedup lost", duplicate, e)
+			}
+			if mode == "repeat-unblock" {
+				stop()
+				final := explicitModel
+				start(final)
+				if err = action(card.ID); err != nil {
+					t.Fatal(err)
+				}
+				waitWorkflow(t, func() bool {
+					a, e := w.CardResult(card.ID)
+					return e == nil && a.ReportGeneration == 2 && a.PRURL != ""
+				})
+			}
+			if explicit && mode != "repeat-unblock" {
+				a, e := w.CardResult(card.ID)
+				if e != nil || a.Ready {
+					t.Fatal("verification was bypassed", a, e)
+				}
+				w.SetVerifier(func(context.Context, Attempt) (bool, error) { return true, nil })
+				w.verifyPending()
+				a, e = w.CardResult(card.ID)
+				if e != nil || !a.Ready {
+					t.Fatal("normal verification failed", a, e)
+				}
 			}
 			if planning && automatic {
 				detail := planningDetails(t, w, card.ID)

@@ -12,11 +12,15 @@ import (
 // FailedResume is JAWA's host control protocol, not a BONNIE Answer. The
 // observed journal cursor/turn form a CAS; ID deduplicates ambiguous delivery.
 type FailedResume struct {
-	Version int           `json:"version"`
-	ID      string        `json:"id"`
-	Target  client.Target `json:"target"`
-	Seq     int           `json:"seq"`
-	TurnID  string        `json:"turn_id"`
+	Mode            string        `json:"mode,omitempty"`
+	Generation      int           `json:"generation,omitempty"`
+	Prompt          string        `json:"prompt,omitempty"`
+	BlockerReportID string        `json:"blocker_report_id,omitempty"`
+	Version         int           `json:"version"`
+	ID              string        `json:"id"`
+	Target          client.Target `json:"target"`
+	Seq             int           `json:"seq"`
+	TurnID          string        `json:"turn_id"`
 	// Reconcile fences an idle command without executing it. It is not part of
 	// the durable command identity; active executions remain pending.
 	Reconcile bool `json:"reconcile,omitempty"`

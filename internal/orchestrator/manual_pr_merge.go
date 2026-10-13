@@ -24,13 +24,13 @@ func (w *Workflow) MarkPRMerged(ctx context.Context, cardID, expectedAttemptID, 
 	}
 	latest, err := scanAttempt(tx.QueryRowContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, cardID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("marking merged requires a verified Ready pull request")
+		return errors.New("marking merged requires a Ready pull request")
 	}
 	if err != nil {
 		return err
 	}
 	if status != "Done" || !latest.Ready || latest.State != "ready" || latest.PRURL == "" || latest.ID != expectedAttemptID || latest.PRURL != expectedPRURL {
-		return errors.New("marking merged requires the current verified Ready pull request; refresh the board and try again")
+		return errors.New("marking merged requires the current Ready pull request; refresh the board and try again")
 	}
 	if err = noActiveAttempts(tx, cardID); err != nil {
 		return err

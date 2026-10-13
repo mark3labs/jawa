@@ -228,6 +228,12 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 		return c.Status == "Building" && legacy && !active
 	case "resume":
 		return (c.Status == "Building" || c.Status == "Fix") && !legacy && !active && executionFailure(latest[0])
+	case "unblock", "force-ready":
+		if (c.Status != "Building" && c.Status != "Fix") || legacy || active {
+			return false
+		}
+		a := latest[0]
+		return a.State == "blocked" && !a.Ready && a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.RunState == "completed" || a.RunState == "failed") && a.Error != executionConflictNotice && ((action == "force-ready") == (attachedPR(a) != ""))
 	case "retry":
 		return (c.Status == "Building" || c.Status == "Fix") && terminal && !active
 	case "fix":
@@ -482,4 +488,15 @@ func (d pageData) cardActivity(c Card) time.Time {
 		}
 	}
 	return updated
+}
+
+func unblockDialogAction(c Card, a Attempt) string {
+	return "$unblockCard = " + strconv.Quote(c.ID) + "; $unblockToken = " + strconv.Quote(unblockToken(a, c.Status)) + "; $unblockPR = " + strconv.Quote(attachedPR(a)) + "; $unblockReason = " + strconv.Quote(a.Error) + "; $unblockPrompt = " + strconv.Quote(unblockPrompt) + "; $unblockAcknowledged = false; $unblockOpen = true"
+}
+
+func (d pageData) runDisplayLabel(a Attempt) string {
+	if a.Ready && d.prChecks[a.CardID].State == "merged" {
+		return "Merged"
+	}
+	return runLabel(a)
 }

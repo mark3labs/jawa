@@ -76,7 +76,7 @@ templ runRow(d pageData, a Attempt) {
 					<span class="run-title muted">Deleted card</span>
 				}
 			</span>
-			<span class={ "run-state", "tone-" + runTone(a) }>{ runLabel(a) }</span>
+			<span class={ "run-state", "tone-" + runTone(a) }>{ d.runDisplayLabel(a) }</span>
 			<span class="run-attempt">#{ strconv.Itoa(a.Number) }</span>
 			<span class="run-agent">{ displayDash(a.AgentID) }</span>
 			<span class="run-pr">

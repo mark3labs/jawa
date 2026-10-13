@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS workflow_attempts (
  outcome_json TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', pr_url TEXT NOT NULL DEFAULT '',
  published INTEGER NOT NULL DEFAULT 0, ready INTEGER NOT NULL DEFAULT 0, event_seq INTEGER NOT NULL DEFAULT -1,
  branch TEXT NOT NULL DEFAULT '', repair_message TEXT NOT NULL DEFAULT '', repair_pr_url TEXT NOT NULL DEFAULT '',
- repair_source_number INTEGER NOT NULL DEFAULT 0,
+ repair_source_number INTEGER NOT NULL DEFAULT 0, report_generation INTEGER NOT NULL DEFAULT 0, report_turn TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(card_id,number));
  CREATE TABLE IF NOT EXISTS workflow_conflicts (
  id INTEGER PRIMARY KEY, task_id TEXT NOT NULL REFERENCES workflow_attempts(task_id) ON DELETE CASCADE,
@@ -62,9 +62,9 @@ CREATE TABLE planning_deliveries (
 CREATE TABLE typed_reports (
  report_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, tool_call_id TEXT NOT NULL,
  agent_id TEXT NOT NULL, run_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
- turn_id TEXT NOT NULL, kind TEXT NOT NULL, request_json TEXT NOT NULL, accepted_at INTEGER NOT NULL,
+ turn_id TEXT NOT NULL, kind TEXT NOT NULL, request_json TEXT NOT NULL, accepted_at INTEGER NOT NULL, generation INTEGER NOT NULL DEFAULT 0, superseded_by TEXT NOT NULL DEFAULT '',
  UNIQUE(task_id,tool_call_id));
-CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id,generation) WHERE kind IN ('complete_task','report_blocker');
 CREATE TABLE planning_interactions (
  report_id TEXT PRIMARY KEY REFERENCES typed_reports(report_id),
  task_id TEXT NOT NULL REFERENCES planning_turns(id) ON DELETE CASCADE,
@@ -80,7 +80,7 @@ CREATE TABLE failed_resumes (
  id TEXT PRIMARY KEY, task_id TEXT NOT NULL, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
  planning INTEGER NOT NULL, request_json TEXT NOT NULL, previous_outcome TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'pending', reply_json TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
- automatic INTEGER NOT NULL DEFAULT 0 CHECK(automatic IN (0,1)));
+ automatic INTEGER NOT NULL DEFAULT 0 CHECK(automatic IN (0,1)), mode TEXT NOT NULL DEFAULT 'failed', generation INTEGER NOT NULL DEFAULT 0, previous_snapshot TEXT NOT NULL DEFAULT '', blocker_report_id TEXT NOT NULL DEFAULT '');
 CREATE UNIQUE INDEX failed_resume_pending ON failed_resumes(task_id) WHERE status='pending';
 
 CREATE TABLE workflow_pr_checks (
@@ -106,3 +106,8 @@ CREATE TABLE workflow_pr_merge_overrides (
  attempt_id TEXT PRIMARY KEY REFERENCES workflow_attempts(id) ON DELETE CASCADE,
  pr_url TEXT NOT NULL, provider TEXT NOT NULL, repo TEXT NOT NULL,
  base_branch TEXT NOT NULL, marked_at INTEGER NOT NULL);
+
+CREATE TABLE workflow_ready_overrides (
+ attempt_id TEXT PRIMARY KEY REFERENCES workflow_attempts(id) ON DELETE CASCADE,
+ pr_url TEXT NOT NULL, generation INTEGER NOT NULL, action_token TEXT NOT NULL,
+ prior_snapshot TEXT NOT NULL, operator TEXT NOT NULL, marked_at INTEGER NOT NULL);

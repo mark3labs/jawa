@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/log"
 	client "github.com/mark3labs/bonnie/client/nats"
@@ -26,6 +27,10 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	// identity: delayed originals and reconciliation retries must deduplicate.
 	reconcile := req.Reconcile
 	req.Reconcile = false
+	intentTypeName := resumeIntentType
+	if req.Mode == "unblock" {
+		intentTypeName = unblockIntentType
+	}
 	reply := reportprotocol.FailedResumeReply{Version: 1, ID: req.ID, Target: req.Target, Status: "rejected"}
 	if b.resumeStopped || ctx.Err() != nil {
 		reply.Error = "agent stopping"
@@ -36,6 +41,10 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	b.mu.RUnlock()
 	if req.Version != 1 || req.ID == "" || len(req.ID) > 128 || req.Target.AgentID != c.AgentID || req.Target.TaskID == "" || req.Target.RunID == "" || req.Target.AttemptID == "" || req.TurnID == "" {
 		reply.Error = "invalid resume target"
+		return reply
+	}
+	if (req.Mode != "" && req.Mode != "unblock") || (req.Mode == "unblock" && (req.Generation < 1 || !utf8.ValidString(req.Prompt) || len(req.Prompt) > 2048 || strings.TrimSpace(req.Prompt) == "")) || (req.Mode == "" && (req.Generation != 0 || req.Prompt != "" || req.BlockerReportID != "")) {
+		reply.Error = "invalid resume mode or prompt"
 		return reply
 	}
 	records, err := r.Journal().Replay(ctx, admissionKey(c))
@@ -64,9 +73,14 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	var old *reportprotocol.FailedResume
 	var receipt *reportprotocol.FailedResumeReply
 	terminalIntent := false
+	superseded, err := supersededBlockers(records, "")
+	if err != nil {
+		reply.Error = err.Error()
+		return reply
+	}
 	intents := map[string]reportprotocol.FailedResume{}
 	for _, rec := range records {
-		if rec.ExtType == resumeIntentType {
+		if rec.ExtType == resumeIntentType || rec.ExtType == unblockIntentType {
 			var v reportprotocol.FailedResume
 			if json.Unmarshal(rec.Payload, &v) == nil {
 				v.Reconcile = false
@@ -100,7 +114,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		}
 		if rec.ExtType == intentType {
 			var v reportprotocol.Request
-			if json.Unmarshal(rec.Payload, &v) == nil && (v.Kind == reportprotocol.CompleteTask || v.Kind == reportprotocol.ReportBlocker) {
+			if json.Unmarshal(rec.Payload, &v) == nil && (v.Kind == reportprotocol.CompleteTask || v.Kind == reportprotocol.ReportBlocker) && !superseded[v.ReportID] {
 				terminalIntent = true
 			}
 		}
@@ -108,7 +122,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	if receipt != nil {
 		if reconcile && receipt.Status == "completed" && !validCompletedResumeReceipt(req, *receipt) {
 			reply.Status = "pending"
-			if err := b.confirmIdleFailedResume(ctx, r, req.Target.RunID); err != nil {
+			if err := b.confirmIdleFailedResume(ctx, r, req.Target.RunID, req.Mode); err != nil {
 				reply.Error = err.Error()
 				return reply
 			}
@@ -132,7 +146,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		// durably after confirming an idle failed snapshot; otherwise pending
 		// preserves the possibility that the original is already executing.
 		reply.Status = "pending"
-		if err := b.confirmIdleFailedResume(ctx, r, req.Target.RunID); err != nil {
+		if err := b.confirmIdleFailedResume(ctx, r, req.Target.RunID, req.Mode); err != nil {
 			reply.Error = err.Error()
 			return reply
 		}
@@ -140,7 +154,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		// The intent must precede its receipt so a failed receipt append cannot
 		// allow a delayed original to start the run.
 		data, _ := json.Marshal(req)
-		if _, err := r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: resumeIntentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+		if _, err := r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: intentTypeName, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
 			log.Error("Failed to persist reconciliation intent", "run_id", req.Target.RunID, "resume_id", req.ID)
 			reply.Error = "resume intent unavailable"
 			return reply
@@ -161,7 +175,12 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		reply.Error = "earlier resume remains unconfirmed"
 		return reply
 	}
-	if terminalIntent {
+	if req.Mode == "unblock" {
+		if err := validateUnblockReports(records, req); err != nil {
+			reply.Error = err.Error()
+			return reply
+		}
+	} else if terminalIntent {
 		reply.Error = "terminal report intent prevents resume"
 		return reply
 	}
@@ -170,7 +189,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		return reply
 	}
 	run, err := r.Snapshot(ctx, req.Target.RunID)
-	if err != nil || run.State != runtime.RunFailed || r.IsActive(req.Target.RunID) || run.TurnID != req.TurnID || len(records) == 0 || records[len(records)-1].Seq != req.Seq {
+	if err != nil || (run.State != runtime.RunFailed && !(req.Mode == "unblock" && run.State == runtime.RunCompleted)) || r.IsActive(req.Target.RunID) || run.TurnID != req.TurnID || len(records) == 0 || records[len(records)-1].Seq != req.Seq {
 		reply.Error = "run changed or is not an idle execution failure"
 		return reply
 	}
@@ -190,7 +209,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		}
 	}
 	data, _ := json.Marshal(req)
-	if _, err = r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: resumeIntentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+	if _, err = r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: intentTypeName, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
 		reply.Error = "resume intent unavailable"
 		return reply
 	}
@@ -205,7 +224,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 			delete(b.resumeInFlight, req)
 			b.submitMu.Unlock()
 		}()
-		result, e := r.StartRetry(ctx, req.Target.RunID, runtime.Input{Context: lines})
+		result, e := r.StartRetry(ctx, req.Target.RunID, runtime.Input{Context: lines, Text: req.Prompt})
 		result = confirmedResumeResult(ctx, r, req, result, e)
 		done := reportprotocol.FailedResumeReply{Version: 1, ID: req.ID, Target: req.Target, Status: "completed"}
 		if result == nil {
@@ -267,14 +286,14 @@ func validCompletedResumeReceipt(req reportprotocol.FailedResume, receipt report
 
 // Called under submitMu for reconciliation only. A failed/unavailable snapshot
 // cannot safely release a command that might still execute.
-func (b *Bridge) confirmIdleFailedResume(ctx context.Context, r *runtime.Runner, runID string) error {
+func (b *Bridge) confirmIdleFailedResume(ctx context.Context, r *runtime.Runner, runID string, mode string) error {
 	for intent := range b.resumeInFlight {
 		if intent.Target.RunID == runID {
 			return errors.New("resume execution remains in flight")
 		}
 	}
 	run, err := r.Snapshot(ctx, runID)
-	if err != nil || run.State != runtime.RunFailed || r.IsActive(runID) {
+	if err != nil || (run.State != runtime.RunFailed && !(mode == "unblock" && run.State == runtime.RunCompleted)) || r.IsActive(runID) {
 		return errors.New("run is not a confirmed idle execution failure")
 	}
 	return nil

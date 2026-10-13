@@ -115,6 +115,12 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	case "/cards/cancel":
 		signals["cancelOpen"] = "false"
 		signals["cancelCard"] = `""`
+	case "/cards/unblock", "/cards/force-ready":
+		signals["unblockOpen"] = "false"
+		for _, key := range []string{"unblockCard", "unblockToken", "unblockPrompt", "unblockPR", "unblockReason"} {
+			signals[key] = `""`
+		}
+		signals["unblockAcknowledged"] = "false"
 	case "/cards/fix":
 		signals["fixOpen"] = "false"
 		signals["fixCard"] = `""`

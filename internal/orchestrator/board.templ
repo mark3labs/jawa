@@ -194,7 +194,7 @@ templ cardMenu(d pageData, c Card) {
 						<span>Send to Fix…</span>
 					</button>
 				} else {
-					@menuDisabled("Send to Fix", "retry", "Fix requires a verified pull request and no active attempt.")
+					@menuDisabled("Send to Fix", "retry", "Fix requires a ready pull request and no active attempt.")
 				}
 			}
 			if c.Status == "Todo" {
@@ -211,7 +211,17 @@ templ cardMenu(d pageData, c Card) {
 			} else if canAction(c, d.attempts, "resume") {
 				@menuPost(d, c, "/cards/resume", "Resume failed run", "play", [][2]string{{"expected_resume", resumeToken(latestAttempt(c.ID, d.attempts)[0])}})
 			}
-			if canAction(c, d.attempts, "retry") {
+			if canAction(c, d.attempts, "unblock") || canAction(c, d.attempts, "force-ready") {
+    <button type="button" class="menu-item" role="menuitem" data-on:click={ unblockDialogAction(c, latestAttempt(c.ID,d.attempts)[0]) }>
+     @icon("play")
+     if canAction(c,d.attempts,"force-ready") {
+      <span>Force ready…</span>
+     } else {
+      <span>Unblock and resume…</span>
+     }
+    </button>
+   }
+   if canAction(c, d.attempts, "retry") {
 				@menuPost(d, c, "/cards/retry", "Retry attempt", "retry", nil)
 			}
 			if c.Status == "Planning" {
