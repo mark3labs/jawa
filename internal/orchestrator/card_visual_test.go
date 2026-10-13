@@ -42,6 +42,24 @@ func TestCardVisualFixture(t *testing.T) {
 		}
 	}
 	d.attempts = append(d.attempts, Attempt{CardID: "b1", Number: 1, State: "running", AgentID: "builder-agent", UpdatedAt: now})
+	// Additional projects isolate each work mode and exercise truncation beside badges.
+	for _, fixture := range []struct {
+		id, name, status string
+		archived         bool
+	}{
+		{"planning-only", "Planning only", "Planning", false},
+		{"fix-only", "Fix only", "Fix", false},
+		{"zero", "No active work", "Todo", false},
+		{"archived-only", "Archived active work with a very long project name that must truncate", "Planning", true},
+	} {
+		d.projects = append(d.projects, Project{ID: fixture.id, Name: fixture.name, Provider: "github", Repo: p.Repo, BaseBranch: "main"})
+		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: fixture.id, Status: fixture.status, Title: fixture.name, Archived: fixture.archived, CreatedAt: now})
+		if fixture.status == "Planning" {
+			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "queued"}, Turns: []PlanningTurn{{State: "submitted"}}}
+		} else if fixture.status == "Fix" {
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, State: "submitted"})
+		}
+	}
 	var out bytes.Buffer
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
@@ -64,6 +82,17 @@ func TestCardVisualFixture(t *testing.T) {
 		if err := os.WriteFile(path, out.Bytes(), 0600); err != nil {
 			t.Fatal(err)
 		}
+		for _, project := range d.projects[1:] {
+			d.v.Project = project.ID
+			out.Reset()
+			if err := appPage(d).Render(t.Context(), &out); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path+"."+project.ID, out.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		d.v.Project = p.ID
 		d.v.View = viewArchive
 		out.Reset()
 		if err := appPage(d).Render(t.Context(), &out); err != nil {

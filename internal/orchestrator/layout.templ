@@ -332,8 +332,8 @@ templ sidebarNav(d pageData) {
 				<a class="nav-item" href={ templ.SafeURL(boardPath(p.ID)) } aria-current={ isCurrent(d.v.View == viewBoard && d.v.Project == p.ID) } data-project-id={ p.ID } data-project-name={ p.Name }>
 					<span class="proj-mark">{ initial(p.Name) }</span>
 					<span class="nav-text">{ p.Name }</span>
-					if n := buildingCount(d.cards, p.ID); n > 0 {
-						<span class="nav-count live">{ strconv.Itoa(n) }</span>
+					if work := projectWork(d.uiSnapshot, p.ID); work.Total() > 0 {
+						<span class="nav-count live" title={ work.Label() } aria-label={ work.Label() }>{ strconv.Itoa(work.Total()) }</span>
 					}
 				</a>
 			}

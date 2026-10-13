@@ -14,12 +14,13 @@ const assets = new URL('../assets/', import.meta.url);
 const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   const asset = /^\/assets\/([a-zA-Z0-9_.-]+)$/.exec(path);
-  const file = path === '/board' ? fixture : path === '/archive' ? `${fixture}.archive` :
+  const project = /^\/(planning-only|fix-only|zero|archived-only)$/.exec(path);
+  const file = project ? `${fixture}.${project[1]}` : path === '/board' ? fixture : path === '/archive' ? `${fixture}.archive` :
     asset ? fileURLToPath(new URL(asset[1], assets)) : null;
   if (!file) { res.writeHead(404).end(); return; }
   try {
     const content = await readFile(file);
-    const type = path === '/board' || path === '/archive' ? 'text/html' :
+    const type = project || path === '/board' || path === '/archive' ? 'text/html' :
       path.endsWith('.css') ? 'text/css' : path.endsWith('.js') ? 'text/javascript' :
         path.endsWith('.svg') ? 'image/svg+xml' : 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': type }).end(content);
@@ -34,21 +35,42 @@ try {
   page.setDefaultTimeout(10000);
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
-    for (const view of ['board', 'archive']) {
+    for (const view of ['board', 'archive', 'planning-only', 'fix-only', 'zero', 'archived-only']) {
       await page.goto(`http://127.0.0.1:${server.address().port}/${view}`);
-      await page.locator('.task-card').first().waitFor();
+      await page.locator('#sidebar-nav').waitFor({ state: 'attached' });
+      const totals = { abc: 4, 'planning-only': 1, 'fix-only': 1, zero: 0, 'archived-only': 1 };
+      for (const [id, total] of Object.entries(totals)) {
+        const badge = page.locator(`[data-project-id="${id}"] .nav-count.live`);
+        assert.equal(await badge.count(), total ? 1 : 0);
+        if (total) {
+          assert.equal(await badge.textContent(), String(total));
+          const label = await badge.getAttribute('aria-label');
+          assert.match(label, /planning, \d+ building, \d+ fixing \(includes queued and archived work\)/);
+          assert.equal(await badge.getAttribute('title'), label);
+          if (width === 1440) {
+            const overlap = await badge.evaluate(el => el.previousElementSibling.getBoundingClientRect().right > el.getBoundingClientRect().left);
+            assert.equal(overlap, false, `${id}: name/badge overlap`);
+          }
+        }
+      }
+      if (view !== 'archive') {
+        const total = totals[view === 'board' ? 'abc' : view];
+        assert.equal(await page.locator('.view-stats .stat').first().textContent(), `${total} active`);
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${view} ${width}: document overflow`);
       const overflow = await page.locator('.task-card').evaluateAll(cards =>
         cards.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.id));
       assert.deepEqual(overflow, [], `${view} ${width}: card overflow`);
-      assert.ok(await page.locator('[title="Assigned agent"]').count() > 0);
+      if (view === 'board' || view === 'archive') assert.ok(await page.locator('[title="Assigned agent"]').count() > 0);
       if (view === 'board' && width === 1440) {
         const rows = await page.locator('.lane-actions').evaluateAll(rows => rows.map(r => r.getBoundingClientRect().bottom));
         assert.equal(rows.length, 5);
         assert.ok(Math.max(...rows) - Math.min(...rows) <= 1, 'Desktop lane action rows are misaligned');
       }
-      await page.locator('.task-card .icon-btn').first().focus();
-      assert.ok(await page.locator('.task-card .icon-btn').first().evaluate(el => document.activeElement === el));
+      if (await page.locator('.task-card').count()) {
+        await page.locator('.task-card .icon-btn').first().focus();
+        assert.ok(await page.locator('.task-card .icon-btn').first().evaluate(el => document.activeElement === el));
+      }
       if (process.env.JAWA_CARD_SCREENSHOT_DIR) {
         await page.screenshot({ path: `${process.env.JAWA_CARD_SCREENSHOT_DIR}/${view}-${width}.png`, fullPage: true });
       }

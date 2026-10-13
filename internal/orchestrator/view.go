@@ -308,14 +308,82 @@ func projectByID(projects []Project, id string) (Project, bool) {
 	return Project{}, false
 }
 
-func buildingCount(cards []Card, projectID string) int {
-	n := 0
-	for _, c := range cards {
-		if !c.Archived && c.ProjectID == projectID && c.Status == "Building" {
-			n++
+// workSummary counts cards with durable active work, not lane occupancy or agents.
+type workSummary struct {
+	Planning, Building, Fix int
+}
+
+func (s workSummary) Total() int { return s.Planning + s.Building + s.Fix }
+
+func (s workSummary) Label() string {
+	noun := "items"
+	if s.Total() == 1 {
+		noun = "item"
+	}
+	return strconv.Itoa(s.Total()) + " active work " + noun + ": " +
+		strconv.Itoa(s.Planning) + " planning, " + strconv.Itoa(s.Building) + " building, " +
+		strconv.Itoa(s.Fix) + " fixing (includes queued and archived work)"
+}
+
+func workQueuedOrRunning(state string) bool {
+	return state == "queued" || state == "submitted" || state == "running"
+}
+
+// Terminal/paused evidence overrides stale local activity, except pending resume.
+func attemptWorking(a Attempt) bool {
+	if a.Ready || a.State == "ready" || a.Error == executionConflictNotice {
+		return false
+	}
+	if a.Error == resumePendingNotice {
+		return true
+	}
+	if !workQueuedOrRunning(a.State) {
+		return false
+	}
+	switch a.RunState {
+	case "", "queued", "submitted", "running":
+		return true
+	default:
+		return false
+	}
+}
+
+func planningWorking(detail PlanningDetail) bool {
+	if planningDisplayState(detail) == "resuming" {
+		return true
+	}
+	if !workQueuedOrRunning(detail.Session.State) {
+		return false
+	}
+	turn, ok := latestPlanningTurn(detail)
+	return ok && (workQueuedOrRunning(turn.State) ||
+		(turn.State == "waiting" && detail.Session.State == "running"))
+}
+
+func projectWork(snap uiSnapshot, projectID string) workSummary {
+	var summary workSummary
+	for _, c := range snap.cards {
+		if c.ProjectID != projectID {
+			continue
+		}
+		switch c.Status {
+		case "Planning":
+			if detail, ok := snap.planning[c.ID]; ok && planningWorking(detail) {
+				summary.Planning++
+			}
+		case "Building", "Fix":
+			latest := latestAttempt(c.ID, snap.attempts)
+			if len(latest) == 0 || !attemptWorking(latest[0]) {
+				continue
+			}
+			if c.Status == "Building" {
+				summary.Building++
+			} else {
+				summary.Fix++
+			}
 		}
 	}
-	return n
+	return summary
 }
 
 func cardsIn(cards []Card, projectID, status string) []Card {
