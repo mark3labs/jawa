@@ -163,7 +163,7 @@ func TestStoredWorkIndicatorSnapshots(t *testing.T) {
 					if !strings.Contains(html, fmt.Sprintf("<strong>%d</strong> active", total)) {
 						t.Fatalf("%s: wrong active count", step.state)
 					}
-					label := `class="nav-count live" title="` + projectWork(d.uiSnapshot, c.ProjectID).Label() + `"`
+					label := `nav-count live" title="` + projectWork(d.uiSnapshot, c.ProjectID).Label() + `"`
 					if strings.Contains(html, label) != step.active {
 						t.Fatalf("%s: wrong project badge", step.state)
 					}

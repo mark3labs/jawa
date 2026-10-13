@@ -3,6 +3,9 @@ package orchestrator
 import (
 	"strconv"
 
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
 )
 
@@ -15,10 +18,10 @@ templ runsContent(d pageData) {
 			</div>
 			if d.v.Card != "" {
 				if c, ok := cardByID(d.cards, d.v.Card); ok {
-					<a class="chip filter-chip" href="/runs" title="Clear filter">
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip filter-chip", Href: "/runs", Attributes: templ.Attributes{"title": "Clear filter"}}) {
 						<span>{ cardKey(d.projects, c) }</span>
 						<span aria-hidden="true">✕</span>
-					</a>
+					}
 				}
 			}
 		</div>
@@ -26,7 +29,9 @@ templ runsContent(d pageData) {
 			for _, tab := range runStateTabs {
 				<a class="tab" href={ templ.SafeURL(runsPath(d.v, tab)) } aria-current={ isCurrent(d.v.State == tab) }>
 					<span>{ tabLabel(tab) }</span>
-					<span class="tab-count">{ strconv.Itoa(countRunStates(filterRuns(d.attempts, viewParams{Card: d.v.Card, State: "all"}), tab)) }</span>
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "tab-count"}) {
+						{ strconv.Itoa(countRunStates(filterRuns(d.attempts, viewParams{Card: d.v.Card, State: "all"}), tab)) }
+					}
 				</a>
 			}
 		</nav>
@@ -80,12 +85,12 @@ templ runRow(d pageData, a Attempt) {
 			<span class="run-attempt">#{ strconv.Itoa(a.Number) }</span>
 			<span class="run-agent">{ displayDash(a.AgentID) }</span>
 			<span class="run-pr">
- @manualReadyBadge(d, a)
+				@manualReadyBadge(d, a)
 				if pr := safeActivityURL(a.PRURL); pr != "" {
-					<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer">
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Href: pr, Attributes: templ.Attributes{"target": "_blank", "rel": "noopener noreferrer"}}) {
 						@icon("pr")
 						<span>PR</span>
-					</a>
+					}
 				} else {
 					<span class="muted">—</span>
 				}
@@ -95,10 +100,11 @@ templ runRow(d pageData, a Attempt) {
 			</span>
 		</summary>
 		<div class="run-body">
- if a.AgentID != "" && a.RunID != "" {
- <a class="chip" href={ templ.SafeURL(detailPath(a,"chat")) }>@icon("runs")<span>Open</span></a>
- }
-
+			if a.AgentID != "" && a.RunID != "" {
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Href: detailPath(a, "chat")}) {
+					@icon("runs")<span>Open</span>
+				}
+			}
 			<dl class="facts">
 				<div>
 					<dt>Branch</dt>
@@ -106,9 +112,9 @@ templ runRow(d pageData, a Attempt) {
 						@icon("branch")
 						<span>{ attemptBranch(a) }</span>
 						<jawa-copy text={ attemptBranch(a) } aria-label="Copy branch name">
-							<button type="button" class="icon-btn" tabindex="-1">
+							@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "Copy branch name"}}) {
 								@icon("copy")
-							</button>
+							}
 						</jawa-copy>
 					</dd>
 				</div>
@@ -130,7 +136,9 @@ templ runRow(d pageData, a Attempt) {
 				</div>
 			</dl>
 			if a.Error != "" {
-				<p class={ "card-note", "tone-" + runTone(a) }>{ a.Error }</p>
+				@alert.Alert(alert.Props{Class: "card-note tone-" + runTone(a)}) {
+					{ a.Error }
+				}
 			}
 			if a.Result != "" {
 				<h4 class="body-label">Agent result</h4>

@@ -81,7 +81,7 @@ func TestCardSharedAssignmentAndDiagnostics(t *testing.T) {
 		if err := cardChips(d, c).Render(t.Context(), &builder); err != nil {
 			t.Fatal(err)
 		}
-		const chip = `<span class="chip plain" title="Assigned agent">`
+		const chip = `chip plain" title="Assigned agent">`
 		if strings.Count(builder.String(), chip) != 1 || strings.Count(planner.String(), chip) != 1 {
 			t.Fatal("different assignment markup")
 		}
@@ -103,7 +103,7 @@ func TestCardSharedAssignmentAndDiagnostics(t *testing.T) {
 		if err := cardNote(d, c).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out.String(), `class="card-note tone-failed"`) || !strings.Contains(out.String(), "&lt;failure&gt;&amp;") {
+		if !strings.Contains(out.String(), `card-note tone-failed"`) || !strings.Contains(out.String(), "&lt;failure&gt;&amp;") {
 			t.Fatal(out.String())
 		}
 		if previous != "" && previous != out.String() {

@@ -283,6 +283,11 @@ func TestIssueRecoveryFixture(t *testing.T) {
 	r.AddCookie(csrf)
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, r)
+	native := request(a, "POST", "/cards", form, session, csrf)
+	status(t, native, 409)
+	if err = os.WriteFile(path+".native", native.Body.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err = os.WriteFile(path+".sse", w.Body.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}

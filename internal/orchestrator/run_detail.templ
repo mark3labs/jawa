@@ -1,6 +1,8 @@
 package orchestrator
 
 import (
+	"strconv"
+
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
@@ -9,7 +11,6 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
-	"strconv"
 )
 
 func detailAction(d runDetail, action string) string {
@@ -27,7 +28,7 @@ const traceNoMatches = "$traceFilter !== '' && !Array.from(document.querySelecto
 
 templ runDetailPage(d runDetail, csrf string) {
 	<div class={ "view run-detail-view run-detail-" + d.Tab }>
-		@button.Button(button.Props{Href: "/runs", Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Href: "/runs", Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
 			Back to Runs
 		}
 		<header class="run-detail-header">
@@ -39,10 +40,10 @@ templ runDetailPage(d runDetail, csrf string) {
 			</dl>
 		</header>
 		<nav class="run-detail-tabs" aria-label="Run detail tabs">
-			@button.Button(button.Props{Href: detailPath(d.Attempt, "chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
 				Chat
 			}
-			@button.Button(button.Props{Href: detailPath(d.Attempt, "trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
 				Trace
 			}
 		</nav>
@@ -76,7 +77,7 @@ templ runDetailControls(d runDetail, csrf string) {
 	<div id="run-detail-controls" class="run-controls">
 		<p class="meta">{ d.Policy.Reason }</p>
 		if d.Tab=="chat" {
-			@button.Button(button.Props{Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
 				} else {
@@ -93,7 +94,7 @@ templ runDetailControls(d runDetail, csrf string) {
 				}
 			</form>
 		}
-		@button.Button(button.Props{Href: string(planningPath(d.Attempt.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Href: string(planningPath(d.Attempt.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
 			Open card for recovery / guidance
 		}
 	</div>
@@ -190,9 +191,11 @@ templ runChat(d runDetail) {
 			<p class="meta">Live-only activity observed; not retained. Inspect Trace for details.</p>
 		}
 		if d.Observation.Unreachable {
-			<p class="meta">Offline Chat cannot reconstruct a conversation from workflow deliveries. @button.Button(button.Props{Href: detailPath(d.Attempt, "trace"), Variant: button.VariantLink, Attributes: templ.Attributes{"role":"link"}}) {
-Inspect stored diagnostics in Trace
-}</p>
+			<p class="meta">
+				Offline Chat cannot reconstruct a conversation from workflow deliveries. @button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "trace"), Variant: button.VariantLink, Attributes: templ.Attributes{"role": "link"}}) {
+	Inspect stored diagnostics in Trace
+}
+			</p>
 		}
 	</section>
 }
@@ -206,9 +209,11 @@ templ runTrace(d runDetail) {
 			for _,m:=range d.Messages {
 				<article class="run-message" data-trace-entry data-show={ traceMatch }>
 					<details id={ m.Key + "-trace" } data-preserve-attr="open">
-						<summary>@badge.Badge() {
-	{ runRole(m.Role) }
-} { m.preview() }</summary>
+						<summary>
+							@badge.Badge() {
+								{ runRole(m.Role) }
+							} { m.preview() }
+						</summary>
 						@runParts(m, true)
 						<details id={ m.Key + "-raw" } data-preserve-attr="open"><summary>Raw message</summary><pre class="result">{ m.Raw }</pre></details>
 					</details>
@@ -254,9 +259,11 @@ templ runTrace(d runDetail) {
 			{{ storedOccurrences := make(map[string]int) }}
 			for _,ev:=range d.Stored {
 				<details id={ displayKey("delivery", prettyRun(ev), storedOccurrences) } class="run-message" data-trace-entry data-preserve-attr="open" data-show={ traceMatch }>
-					<summary>@badge.Badge() {
-	Stored delivery
-} { ev.Kind } · { runTime(ev.Time) }</summary>
+					<summary>
+						@badge.Badge() {
+							Stored delivery
+						} { ev.Kind } · { runTime(ev.Time) }
+					</summary>
 					<pre class="result">{ ev.Raw }</pre>
 				</details>
 			}

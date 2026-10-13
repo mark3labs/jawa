@@ -1,155 +1,202 @@
 package orchestrator
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/checkbox"
+	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
+	"github.com/axadrn/shadcn-templ/v2/components/textarea"
+)
 
 templ planningContent(d pageData) {
 	<div id="planning-content" class="view planning-view">
 		if c, ok := selectedCard(d.cards, d.v.Card); ok {
 			<div class="view-head">
 				<div class="view-title"><div><p class="meta">{ cardKey(d.projects, c) } · { c.Status }</p><h1>{ c.Title }</h1></div></div>
-				<a class="btn" href={ templ.SafeURL(boardPath(c.ProjectID)) }>Back to board</a>
+				@button.Button(button.Props{Class: "btn", Href: boardPath(c.ProjectID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
+					Back to board
+				}
 			</div>
 			if la := latestAttempt(c.ID,d.attempts); len(la)>0 {
-    <section class="planning-section" aria-label="Latest run">
-     <h2>Latest run</h2>
-     @cardChips(d,c)
-     if r,ok := d.readyOverrides[la[0].ID]; ok {
-      <dl class="facts"><div><dt>Operator</dt><dd>{ r.Operator }</dd></div><div><dt>Reason</dt><dd>{ r.Reason }</dd></div></dl>
-     }
-    </section>
-   }
-   <section class="planning-section" aria-label="Original description">
-				<h2>Original description</h2>
-				if c.Description != "" {
-					@planningMarkdownText(c.Description)
-				} else {
-					<p class="meta">No description provided.</p>
+				<section class="planning-section" aria-label="Latest run">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Latest run</h2>
+						@cardChips(d, c)
+						if r,ok := d.readyOverrides[la[0].ID]; ok {
+							<dl class="facts"><div><dt>Operator</dt><dd>{ r.Operator }</dd></div><div><dt>Reason</dt><dd>{ r.Reason }</dd></div></dl>
+						}
+					}
+				</section>
+			}
+			<section class="planning-section" aria-label="Original description">
+				@card.Card(card.Props{Class: "planning-surface"}) {
+					<h2>Original description</h2>
+					if c.Description != "" {
+						@planningMarkdownText(c.Description)
+					} else {
+						<p class="meta">No description provided.</p>
+					}
 				}
 			</section>
 			if detail, exists := d.planning[c.ID]; exists {
 				<section class="planning-section" aria-label="Proposed plan">
-					<h2>Planning <span class={ "chip", "tone-" + planningTone(planningDisplayState(detail)) }>
-						@toneIcon(planningTone(planningDisplayState(detail)))
-						<span>{ planningLabel(planningDisplayState(detail)) }</span>
-					</span></h2>
-
-					if detail.Session.Spec != "" {
-                        <h3>Proposed plan · Revision { strconv.Itoa(detail.Session.Revision) }</h3>
-						@planningMarkdownText(detail.Session.Spec)
-					} else {
-						<p class="meta">The planner has not proposed a plan yet.</p>
-					}
-					if detail.Session.ApprovedRevision > 0 {
-						<p class="meta">Approved revision { strconv.Itoa(detail.Session.ApprovedRevision) } · Frozen for implementation</p>
-					}
-
- if note := d.automaticResumeNote(c); note != "" {
- <p class="muted small" role="status">{ note }</p>
- }
-					if detail.Session.Error != "" && detail.Session.Error != detail.Blocker {
-						<p class="plan-text tone-failed" role="status">{ detail.Session.Error }</p>
-					}
-					if detail.Blocker != "" {
-						<h3>Blocked — the planner needs guidance</h3>
-						@planningMarkdownText(detail.Blocker)
-						<p class="meta">Reply below; the planner continues this same run with your guidance.</p>
-					}
-					if len(detail.Questions) > 0 {
-						<h3>Questions</h3>
-						<ul>
-							for _, question := range detail.Questions {
-								<li>@planningMarkdownText(question)</li>
-							}
-						</ul>
-					}
-					if len(detail.Revisions) > 0 {
-						<details><summary>Revision history</summary>
-							for _, revision := range detail.Revisions {
-								<article class="plan-message">
-									<h3>Revision { strconv.Itoa(revision.Number) }</h3>
-									@planningMarkdownText(revision.Spec)
-									for _, question := range revision.Questions {
-										@planningMarkdownText(question)
-									}
-								</article>
-							}
-						</details>
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>
+							Planning @badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip tone-" + planningTone(planningDisplayState(detail))}) {
+	@toneIcon(planningTone(planningDisplayState(detail)))
+	<span>{ planningLabel(planningDisplayState(detail)) }</span>
+}
+						</h2>
+						if detail.Session.Spec != "" {
+							<h3>Proposed plan · Revision { strconv.Itoa(detail.Session.Revision) }</h3>
+							@planningMarkdownText(detail.Session.Spec)
+						} else {
+							<p class="meta">The planner has not proposed a plan yet.</p>
+						}
+						if detail.Session.ApprovedRevision > 0 {
+							<p class="meta">Approved revision { strconv.Itoa(detail.Session.ApprovedRevision) } · Frozen for implementation</p>
+						}
+						if note := d.automaticResumeNote(c); note != "" {
+							<p class="muted small" role="status">{ note }</p>
+						}
+						if detail.Session.Error != "" && detail.Session.Error != detail.Blocker {
+							<p class="plan-text tone-failed" role="status">{ detail.Session.Error }</p>
+						}
+						if detail.Blocker != "" {
+							<h3>Blocked — the planner needs guidance</h3>
+							@planningMarkdownText(detail.Blocker)
+							<p class="meta">Reply below; the planner continues this same run with your guidance.</p>
+						}
+						if len(detail.Questions) > 0 {
+							<h3>Questions</h3>
+							<ul>
+								for _, question := range detail.Questions {
+									<li>@planningMarkdownText(question)</li>
+								}
+							</ul>
+						}
+						if len(detail.Revisions) > 0 {
+							<details>
+								<summary>Revision history</summary>
+								for _, revision := range detail.Revisions {
+									<article class="plan-message">
+										<h3>Revision { strconv.Itoa(revision.Number) }</h3>
+										@planningMarkdownText(revision.Spec)
+										for _, question := range revision.Questions {
+											@planningMarkdownText(question)
+										}
+									</article>
+								}
+							</details>
+						}
 					}
 				</section>
 				<section class="planning-section" aria-label="Planning discussion">
-					<h2>Discussion</h2>
-					for _, message := range detail.Discussion {
-						<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
-					}
-					if c.Status == "Planning" && planningCanReply(detail) {
-						<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
-							@planningFields(d, c)
-                            <input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
-							<div class="field"><label for="planning-reply">
-								if detail.Blocker != "" {
-									Reply with guidance
-								} else {
-									Reply or request a revision
-								}
-							</label><textarea id="planning-reply" name="reply" required maxlength="65536"></textarea></div>
-							@submit("Send reply")
-						</form>
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Discussion</h2>
+						for _, message := range detail.Discussion {
+							<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
+						}
+						if c.Status == "Planning" && planningCanReply(detail) {
+							<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+								@planningFields(d, c)
+								<input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
+								<div class="field">
+									@label.Label(label.Props{For: "planning-reply"}) {
+										if detail.Blocker != "" {
+											Reply with guidance
+										} else {
+											Reply or request a revision
+										}
+									}@textarea.Textarea(textarea.Props{ID: "planning-reply", Name: "reply", Attributes: templ.Attributes{"required": true, "maxlength": "65536"}})
+								</div>
+								@submit("Send reply")
+							</form>
+						}
 					}
 				</section>
 				if len(detail.Interactions) > 0 {
-                    <section class="planning-section" aria-label="Planning reports">
-                        <h2>Planning reports</h2>
-                        <ul>
-                            for _, interaction := range detail.Interactions {
-                                <li><span class="meta">{ interaction.Kind }</span> · { planningInteractionLabel(interaction.Status) }</li>
-                            }
-                        </ul>
-                    </section>
-                }
+					<section class="planning-section" aria-label="Planning reports">
+						@card.Card(card.Props{Class: "planning-surface"}) {
+							<h2>Planning reports</h2>
+							<ul>
+								for _, interaction := range detail.Interactions {
+									<li><span class="meta">{ interaction.Kind }</span> · { planningInteractionLabel(interaction.Status) }</li>
+								}
+							</ul>
+						}
+					</section>
+				}
 				if c.Status == "Planning" {
 					<section id="approve-plan" class="planning-section" aria-label="Approve plan">
-						<h2>Approve &amp; build</h2>
-						<p class="meta">Approval freezes the selected plan and starts implementation. Only the current ready revision can be approved; stale selections are rejected by the server.</p>
-						if detail.CanApprove {
-							<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})">
-								@planningFields(d, c)
-								<div class="field"><label for="plan-revision">Plan revision to approve</label>
-									<select id="plan-revision" name="expected_revision" required>
-										<option value="">Select the revision you reviewed</option>
-										for _, revision := range detail.Revisions {
-											<option value={ strconv.Itoa(revision.Number) }>{ "Revision " + strconv.Itoa(revision.Number) }</option>
-										}
-									</select>
-								</div>
-								<label class="meta"><input type="checkbox" required/> I reviewed this revision and want to start building.</label>
-								<div class="plan-actions">@submit("Approve & build")</div>
-							</form>
-						} else {
-							<p class="meta">Wait for a ready plan with all questions answered before approving.</p>
-						}
-						<div class="plan-actions">
-							if detail.CanResume {
-								<p class="meta">Resume keeps this run and its saved context. Retry planning starts a fresh investigation.</p>
-								<form method="post" action="/cards/planning/resume" data-on:submit__prevent="@post('/cards/planning/resume', {contentType:'form'})">
+						@card.Card(card.Props{Class: "planning-surface"}) {
+							<h2>Approve &amp; build</h2>
+							<p class="meta">Approval freezes the selected plan and starts implementation. Only the current ready revision can be approved; stale selections are rejected by the server.</p>
+							if detail.CanApprove {
+								<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})">
 									@planningFields(d, c)
-									<input type="hidden" name="expected_resume" value={ detail.ResumeToken }/>
-									@submit("Resume failed run")
+									<div class="field">
+										@label.Label(label.Props{For: "plan-revision"}) {
+											Plan revision to approve
+										}
+										@nativeselect.NativeSelect(nativeselect.Props{ID: "plan-revision", Name: "expected_revision", Required: true}) {
+											@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
+												Select the revision you reviewed
+											}
+											for _, revision := range detail.Revisions {
+												@nativeselect.Option(nativeselect.OptionProps{Value: strconv.Itoa(revision.Number)}) {
+													{ "Revision " + strconv.Itoa(revision.Number) }
+												}
+											}
+										}
+									</div>
+									@label.Label(label.Props{Class: "meta"}) {
+										@checkbox.Checkbox(checkbox.Props{ID: "planning-acknowledge", Required: true}) I reviewed this revision and want to start building.
+									}
+									<div class="plan-actions">@submit("Approve & build")</div>
 								</form>
+							} else {
+								<p class="meta">Wait for a ready plan with all questions answered before approving.</p>
 							}
-							if detail.Session.State == "failed" {
-								@planningAction(d, c, "/cards/planning/retry", "Retry planning")
-							}
-							@planningAction(d, c, "/cards/planning/cancel", "Cancel planning & return to Todo")
-						</div>
+							<div class="plan-actions">
+								if detail.CanResume {
+									<p class="meta">Resume keeps this run and its saved context. Retry planning starts a fresh investigation.</p>
+									<form method="post" action="/cards/planning/resume" data-on:submit__prevent="@post('/cards/planning/resume', {contentType:'form'})">
+										@planningFields(d, c)
+										<input type="hidden" name="expected_resume" value={ detail.ResumeToken }/>
+										@submit("Resume failed run")
+									</form>
+								}
+								if detail.Session.State == "failed" {
+									@planningAction(d, c, "/cards/planning/retry", "Retry planning")
+								}
+								@planningAction(d, c, "/cards/planning/cancel", "Cancel planning & return to Todo")
+							</div>
+						}
 					</section>
 				}
 			} else if c.Status == "Todo" {
-				<section class="planning-section"><h2>Plan before building</h2><p class="meta">Investigate the repository, discuss questions, and review a versioned plan. Planning is optional; you can still move Todo directly to Building.</p><div class="plan-actions">@planningAction(d, c, "/cards/plan", "Start planning")</div></section>
+				<section class="planning-section">@card.Card(card.Props{Class: "planning-surface"}) {
+	<h2>Plan before building</h2>
+	<p class="meta">Investigate the repository, discuss questions, and review a versioned plan. Planning is optional; you can still move Todo directly to Building.</p>
+	<div class="plan-actions">@planningAction(d, c, "/cards/plan", "Start planning")</div>
+}</section>
 			} else {
-				<section class="planning-section"><p class="meta">This card has no planning session.</p><a class="btn" href={ templ.SafeURL(runsForCardPath(c.ID)) }>View runs</a></section>
+				<section class="planning-section">@card.Card(card.Props{Class: "planning-surface"}) {
+	<p class="meta">This card has no planning session.</p>@button.Button(button.Props{Class: "btn", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
+	View runs
+}
+}</section>
 			}
 		} else {
-			<h1>Card not found</h1><p class="meta">Choose a card from the board to review its plan.</p><a class="btn" href="/board">Back to board</a>
+			<h1>Card not found</h1>
+			<p class="meta">Choose a card from the board to review its plan.</p>@button.Button(button.Props{Class: "btn", Href: "/board", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
+	Back to board
+}
 		}
 	</div>
 }
@@ -174,5 +221,5 @@ templ planningMarkdownText(source string) {
 
 // Discussion content is readable Markdown persisted from structured reports.
 templ planningDiscussionMessage(message PlanningMessage) {
- @planningMarkdownText(message.Content)
+	@planningMarkdownText(message.Content)
 }

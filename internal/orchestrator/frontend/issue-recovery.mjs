@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 const fixture = process.env.JAWA_ISSUE_FIXTURE;
 if (!fixture) throw new Error('Export TestIssueRecoveryFixture and set JAWA_ISSUE_FIXTURE');
 const markup = await readFile(fixture);
+const nativeRecovery = await readFile(`${fixture}.native`);
 const failure = await readFile(`${fixture}.sse`);
 let posts = 0;
 let submission;
@@ -23,6 +24,7 @@ const server = createServer(async (req, res) => {
   } else if (req.url === '/events' || req.url === '/snapshot') {
     res.setHeader('Content-Type', 'text/event-stream'); res.end();
   } else if (req.url === '/sw.js') res.writeHead(404).end();
+  else if (req.url === '/recovery-native') res.setHeader('Content-Type', 'text/html'), res.end(nativeRecovery);
   else res.setHeader('Content-Type', 'text/html'), res.end(req.url === '/native' ? markup.toString().replace('<dialog id="card-dialog"', '<dialog open id="card-dialog"') : markup);
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
@@ -30,6 +32,17 @@ const browser = await launchBrowser();
 const screenshotDir = process.env.JAWA_ISSUE_SCREENSHOTS;
 if (screenshotDir) await mkdir(screenshotDir,{recursive:true});
 try {
+  const recoveryContext = await browser.newContext({javaScriptEnabled:false, viewport:{width:320,height:1000}});
+  const recoveryPage = await recoveryContext.newPage();
+  await recoveryPage.goto(`http://127.0.0.1:${server.address().port}/recovery-native`);
+  assert.match(await recoveryPage.locator('[name="issue_submission"]').inputValue(), /^[a-f0-9]{64}$/);
+  await recoveryPage.locator('[name="issue_recovery"]').selectOption('link');
+  await recoveryPage.locator('[name="recovery_url"]').fill('https://github.com/acme/repo/issues/17');
+  assert.ok(await recoveryPage.locator('[name="title"]').inputValue());
+  assert.equal(await recoveryPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+  if (screenshotDir) await recoveryPage.screenshot({path:`${screenshotDir}/native-recovery-320.png`});
+  await recoveryContext.close();
+
   for (const width of [1440,390,320]) {
     const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width<500,isMobile:width<500});
     const page = await context.newPage(); page.setDefaultTimeout(5000);

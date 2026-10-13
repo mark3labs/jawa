@@ -36,11 +36,11 @@ Rocket light-DOM components encapsulate Sortable, native popover actions, shortc
 relative timestamps and clipboard behavior; templ retains ownership of markup.
 
 Regenerate templates from repository root:
-`go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate ./internal/orchestrator`.
+`go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate -path ./internal/orchestrator`.
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
 Generated templ output and frontend assets are intentionally checked in and embedded;
 production requires neither Node nor CDN access. The build locates shadcn components
-using `go list -m`, bundles the pinned checkbox runtime and lifecycle with the
+using `go list -m`, bundles the pinned checkbox/switch runtimes and lifecycle with the
 application (no CDN), and copies the self-hosted Inter Latin variable font.
 
 Datastar/Rocket is vendored from the official v1.0.4 bundle:
@@ -257,3 +257,26 @@ JAWA_ISSUE_FIXTURE="$PWD/node_modules/.issue-fixture.html" JAWA_ISSUE_SCREENSHOT
 This checks exact enhanced form fields, retained draft/token, uncertainty controls,
 keyboard/touch interaction, mutually exclusive controls and overflow at
 1440/390/320px, with optional real Chromium screenshots. No live issue is created.
+
+## Application component vocabulary
+
+Visible controls use the pinned shadcn-templ Button (including action links),
+Input, Textarea, Label, NativeSelect/Option, Checkbox and Switch. Status/count
+pills use Badge, warnings use Alert, menu dividers use Separator and card
+surfaces use Card. Native forms, dialogs, popovers, disclosures, ordinary text
+links and structural layout remain native. Hidden transport fields (including
+move-form fields) are intentionally not components.
+
+Checkbox/Switch attributes target the focusable span, **not** its adjacent
+native input. Use deterministic input IDs and uncontrolled DefaultChecked for
+browser-owned fields. Signal-bound acknowledgements use the shared wrapper
+bridge: native change writes the signal; a Datastar effect synchronizes required,
+native checked, ARIA and indicator state through the pinned checkbox API. Do not
+put data-bind on the span. Settings switches must precede hidden false fallbacks.
+The bundled lifecycle, checkbox and switch runtimes handle SSE additions; native
+no-script forms expose the adjacent input as a usable fallback.
+
+Export real Settings/dialog markup with `JAWA_COMPONENT_FIXTURE=/path/components.html
+go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture)$' -count=1`,
+then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
+in frontend. Native recovery is exported alongside the issue fixture as `.native`.

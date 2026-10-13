@@ -7,7 +7,7 @@ SHADCN="$(go list -m -f '{{.Dir}}' github.com/axadrn/shadcn-templ/v2)"
 # Bundle only the pinned shadcn behavior we use, before the Rocket owners.
 # Keep the entry temporary: component sources remain owned by the Go module.
 trap 'rm -f src/.build.js src/.build.css' EXIT
-printf 'import "%s/components/baseui/lifecycle.js";\nimport "%s/components/checkbox/checkbox.js";\nimport "./app.js";\n' "$SHADCN" "$SHADCN" > src/.build.js
+printf 'import "%s/components/baseui/lifecycle.js";\nimport "%s/components/checkbox/checkbox.js";\nimport "%s/components/switch/switch.js";\nimport "./app.js";\n' "$SHADCN" "$SHADCN" "$SHADCN" > src/.build.js
 esbuild src/.build.js --bundle --minify --outfile=../assets/app.js
 cp node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2 ../assets/inter.woff2
 # Embed redistribution notices alongside the assets in the standalone binary.
