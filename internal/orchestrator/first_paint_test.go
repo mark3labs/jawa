@@ -67,7 +67,11 @@ func TestSharedFirstPaintHead(t *testing.T) {
 				t.Fatal("ordinary module script missing")
 			}
 			if name == "board" || name == "archive" {
-				nav := html[strings.Index(html, `href="/archive"`):]
+				index := strings.Index(html, `href="/archive"`)
+				if index < 0 {
+					t.Fatal("Archive navigation link missing")
+				}
+				nav := html[index:]
 				nav = strings.SplitN(nav, "</a>", 2)[0]
 				if !strings.Contains(nav, `width="16" height="16"`) || !strings.Contains(nav, `M5 8v12h14V8M10 12h4`) {
 					t.Fatal("Archive navigation glyph missing intrinsic geometry")
