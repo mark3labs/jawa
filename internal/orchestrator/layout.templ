@@ -528,8 +528,9 @@ templ dialogs(d pageData) {
 		</form>
 	</dialog>
 	<dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="if ($cardOpen && !el.open) el.showModal(); else if (!$cardOpen && el.open) el.close()" data-on:close="$cardOpen = false" data-on:cancel="$cardOpen = false">
-		<form method="post" action="/cards" data-on:submit__prevent="@post('/cards', {contentType:'form'})">
+		<form method="post" action="/cards" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards', {contentType:'form', retry: 'never'})">
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
+            <input id="card-issue-submission" type="hidden" name="issue_submission" value={ newID() }/>
 			@viewFields(d.v)
 			@dialog.Title(dialog.TitleProps{ID: "card-dialog-title"}) {
 				New card
@@ -560,14 +561,17 @@ templ dialogs(d pageData) {
 					<select id="card-issue" name="issue_url" aria-describedby="card-issue-status">
 						<option value="">No linked issue</option>
 					</select>
-					<button class="btn" type="button" data-issue-autofill disabled aria-label="Autofill title and description from issue" aria-describedby="card-issue-autofill-help">Autofill</button>
+					<label data-create-issue><input id="card-create-issue" type="checkbox" name="create_issue" value="yes" checked/>Create issue</label>
+                    <button class="btn" type="button" data-issue-autofill hidden disabled aria-label="Autofill title and description from issue" aria-describedby="card-issue-autofill-help">Autofill</button>
 				</div>
-				<p id="card-issue-autofill-help" class="muted">Autofill replaces the title and description. You can edit them afterward.</p>
+				<p data-create-help class="muted">Creating the card will also create and link an issue in this project's repository.</p>
+                <div id="card-issue-recovery"></div>
+                <p id="card-issue-autofill-help" class="muted">Autofill replaces the title and description. You can edit them afterward.</p>
 				<p id="card-issue-status" class="muted" role="status" aria-live="polite">Open the dialog to load this project's issues.</p>
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
 					Refresh issues
 				}
-				<noscript>You can create a card without an issue. Enable JavaScript to select an open issue.</noscript>
+				<noscript>Issue creation occurs only on submit. Uncheck Create issue for an unlinked card. Enable JavaScript to select an open issue.</noscript>
 			</jawa-issue-selector>
 			<div class="dialog-actions">
 				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {

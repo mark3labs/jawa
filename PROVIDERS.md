@@ -63,3 +63,17 @@ SHA; a clear/conflict reread that has become merged uses the new evidence.
 Open PR conflict checks and `ProviderVerifier` readiness identity rules remain
 unchanged. Manual merged markers are independent local metadata, not provider
 evidence or readiness approval; refresh never clears an applicable marker.
+
+## Optional New card issue writes
+
+New card defaults Create issue on, but creates only on submit, not on selection
+or cancellation. GitHub requires repository Issues read/write; Forgejo requires
+repository issue-write on its supported version. Read-only credentials remain
+sufficient for listing, verification and issue-off cards. Creation uses the same
+server token precedence, trusted HTTPS API coordinates, no redirects/cookies,
+a 20-second bound and 4 MiB response limit. HTTP/subpath Forgejo is unsupported.
+POST contains only title/body and has no internal retry. Valid 201 evidence is
+linked using configured coordinates, never returned html_url. Transport failures,
+5xx, redirects and malformed success are uncertain: check the repository and
+explicitly link/unlink rather than blindly retry. There is no cross-provider
+exactly-once guarantee after a lost response; no background outbox retries issues.

@@ -198,3 +198,31 @@ draft retention, Trace filter, 320/390/768/1024/1440 overflow checks and real
 Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
 See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
+
+## New card issue submission
+
+`POST /cards` accepts optional `create_issue=yes`, `issue_submission` (opaque
+32-byte hex token), and recovery fields `issue_recovery=link|unlinked|retry` and
+`recovery_url`. Missing create_issue remains off for legacy clients. UI default
+is on. Creation and issue_url are mutually exclusive. Durable reservations prevent
+concurrent/replayed POSTs; interrupted reservations become uncertain at startup.
+Completed evidence survives card deletion. Recovery is explicit and uses the
+original submitted draft, validating same-repository canonical issue links.
+Enhanced errors patch recovery/notice only; native errors retain escaped fields.
+Only confirmed success closes/resets. The form disables Datastar retries and
+locks submit/project/issue/create controls while pending. Read-only tokens work
+when creation is off; Issues write permission is required when on. Check the
+repository after uncertainty: remote/local writes cannot be atomic and issues
+are never automatically retried. Offline browser fixtures must uncheck creation.
+
+Real generated New card / recovery browser fixtures (no remote writes):
+
+```sh
+JAWA_ISSUE_FIXTURE="$PWD/internal/orchestrator/frontend/node_modules/.issue-fixture.html" go test ./internal/orchestrator -run '^TestIssueRecoveryFixture$' -count=1
+cd internal/orchestrator/frontend
+JAWA_ISSUE_FIXTURE="$PWD/node_modules/.issue-fixture.html" JAWA_ISSUE_SCREENSHOTS="$PWD/node_modules/.issue-screenshots" npm run test:issue-recovery
+```
+
+This checks exact enhanced form fields, retained draft/token, uncertainty controls,
+keyboard/touch interaction, mutually exclusive controls and overflow at
+1440/390/320px, with optional real Chromium screenshots. No live issue is created.

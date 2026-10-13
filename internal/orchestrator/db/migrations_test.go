@@ -234,7 +234,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 16 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 17 {
 		t.Fatal(version, err)
 	}
 }
@@ -262,7 +262,7 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16)`)
+ DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16,17)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16);
+ DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16,17);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -334,7 +334,7 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
 	execTest(t, database, `DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (15,16);
+ DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (15,16,17);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
@@ -367,7 +367,7 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DELETE FROM goose_db_version WHERE version_id=16;
+	execTest(t, database, `DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (16,17);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,state,run_state,outcome_json,created_at,updated_at) VALUES
@@ -383,5 +383,27 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 		if err := database.QueryRow(`SELECT run_state FROM workflow_attempts WHERE id=?`, id).Scan(&got); err != nil || got != want {
 			t.Fatalf("%s run_state=%q want %q (%v)", id, got, want, err)
 		}
+	}
+}
+
+func TestIssueSubmissionUpgradeAndTombstone(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id=17;
+ INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Todo',0,1);`)
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `INSERT INTO issue_submissions(token,project_id,provider,repository,title,body,state,card_id,created_at,updated_at) VALUES('token','p','github','repo','title','body','completed','c',1,1);
+ DELETE FROM cards WHERE id='c'; DELETE FROM projects WHERE id='p';`)
+	var card string
+	if err := database.QueryRow(`SELECT card_id FROM issue_submissions WHERE token='token'`).Scan(&card); err != nil || card != "c" {
+		t.Fatalf("tombstone %s %v", card, err)
+	}
+	if _, err := database.Exec(`UPDATE issue_submissions SET state='retryable'`); err == nil {
+		t.Fatal("invalid state accepted")
 	}
 }

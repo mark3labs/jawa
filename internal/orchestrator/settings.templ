@@ -66,7 +66,7 @@ templ settingsContent(d pageData) {
 					Git providers
 				}
 				@card.Description() {
-					Read-only tokens let Jawa verify pull requests, CI and review feedback. A card reaches Done only after that passes; Jawa never merges for you.
+					Read-only tokens support listing and verification. New card defaults Create issue on; creation needs repository Issues read/write (GitHub) or issue-write (Forgejo). Turn creation off to use read-only tokens. A card reaches Done only after that passes; Jawa never merges for you.
 				}
 			}
 			@card.Content() {
@@ -143,7 +143,7 @@ templ providerRow(p providerConfig) {
 			}
 		</div>
 		<div class="provider-edit">
-			<label class="sr-only" for={ "runtime-" + strings.ToLower(p.Name) + "-token" }>{ p.Name } read-only token</label>
+			<label class="sr-only" for={ "runtime-" + strings.ToLower(p.Name) + "-token" }>{ p.Name } provider token</label>
 			@input.Input(input.Props{ID: "runtime-" + strings.ToLower(p.Name) + "-token", Name: strings.ToLower(p.Name) + "-token", Type: "password", Placeholder: "Paste a new token to replace", Attributes: templ.Attributes{"autocomplete": "new-password"}})
 			<label class="check">
 				<input type="checkbox" name={ strings.ToLower(p.Name) + "-token-clear" } value="true"/>

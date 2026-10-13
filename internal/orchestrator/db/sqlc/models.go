@@ -49,6 +49,21 @@ type FailedResume struct {
 	Automatic       int64  `json:"automatic"`
 }
 
+type IssueSubmission struct {
+	Token       string `json:"token"`
+	ProjectID   string `json:"project_id"`
+	Provider    string `json:"provider"`
+	Repository  string `json:"repository"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	State       string `json:"state"`
+	IssueUrl    string `json:"issue_url"`
+	IssueNumber int64  `json:"issue_number"`
+	CardID      string `json:"card_id"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
 type PlanningDelivery struct {
 	ID         int64  `json:"id"`
 	TurnID     string `json:"turn_id"`

@@ -759,3 +759,10 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .run-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
 .run-controls .meta { flex-basis: 100%; }
 .run-controls .chip { min-height: 44px; }
+
+[data-create-issue] { display: flex; align-items: center; gap: .5rem; min-height: 44px; white-space: nowrap; }
+[data-create-issue] input { width: 20px; height: 20px; }
+#card-issue-recovery { overflow-wrap: anywhere; }
+#card-issue-recovery label { display: block; margin-block: .5rem; }
+#card-issue-recovery input, #card-issue-recovery select { width: 100%; min-height: 44px; }
+#card-dialog form[data-pending]::after { content: 'Creating card… Please wait.'; display: block; }
