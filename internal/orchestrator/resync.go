@@ -81,7 +81,13 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 		return e
 	}
 	if blocked {
-		return nil
+		if !status.Active || status.Error != "" {
+			return nil
+		}
+		if ok, e := markResumeRunning(tx, status.Target, status.Seq, status.State); e != nil || !ok {
+			return e
+		}
+		return tx.Commit()
 	}
 	a, err := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE id=?`, observed.ID))
 	if err == sql.ErrNoRows {

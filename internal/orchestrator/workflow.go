@@ -50,6 +50,9 @@ type Workflow struct {
 	// Owned by the single dispatch loop: next owner Status check per pending
 	// resume. In-memory only; a restart re-checks stale commands once.
 	resumeChecks map[string]time.Time
+	// resumePromoteChecks throttles owner queries used only to switch a pending
+	// resume from "Resuming…" to its working state.
+	resumePromoteChecks map[string]time.Time
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
@@ -459,7 +462,10 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 		return e
 	}
 	if blocked {
-		return nil
+		if ok, e := markResumeRunning(tx, ev.Target, ev.Seq, ev.State); e != nil || !ok {
+			return e
+		}
+		return tx.Commit()
 	}
 	a, err := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE task_id=?`, ev.TaskID))
 	if errors.Is(err, sql.ErrNoRows) {

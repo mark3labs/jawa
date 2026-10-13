@@ -168,6 +168,87 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 
 const resumePendingNotice = "Resume pending confirmation"
 
+// markResumeRunning clears the pending notice once the exact resumed run is
+// observed executing past the reserved journal cursor, so the UI shows normal
+// work instead of "Resuming…". The failed_resumes row stays pending and keeps
+// blocking competing deliveries until the durable host receipt arrives.
+func markResumeRunning(tx *sql.Tx, target client.Target, seq int, state runtime.RunState) (bool, error) {
+	if state != runtime.RunRunning {
+		return false, nil
+	}
+	var raw string
+	var planning bool
+	err := tx.QueryRow(`SELECT request_json,planning FROM failed_resumes WHERE task_id=? AND status='pending'`, target.TaskID).Scan(&raw, &planning)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var req reportprotocol.FailedResume
+	if err = json.Unmarshal([]byte(raw), &req); err != nil || req.Target != target || seq <= req.Seq {
+		return false, nil
+	}
+	now := time.Now().UnixMilli()
+	var res sql.Result
+	if planning {
+		if res, err = tx.Exec(`UPDATE planning_turns SET error='',updated_at=? WHERE id=? AND state='running' AND error=?`, now, target.TaskID, resumePendingNotice); err != nil {
+			return false, err
+		}
+		if _, err = tx.Exec(`UPDATE planning_sessions SET error='',updated_at=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?) AND state='running' AND error=?`, now, target.TaskID, resumePendingNotice); err != nil {
+			return false, err
+		}
+	} else if res, err = tx.Exec(`UPDATE workflow_attempts SET error='',updated_at=? WHERE task_id=? AND state='running' AND error=?`, now, target.TaskID, resumePendingNotice); err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// promoteResumeIfRunning clears the pending notice of a resume whose
+// continuation is confirmed executing. It reuses an already observed status
+// snapshot and otherwise queries the owner only while the notice is shown.
+func (w *Workflow) promoteResumeIfRunning(target client.Target, observed *client.Status) {
+	if observed == nil {
+		if w.client == nil {
+			return
+		}
+		var shown bool
+		if err := w.s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_attempts WHERE task_id=? AND error=?) OR EXISTS(SELECT 1 FROM planning_turns WHERE id=? AND error=?)`, target.TaskID, resumePendingNotice, target.TaskID, resumePendingNotice).Scan(&shown); err != nil || !shown {
+			return
+		}
+		now := time.Now()
+		if next, ok := w.resumePromoteChecks[target.TaskID]; ok && now.Before(next) {
+			return
+		}
+		if w.resumePromoteChecks == nil {
+			w.resumePromoteChecks = map[string]time.Time{}
+		}
+		w.resumePromoteChecks[target.TaskID] = now.Add(5 * time.Second)
+		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
+		status, err := w.client.Status(ctx, target)
+		cancel()
+		if err != nil {
+			return
+		}
+		observed = &status
+	}
+	status := *observed
+	if status.Error != "" || status.Target != target || !status.Active {
+		return
+	}
+	tx, err := w.s.writeTx()
+	if err != nil {
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if ok, e := markResumeRunning(tx, target, status.Seq, status.State); e == nil && ok {
+		if tx.Commit() == nil {
+			w.log().Info("Resumed run confirmed executing", "task_id", target.TaskID, "seq", status.Seq)
+		}
+	}
+}
+
 func resumeStaleDuration() (time.Duration, error) {
 	value := os.Getenv("JAWA_RESUME_STALE_AFTER")
 	if value == "" {
@@ -222,13 +303,26 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 			delete(w.resumeChecks, id)
 		}
 	}
+	pendingTasks := make(map[string]bool, len(commands))
+	for _, c := range commands {
+		var req reportprotocol.FailedResume
+		if json.Unmarshal([]byte(c.raw), &req) == nil {
+			pendingTasks[req.Target.TaskID] = true
+		}
+	}
+	for task := range w.resumePromoteChecks {
+		if !pendingTasks[task] {
+			delete(w.resumePromoteChecks, task)
+		}
+	}
 	for _, c := range commands {
 		var req reportprotocol.FailedResume
 		if json.Unmarshal([]byte(c.raw), &req) != nil {
 			w.log().Error("Invalid pending resume command", "resume_id", c.id)
 			continue
 		}
-		req.Reconcile = w.resumeNeedsReconcile(c.id, req.Target, time.UnixMilli(c.created), threshold)
+		reconcile, observed := w.resumeNeedsReconcile(c.id, req.Target, time.UnixMilli(c.created), threshold)
+		req.Reconcile = reconcile
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 		reply, e := reportprotocol.ResumeFailed(ctx, conn, "bonnie", req)
 		cancel()
@@ -237,6 +331,7 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 			continue
 		}
 		if reply.Status == "pending" {
+			w.promoteResumeIfRunning(req.Target, observed)
 			continue
 		}
 		if e = w.finishFailedResume(c.id, reply); e != nil {
@@ -248,14 +343,15 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 // Staleness is measured from the last observed progress, not reservation age:
 // an active owner counts as progress and defers the next check by a full
 // threshold. Unconfirmed owners are re-queried at a bounded rate. Only a
-// confirmed idle failed run requests the host-side fence.
-func (w *Workflow) resumeNeedsReconcile(id string, target client.Target, created time.Time, threshold time.Duration) bool {
+// confirmed idle failed run requests the host-side fence. A confirmed status
+// snapshot is returned when one was queried, so callers need not re-query.
+func (w *Workflow) resumeNeedsReconcile(id string, target client.Target, created time.Time, threshold time.Duration) (bool, *client.Status) {
 	now := time.Now()
 	if now.Sub(created) < threshold {
-		return false
+		return false, nil
 	}
 	if next, ok := w.resumeChecks[id]; ok && now.Before(next) {
-		return false
+		return false, nil
 	}
 	if w.resumeChecks == nil {
 		w.resumeChecks = map[string]time.Time{}
@@ -264,27 +360,31 @@ func (w *Workflow) resumeNeedsReconcile(id string, target client.Target, created
 	if w.client == nil {
 		w.resumeChecks[id] = now.Add(retry)
 		w.log().Warn("Resume remains pending; owning agent unavailable", "resume_id", id, "task_id", target.TaskID)
-		return false
+		return false, nil
 	}
 	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 	status, e := w.client.Status(ctx, target)
 	cancel()
 	confirmed := e == nil && status.Error == "" && status.Target == target
+	if e != nil {
+		// Still report the query so callers do not re-query this tick.
+		status.Error = e.Error()
+	}
 	switch {
 	case confirmed && status.Active:
 		w.resumeChecks[id] = now.Add(threshold)
 		w.log().Debug("Resume pending; owning agent still running", "resume_id", id, "task_id", target.TaskID, "seq", status.Seq)
-		return false
+		return false, &status
 	case confirmed && status.State == runtime.RunFailed:
 		// If the fence is not yet durable the next attempt re-confirms first.
 		w.resumeChecks[id] = now.Add(retry)
 		w.log().Warn("Resume stalled on idle failed run; reconciling", "resume_id", id, "task_id", target.TaskID)
-		return true
+		return true, &status
 	default:
 		// Absence and transport failures are not proof of safe abandonment.
 		w.resumeChecks[id] = now.Add(retry)
 		w.log().Warn("Resume remains pending; owning agent unconfirmed", "resume_id", id, "task_id", target.TaskID, "state", status.State)
-		return false
+		return false, &status
 	}
 }
 

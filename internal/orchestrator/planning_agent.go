@@ -32,7 +32,11 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 		return true, err
 	}
 	blocked, e := resumeDeliveryBlocked(tx, ev.TaskID, true)
-	if e != nil || blocked {
+	if e != nil {
+		return true, e
+	}
+	if blocked {
+		_, e = markResumeRunning(tx, ev.Target, ev.Seq, ev.State)
 		return true, e
 	}
 	data, err := json.Marshal(ev)
