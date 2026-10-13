@@ -43,6 +43,35 @@ try {
       await page.goto(`http://127.0.0.1:${server.address().port}/${view}`);
       await page.locator('.task-card').first().waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${view} ${width}: document overflow`);
+      for (const [id, total, breakdown] of [
+        ['abc', 4, '2 planning, 1 building, 1 fixing'],
+        ['plan', 1, '1 planning, 0 building, 0 fixing'],
+        ['fix', 1, '0 planning, 0 building, 1 fixing'],
+        ['archive', 1, '0 planning, 1 building, 0 fixing'],
+      ]) {
+        const badge = page.locator(`[data-project-id="${id}"] .nav-count.live`);
+        assert.equal(await badge.textContent(), String(total));
+        const label = await badge.getAttribute('title');
+        const project = page.locator(`[data-project-id="${id}"]`);
+        const name = `${await project.getAttribute('data-project-name')}: ${label}`;
+        assert.equal(await project.getAttribute('aria-label'), name);
+        assert.equal(await page.getByRole('link', { name, exact: true }).count(), 1);
+        assert.ok(label.includes(breakdown));
+        assert.ok(label.includes('includes queued and archived work'));
+        assert.equal(await badge.getAttribute('title'), label);
+      }
+      assert.equal(await page.locator('[data-project-id="zero"] .nav-count.live').count(), 0);
+      if (view === 'board') {
+        assert.match(await page.locator('.view-stats').textContent(), /4 active/);
+        assert.equal(await page.getByRole('group', { name: '4 active work items: 2 planning, 1 building, 1 fixing (includes queued and archived work)', exact: true }).count(), 1);
+      }
+      const overlaps = await page.locator('[data-project-id]').evaluateAll(links =>
+        links.filter(link => {
+          const text = link.querySelector('.nav-text')?.getBoundingClientRect();
+          const badge = link.querySelector('.nav-count')?.getBoundingClientRect();
+          return text && badge && text.right > badge.left + 1;
+        }).map(link => link.dataset.projectId));
+      assert.deepEqual(overlaps, [], `${view} ${width}: project name overlaps badge`);
       const overflow = await page.locator('.task-card').evaluateAll(cards =>
         cards.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.id));
       assert.deepEqual(overflow, [], `${view} ${width}: card overflow`);
