@@ -31,7 +31,7 @@ func TestCardViewShortcut(t *testing.T) {
 					t.Fatal("missing closing anchor")
 				}
 				link := markup[start : start+end]
-				for _, want := range []string{href, `aria-label="View card and plan"`, `title="View card and plan"`, `aria-hidden="true"`, `<path d=`, `<circle cx="12" cy="12" r="3"`} {
+				for _, want := range []string{href, `aria-label="View card and plan: ` + html.EscapeString(cardKey(nil, c)) + `"`, `title="View card and plan"`, `aria-hidden="true"`, `<path d=`, `<circle cx="12" cy="12" r="3"`} {
 					if !strings.Contains(link, want) {
 						t.Errorf("shortcut missing %s", want)
 					}

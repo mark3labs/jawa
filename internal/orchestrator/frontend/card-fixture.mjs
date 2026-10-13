@@ -58,7 +58,7 @@ try {
         assert.equal(await link.count(), 1);
         const id = await card.getAttribute('data-card-id');
         assert.equal(await link.getAttribute('href'), `/planning?card=${encodeURIComponent(id)}`);
-        assert.equal(await link.getAttribute('aria-label'), 'View card and plan');
+        assert.equal(await link.getAttribute('aria-label'), `View card and plan: ${await card.locator('.card-key').textContent()}`);
         assert.equal(await link.evaluate(el => getComputedStyle(el).opacity), '1');
         assert.equal(await link.evaluate(el => el.closest('form')), null);
         if (width < 768) {
