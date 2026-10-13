@@ -52,7 +52,7 @@ try {
     await page.getByLabel('Description', {exact: true}).fill('Long description for responsive layout');
     await page.getByRole('button', { name: 'Create card', exact: true }).click();
     await page.locator('.task-card').waitFor();
-    await page.locator('.task-card .icon-btn').click();
+    await page.locator('.task-card button[aria-haspopup="menu"]').click();
     await page.getByRole('menuitem', { name: 'Start work', exact: true }).click();
     await page.locator('.task-card a[title="View runs"]').waitFor();
     if (process.env.JAWA_RESPONSIVE_SAVE_STATE) await context.storageState({ path: process.env.JAWA_RESPONSIVE_SAVE_STATE });
@@ -94,7 +94,7 @@ try {
           await target(button);
         }
         if (await page.locator('.task-card').count()) {
-          await page.locator('.task-card .icon-btn').first().click();
+          await page.locator('.task-card button[aria-haspopup="menu"]').first().click();
           const menu = page.locator('.menu:popover-open');
           await menu.waitFor();
           const sizes = await menu.evaluate(el => [...el.querySelectorAll('.menu-item')]
