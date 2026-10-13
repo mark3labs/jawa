@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -336,14 +338,79 @@ func terminalFailure(a Attempt) bool {
 	return (a.OutcomeJSON != "" || a.RunState == "cancelled" || a.RunState == "failed") && (a.State == "failed" || a.State == "blocked") && a.RunState != "waiting" && a.RunState != "interrupted"
 }
 
+func latestAttempt(cardID string, attempts []Attempt) []Attempt {
+	var latest *Attempt
+	for i := range attempts {
+		a := &attempts[i]
+		if a.CardID == cardID && (latest == nil || a.Number > latest.Number) {
+			latest = a
+		}
+	}
+	if latest == nil {
+		return nil
+	}
+	return []Attempt{*latest}
+}
+
+// Interrupted work retains authority until recovery or an explicit Force stop.
+// Normally interruption is recorded in RunState with State="blocked"; treat
+// either field conservatively so imported or historical rows are safe too.
+var activeAttemptStates = []string{"queued", "submitted", "running", "waiting", "interrupted"}
+
+func attemptActive(a Attempt) bool {
+	return slices.Contains(activeAttemptStates, a.State) || slices.Contains(activeAttemptStates, a.RunState)
+}
+
+func cardHasActiveAttempt(cardID string, attempts []Attempt) bool {
+	for _, a := range attempts {
+		if a.CardID == cardID && attemptActive(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// resetReason is shared by presentation and the transactional mutation guard.
+// Pending resume rows remain authoritative even if an attempt snapshot is stale.
+func resetReason(c Card, attempts []Attempt, pending bool) string {
+	if c.Status == "Planning" {
+		return "Cancel planning before resetting or deleting."
+	}
+	if pending {
+		return "Resume pending — use Force stop first."
+	}
+	if cardHasActiveAttempt(c.ID, attempts) {
+		return "Active attempt — wait for it to finish, or use Force stop."
+	}
+	if c.Status == "Todo" {
+		return "Already in Todo."
+	}
+	latest := latestAttempt(c.ID, attempts)
+	if len(latest) == 0 {
+		return ""
+	}
+	if latest[0].Error == resumePendingNotice {
+		return "Resume pending — use Force stop first."
+	}
+	if !terminalFailure(latest[0]) {
+		if forceStoppable(latest[0], true) {
+			return "Attempt has not finished — use Force stop to release it."
+		}
+		return "Reset requires a failed or blocked attempt."
+	}
+	return ""
+}
+
 // Check all history, not just the latest attempt: these actions never cancel work.
 func noActiveAttempts(tx *sql.Tx, id string) error {
 	if err := noPendingResume(tx, id); err != nil {
 		return err
 	}
 	var active bool
+	// The lists are package-owned constants in practice, never user input.
+	states := "'" + strings.Join(activeAttemptStates, "','") + "'"
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_attempts WHERE card_id=? AND
-		(state IN ('queued','submitted','running','waiting') OR run_state IN ('queued','submitted','running','waiting','interrupted')))`, id).Scan(&active); err != nil {
+  (state IN (`+states+`) OR run_state IN (`+states+`)))`, id).Scan(&active); err != nil {
 		return err
 	}
 	if active {
@@ -376,19 +443,29 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 	if err = tx.QueryRow(`SELECT project_id,status FROM cards WHERE id=?`, id).Scan(&project, &source); err != nil {
 		return workflowCardError(err)
 	}
-	if source == "Planning" {
-		return errors.New("cancel planning before resetting or deleting")
-	}
-	if err = noActiveAttempts(tx, id); err != nil {
-		if !deleteCard || !acknowledgeOrphan {
-			return err
-		}
-		latest, readErr := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
+	if !deleteCard {
+		c, _, attempts, pending, readErr := readySnapshot(tx, id)
 		if readErr != nil {
 			return readErr
 		}
-		if latest.Ready || latest.Error != executionConflictNotice {
-			return errors.New("only a run needing reconciliation can be deleted with orphan acknowledgment")
+		if why := resetReason(c, attempts, pending); why != "" {
+			return errors.New(why)
+		}
+	} else {
+		if source == "Planning" {
+			return errors.New("cancel planning before resetting or deleting")
+		}
+		if err = noActiveAttempts(tx, id); err != nil {
+			if !acknowledgeOrphan {
+				return err
+			}
+			latest, readErr := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
+			if readErr != nil {
+				return readErr
+			}
+			if latest.Ready || latest.Error != executionConflictNotice {
+				return errors.New("only a run needing reconciliation can be deleted with orphan acknowledgment")
+			}
 		}
 	}
 	if deleteCard {
@@ -402,13 +479,6 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 		) UPDATE cards SET position=(SELECT position FROM positions WHERE positions.id=cards.id)
 		WHERE id IN (SELECT id FROM positions)`, project, source)
 	} else {
-		latest, e := scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		if e == nil && !terminalFailure(latest) {
-			return errors.New("reset requires a terminal failed or blocked attempt")
-		}
 		err = moveWorkflowCard(tx, id, project, source, "Todo", int(^uint(0)>>1))
 	}
 	if err != nil {

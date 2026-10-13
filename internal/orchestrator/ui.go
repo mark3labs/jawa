@@ -200,19 +200,6 @@ func inspectRecord(r presence.Record) string {
 	b, _ := json.MarshalIndent(r, "", "  ")
 	return string(b)
 }
-func latestAttempt(cardID string, attempts []Attempt) []Attempt {
-	var latest *Attempt
-	for i := range attempts {
-		a := &attempts[i]
-		if a.CardID == cardID && (latest == nil || a.Number > latest.Number) {
-			latest = a
-		}
-	}
-	if latest == nil {
-		return nil
-	}
-	return []Attempt{*latest}
-}
 
 // Display the immutable assigned ref, not a guess from the current card title.
 func attemptBranch(a Attempt) string {
@@ -237,17 +224,7 @@ func cardNeedsReconciliation(c Card, attempts []Attempt) bool {
 
 // Match workflow guards for presentation; the server remains authoritative.
 func canAction(c Card, attempts []Attempt, action string) bool {
-	active := false
-	for _, a := range attempts {
-		if a.CardID != c.ID {
-			continue
-		}
-		for _, state := range []string{a.State, a.RunState} {
-			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" || state == "interrupted" {
-				active = true
-			}
-		}
-	}
+	active := cardHasActiveAttempt(c.ID, attempts)
 	latest := latestAttempt(c.ID, attempts)
 	legacy := len(latest) == 0
 	terminal := !legacy && terminalFailure(latest[0])
@@ -263,7 +240,7 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	case "fix":
 		return c.Status == "Done" && !legacy && latest[0].Ready && latest[0].State == "ready" && latest[0].PRURL != "" && !active
 	case "reset":
-		return c.Status != "Todo" && !active && (legacy || terminal)
+		return resetReason(c, attempts, false) == ""
 	case "delete":
 		return !active || (!legacy && !latest[0].Ready && latest[0].Error == executionConflictNotice)
 	case "cancel":
@@ -303,18 +280,11 @@ func actionReason(c Card, attempts []Attempt, action string) string {
 	if action == "force-ready" {
 		return forceReadyReason(c, attempts, false)
 	}
-	for _, a := range attempts {
-		if a.CardID != c.ID {
-			continue
-		}
-		for _, state := range []string{a.State, a.RunState} {
-			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" || state == "interrupted" {
-				return "Active attempt — wait for it to finish, or use Force stop."
-			}
-		}
+	if action == "reset" {
+		return resetReason(c, attempts, false)
 	}
-	if action == "reset" && c.Status == "Todo" {
-		return "Already in Todo."
+	if cardHasActiveAttempt(c.ID, attempts) {
+		return "Active attempt — wait for it to finish, or use Force stop."
 	}
 	if latest := latestAttempt(c.ID, attempts); len(latest) > 0 && forceStoppable(latest[0], true) {
 		return "Attempt has not finished — use Force stop to release it."

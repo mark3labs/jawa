@@ -193,17 +193,6 @@ func initial(name string) string {
 	return "?"
 }
 
-// attemptActive mirrors the workflow guard for presentation.
-func attemptActive(a Attempt) bool {
-	for _, state := range []string{a.State, a.RunState} {
-		switch state {
-		case "queued", "submitted", "running", "waiting", "interrupted":
-			return true
-		}
-	}
-	return false
-}
-
 // runTone maps an attempt to the one visual state shown on lists and cards.
 const interruptedNotice = "agent run interrupted; awaiting agent recovery"
 
