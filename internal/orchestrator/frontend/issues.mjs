@@ -12,7 +12,10 @@ const fixture = `<!doctype html>
 <option value="">Choose a project</option></select></label>
 <input id="card-title" name="title" value="Manual title">
 <textarea id="card-description" name="description">Manual description</textarea>
+<input type="hidden" name="issue_submission" value="initial">
 <jawa-issue-selector>
+<label data-create-issue><input id="card-create-issue" name="create_issue" type="checkbox" value="yes" checked>Create issue</label>
+<p data-create-help>Create and link on submit.</p><div id="card-issue-recovery"></div>
 <label>Issue <select id="card-issue" name="issue_url"><option value="">No linked issue</option></select></label>
 <button data-issue-autofill type="button" disabled>Autofill</button>
 <p id="card-issue-status" role="status"></p>
@@ -62,6 +65,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.waitForFunction(() => window.ready);
+  const create = page.locator('#card-create-issue');
+  assert.equal(await create.isChecked(), true);
   const issue = page.locator('#card-issue');
   const status = page.locator('#card-issue-status');
   const project = page.locator('#card-project');
@@ -99,6 +104,8 @@ try {
   assert.equal(await issue.isDisabled(), true);
   assert.match(await status.textContent(), /Loading/);
   await submitWithoutLink();
+  assert.equal(await page.evaluate(() => submission.create_issue), 'yes');
+  await create.uncheck();
   await reply(0);
   await waitLoaded();
   assert.equal(await issue.locator('option').nth(1).textContent(), `#7 ${entries[0].title}`);
@@ -106,6 +113,8 @@ try {
   assert.equal(await page.evaluate(() => window.injected), undefined);
   assert.equal(await autofill.isDisabled(), true);
   await issue.selectOption(issueURL);
+  assert.equal(await create.isDisabled(), true);
+  assert.equal(await create.isChecked(), false);
   assert.equal(await autofill.isEnabled(), true);
   assert.deepEqual(await draft(), ['Manual title', 'Manual description']);
   await autofill.focus();
@@ -128,6 +137,7 @@ try {
   // Changing projects clears the link synchronously and aborts older requests.
   await project.selectOption('beta & other');
   await waitRequests(2);
+  assert.equal(await create.isChecked(), true);
   assert.equal(await autofill.isDisabled(), true);
   assert.deepEqual(await draft(), edited);
   assert.equal(await issue.inputValue(), '');
@@ -149,8 +159,11 @@ try {
   await description.fill(edited[1]);
 
   // Refresh clears selection, safe failures remain optional, and retry works.
+  await issue.selectOption('');
+  await create.uncheck();
   await refresh.click();
   await waitRequests(4);
+  assert.equal(await create.isChecked(), false);
   assert.equal(await autofill.isDisabled(), true);
   assert.deepEqual(await draft(), edited);
   assert.equal(await issue.inputValue(), '');
@@ -196,6 +209,7 @@ try {
   await issue.selectOption(issueURL);
   await page.click('#reset');
   await waitRequests(10);
+  assert.equal(await create.isChecked(), true);
   assert.equal(await autofill.isDisabled(), true);
   assert.deepEqual(await draft(), ['Manual title', 'Manual description']);
   assert.equal(await project.inputValue(), 'alpha');
@@ -220,37 +234,68 @@ try {
   await page.waitForTimeout(50);
   assert.equal(await issue.isEnabled(), true);
 
+  // Pending submission preserves fields while preventing project/issue/intent changes.
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('datastar-fetch', {detail:{type:'started',el:document.querySelector('form')}})));
+  assert.equal(await create.isDisabled(), true);
+  assert.equal(await project.isDisabled(), true);
+  assert.equal(await issue.isDisabled(), true);
+  assert.equal(await page.evaluate(() => new FormData(document.querySelector('form')).get('project_id')), 'alpha');
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('datastar-fetch', {detail:{type:'finished',el:document.querySelector('form')}})));
+  assert.equal(await project.isEnabled(), true);
+  // Uncertain failure keeps draft and token; only explicit recovery is submitted.
+  const tokenBefore = await page.locator('[name="issue_submission"]').inputValue();
+  const draftBefore = await draft();
+  await page.evaluate(() => {
+    const recovery = document.querySelector('#card-issue-recovery');
+    recovery.dataset.state = 'uncertain';
+    recovery.innerHTML = '<select name="issue_recovery"><option value="">Choose recovery</option><option value="unlinked">Create unlinked</option></select><input name="recovery_url">';
+  });
+  await page.waitForFunction(() => document.querySelector('#card-create-issue').disabled);
+  assert.deepEqual(await draft(), draftBefore);
+  assert.equal(await page.locator('[name="issue_submission"]').inputValue(), tokenBefore);
+  await page.locator('[name="issue_recovery"]').selectOption('unlinked');
+  await page.click('#submit');
+  assert.equal(await page.evaluate(() => submission.issue_recovery), 'unlinked');
+  assert.equal(await page.evaluate(() => submission.create_issue), undefined);
+  // Simulate confirmed success reset; no POST occurred on toggle, close or reset.
+  await page.evaluate(() => HTMLFormElement.prototype.reset.call(document.querySelector('form')));
+  await waitRequests(13);
+  await reply(12);
+  await waitLoaded();
+  assert.equal(await create.isChecked(), true);
+  assert.equal(await page.locator('[name="issue_recovery"]').count(), 0);
+
   // The 25-second deadline invalidates late responses, and completed timers clear.
   await page.clock.install();
   await refresh.click();
-  await waitRequests(13);
+  await waitRequests(14);
   await page.clock.fastForward(25000);
   await waitStatus('timed out');
-  assert.equal(await page.evaluate(() => requests[12].signal.aborted), true);
+  assert.equal(await page.evaluate(() => requests[13].signal.aborted), true);
   await submitWithoutLink();
-  await reply(12);
+  await reply(13);
   await page.waitForTimeout(50);
   assert.equal(await issue.isDisabled(), true);
   assert.equal(await autofill.isDisabled(), true);
   await refresh.click();
-  await waitRequests(14);
-  await reply(13);
+  await waitRequests(15);
+  await reply(14);
   await waitLoaded();
   await page.clock.fastForward(25000);
   assert.equal(await issue.isEnabled(), true);
-  assert.equal(await page.evaluate(() => requests[13].signal.aborted), false);
+  assert.equal(await page.evaluate(() => requests[14].signal.aborted), false);
 
   // Disposal aborts and removes observers/listeners; even ignored aborts cannot update UI.
   await refresh.click();
-  await waitRequests(15);
+  await waitRequests(16);
   await page.evaluate(() => { window.stop(); window.stop(); });
-  assert.equal(await page.evaluate(() => requests[14].signal.aborted), true);
+  assert.equal(await page.evaluate(() => requests[15].signal.aborted), true);
   assert.equal(await autofill.isDisabled(), true);
   const disposedDraft = await draft();
   await autofill.dispatchEvent('click');
   assert.deepEqual(await draft(), disposedDraft);
   const snapshot = await status.textContent();
-  await reply(14);
+  await reply(15);
   await page.waitForTimeout(50);
   assert.equal(await issue.locator('option').count(), 1);
   assert.equal(await issue.isDisabled(), true);
@@ -261,7 +306,7 @@ try {
   await page.click('#close');
   await page.click('#open');
   await page.clock.fastForward(30000);
-  assert.equal(await page.evaluate(() => requests.length), 15);
+  assert.equal(await page.evaluate(() => requests.length), 16);
   assert.equal(await status.textContent(), snapshot);
   assert.deepEqual(errors, []);
   console.log('Issue selector tests passed (static fixture, no orchestrator).');

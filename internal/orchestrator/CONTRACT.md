@@ -30,8 +30,8 @@ for isolated selector browser tests (including stale-response races).
 
 Templates are separated into `layout.templ`, `board.templ`, `runs.templ`,
 `agents.templ`, and `settings.templ`. Prebuilt shadcn-templ Card, Empty, Avatar,
-Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator
-and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
+Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator,
+Checkbox and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
 Rocket light-DOM components encapsulate Sortable, native popover actions, shortcuts,
 relative timestamps and clipboard behavior; templ retains ownership of markup.
 
@@ -40,7 +40,8 @@ Regenerate templates from repository root:
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
 Generated templ output and frontend assets are intentionally checked in and embedded;
 production requires neither Node nor CDN access. The build locates shadcn components
-using `go list -m` and copies the self-hosted Inter Latin variable font.
+using `go list -m`, bundles the pinned checkbox runtime and lifecycle with the
+application (no CDN), and copies the self-hosted Inter Latin variable font.
 
 Datastar/Rocket is vendored from the official v1.0.4 bundle:
 https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rocket.js.
@@ -222,3 +223,31 @@ Optional `JAWA_RUN_DETAIL_SCREENSHOTS=/tmp/run-detail-images` captures Chromium
 entry filtering, collapsed defaults, touch targets, no-JS links, keyboard
 activation and actual Datastar stream patches preserving disclosure/draft/focus.
 These fixtures are not evidence of external provider behavior or mobile devices.
+
+## New card issue submission
+
+`POST /cards` accepts optional `create_issue=yes`, `issue_submission` (opaque
+32-byte hex token), and recovery fields `issue_recovery=link|unlinked|retry` and
+`recovery_url`. Missing create_issue remains off for legacy clients. UI default
+is on. Creation and issue_url are mutually exclusive. Durable reservations prevent
+concurrent/replayed POSTs; interrupted reservations become uncertain at startup.
+Completed evidence survives card deletion. Recovery is explicit and uses the
+original submitted draft, validating same-repository canonical issue links.
+Enhanced errors patch recovery/notice only; native errors retain escaped fields.
+Only confirmed success closes/resets. The form disables Datastar retries and
+locks submit/project/issue/create controls while pending. Read-only tokens work
+when creation is off; Issues write permission is required when on. Check the
+repository after uncertainty: remote/local writes cannot be atomic and issues
+are never automatically retried. Offline browser fixtures must uncheck creation.
+
+Real generated New card / recovery browser fixtures (no remote writes):
+
+```sh
+JAWA_ISSUE_FIXTURE="$PWD/internal/orchestrator/frontend/node_modules/.issue-fixture.html" go test ./internal/orchestrator -run '^TestIssueRecoveryFixture$' -count=1
+cd internal/orchestrator/frontend
+JAWA_ISSUE_FIXTURE="$PWD/node_modules/.issue-fixture.html" JAWA_ISSUE_SCREENSHOTS="$PWD/node_modules/.issue-screenshots" npm run test:issue-recovery
+```
+
+This checks exact enhanced form fields, retained draft/token, uncertainty controls,
+keyboard/touch interaction, mutually exclusive controls and overflow at
+1440/390/320px, with optional real Chromium screenshots. No live issue is created.

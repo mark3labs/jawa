@@ -201,6 +201,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fx.goTo = boardPath(project.ID)
 		}
 	case "/cards":
+		if r.FormValue("create_issue") != "" || r.FormValue("issue_recovery") != "" || r.FormValue("issue_submission") != "" && a.hasIssueSubmission(r.FormValue("issue_submission")) {
+			err = a.submitIssueCard(r)
+			if err != nil {
+				a.issueCardError(w, r, err)
+				return
+			}
+			break
+		}
 		_, err = a.s.CreateCardDetails(r.FormValue("project_id"), r.FormValue("title"), r.FormValue("description"), r.FormValue("issue_url"))
 	case "/cards/move":
 		raw := r.FormValue("position")

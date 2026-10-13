@@ -102,8 +102,14 @@ func TestPRRefreshBusyAndCancelled(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	a.workflow.SetProviderChecks(nil, func(ctx context.Context, _ Attempt) (PRCheck, error) { <-ctx.Done(); return PRCheck{}, ctx.Err() })
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	ctx, cancel := context.WithCancel(t.Context())
+	// Cancel only after the check starts: a short deadline can expire during
+	// authentication under race instrumentation, leaving the old clear evidence.
+	a.workflow.SetProviderChecks(nil, func(ctx context.Context, _ Attempt) (PRCheck, error) {
+		cancel()
+		<-ctx.Done()
+		return PRCheck{}, ctx.Err()
+	})
 	defer cancel()
 	// Route-level cancellation must leave fresh checking evidence, not stale clear.
 	r := httptest.NewRequest("POST", "/prs/refresh", strings.NewReader(form.Encode())).WithContext(ctx)

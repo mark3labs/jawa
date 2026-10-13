@@ -149,6 +149,7 @@ async function createCard(title) {
  await newCard().click();
  await page.getByLabel('Title', {exact: true}).fill(title);
  await page.getByLabel('Description', {exact: true}).fill('Offline browser orchestration test');
+ await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
  await page.getByRole('button', {name: 'Create card', exact: true}).click();
  await card(title).waitFor();
 }

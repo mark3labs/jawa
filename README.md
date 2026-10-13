@@ -492,7 +492,7 @@ Pushes publish images to GHCR with branch and commit tags; `master` updates
 
 The authenticated Settings page saves dashboard overrides for the running
 orchestrator's HTTP/NATS listener addresses, debug logging, GitHub/Forgejo
-read-only provider tokens, and GitHub's `JAWA_ALLOW_NO_CI` opt-in. Dashboard
+provider tokens, and GitHub's `JAWA_ALLOW_NO_CI` opt-in. Dashboard
 values override explicit `orchestrator` CLI flags, which override the
 `JAWA_ORCHESTRATOR_LISTEN`, `JAWA_ORCHESTRATOR_NATS_LISTEN`, and
 `JAWA_ORCHESTRATOR_DEBUG` environment defaults. `JAWA_ORCHESTRATOR_DATA_DIR`
@@ -692,3 +692,28 @@ forge reply traffic. Audience binding does not fix this same-agent exposure.
 This residual risk is explicitly accepted for trusted agents; do not describe
 proxy attempts as blocked. Use TLS/network controls and trusted credentials.
 Hostile-agent isolation needs separate accounts/users and validated provisioning.
+
+### Create an issue with a new card
+
+New card's **Create issue** checkbox is on by default when no existing issue is
+selected. Only submitting **Create card** writes to the provider; opening,
+toggling, refreshing and cancelling never create issues. Turn it off for an
+ordinary unlinked card. Selecting an existing issue replaces the checkbox with
+Autofill and never creates a second issue. The issue uses the trimmed card title
+and exact description, including Markdown or an empty body.
+
+The server token needs repository **Issues read/write** for GitHub, or repository
+issue-write permission on the supported Forgejo version. Read-only tokens still
+work for listing/verification and issue-off submissions; agent push credentials
+are separate. Issue creation supports github.com and trusted HTTPS Forgejo
+origins (including ports), not HTTP or deployment-subpath repositories.
+
+A failed submit retains the draft. A definitely rejected request offers explicit
+retry or linking/unlinked recovery. A lost response may have created an issue:
+**Refresh issues / check repository**, then select it or paste its canonical
+same-repository issue URL, or explicitly recover without a link. Creation is
+never automatically retried. The durable submission ledger survives restart and
+card deletion; successful remote creation followed by a local save failure
+retries only card saving. Exact-once remote creation cannot be guaranteed across
+a lost response. Back up the private database before migration; the ledger
+retains submitted drafts and outcome evidence, never provider credentials.

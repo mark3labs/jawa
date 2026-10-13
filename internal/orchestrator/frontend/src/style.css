@@ -806,3 +806,17 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
  .run-trace-source, .run-composer-surface { padding: .75rem; }
  .run-controls .cn-button { flex: 1 1 auto; }
 }
+
+[data-create-issue] { display: flex; align-items: center; gap: .5rem; min-height: 44px; white-space: nowrap; }
+[data-create-issue] [data-slot="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+[data-create-issue] [data-disabled] { cursor: not-allowed; opacity: .5; }
+#card-issue-recovery { overflow-wrap: anywhere; }
+#card-issue-recovery label { display: block; margin-block: .5rem; }
+#card-issue-recovery input, #card-issue-recovery select { width: 100%; min-height: 44px; }
+#card-dialog form[data-pending]::after { content: 'Creating card… Please wait.'; display: block; }
+
+/* Preserve an operable native control when component enhancement is unavailable. */
+@media (scripting: none) {
+  [data-create-issue] [data-slot="checkbox"] { display: none; }
+  #card-create-issue { clip-path: none !important; position: static !important; width: 20px !important; height: 20px !important; margin: 0 !important; }
+}

@@ -113,6 +113,21 @@ CREATE TABLE workflow_pr_merge_overrides (
  attempt_id TEXT PRIMARY KEY REFERENCES workflow_attempts(id) ON DELETE CASCADE,
  pr_url TEXT NOT NULL, provider TEXT NOT NULL, repo TEXT NOT NULL,
  base_branch TEXT NOT NULL, marked_at INTEGER NOT NULL);
+CREATE TABLE issue_submissions (
+ token TEXT PRIMARY KEY,
+ project_id TEXT NOT NULL,
+ provider TEXT NOT NULL,
+ repository TEXT NOT NULL,
+ title TEXT NOT NULL,
+ body TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('reserved','rejected','uncertain','created','completed')),
+ issue_url TEXT NOT NULL DEFAULT '',
+ issue_number INTEGER NOT NULL DEFAULT 0,
+ card_id TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL,
+ updated_at INTEGER NOT NULL
+);
+-- Deliberately no cascading foreign keys: deletion must not erase replay evidence.
 CREATE TABLE workflow_ready_overrides (
  attempt_id TEXT PRIMARY KEY REFERENCES workflow_attempts(id) ON DELETE CASCADE,
  pr_url TEXT NOT NULL,

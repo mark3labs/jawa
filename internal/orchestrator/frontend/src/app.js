@@ -252,6 +252,6 @@ document.addEventListener('datastar-fetch', event => {
     buttons.forEach(button => { button.disabled = false; });
     const notice = document.getElementById('notice');
     const failed = notice && !notice.hidden && !notice.classList.contains('info');
-    if (!failed && (el.closest('dialog') || el.hasAttribute('data-reset-on-success'))) el.reset();
+    if (!failed && (el.closest('dialog') || el.hasAttribute('data-reset-on-success')) && (el.action !== new URL('/cards', location.href).href || !el.closest('dialog')?.open)) el.reset();
   }
 });

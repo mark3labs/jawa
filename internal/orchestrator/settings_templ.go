@@ -316,7 +316,7 @@ func settingsContent(d pageData) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "Read-only tokens let Jawa verify pull requests, CI and review feedback. A card reaches Done only after that passes; Jawa never merges for you.")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "Read-only tokens support listing and verification. New card defaults Create issue on; creation needs repository Issues read/write (GitHub) or issue-write (Forgejo). Turn creation off to use read-only tokens. A card reaches Done only after that passes; Jawa never merges for you.")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -723,7 +723,7 @@ func providerRow(p providerConfig) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " read-only token</label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " provider token</label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

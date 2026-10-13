@@ -94,3 +94,10 @@ may block more than once. It adds `workflow_interactions`, the durable build
 guidance outbox (one pending/queued blocker per task, cascading with attempts).
 Existing blockers have no interaction row and remain terminal. See
 `../BLOCKER_GUIDANCE.md`.
+
+Version `00018_issue_submissions.sql` adds the New card issue-write reservation
+ledger. No credentials or raw provider responses are stored. Draft, configured
+repository/provider, minimal outcome and completion evidence survive card/project
+deletion intentionally, so a replay cannot recreate a deleted resource. Reserved
+writes become uncertain on application startup; this is not a background outbox
+and never triggers remote retries. Use one orchestrator per database.

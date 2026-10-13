@@ -11,6 +11,7 @@
     "test:cards": "node card-fixture.mjs",
     "test:smoke": "node smoke.mjs",
     "test:issues": "node issues.mjs",
+    "test:issue-recovery": "node issue-recovery.mjs",
     "test:fix": "node fix.mjs",
     "test:responsive": "node responsive.mjs",
     "test:pwa": "node pwa.mjs",

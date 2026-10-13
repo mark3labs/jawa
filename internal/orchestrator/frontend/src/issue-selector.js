@@ -12,7 +12,75 @@ export function setupIssueSelector(host, cleanup) {
   if (!autofill || !title || !description) return;
   if (!form || !dialog || !project || !select || !status || !refresh) return;
 
+  const create = form.querySelector('[name="create_issue"]');
+  const token = form.querySelector('[name="issue_submission"]');
+  const createRoot = host.querySelector('[data-slot="checkbox"]');
+  const createLabel = host.querySelector('[data-create-issue]');
+  const createHelp = host.querySelector('[data-create-help]');
+  const recovery = () => host.querySelector('#card-issue-recovery');
+  let pending = false;
+  let pendingFields = [];
   const sources = new Map();
+  const freshToken = () => {
+    if (token) token.value = Array.from(crypto.getRandomValues(new Uint8Array(32)), n => n.toString(16).padStart(2, '0')).join('');
+  };
+  function updateIntent() {
+    const linked = !!select.value;
+    const recovering = !!recovery()?.querySelector('[name="issue_recovery"]')?.value;
+    const blocked = ['reserved', 'uncertain', 'rejected'].includes(recovery()?.dataset.state);
+    if (create) {
+      create.disabled = pending || linked || recovering || blocked;
+      if (linked || recovering || blocked) create.checked = false;
+    }
+    if (createRoot && create) {
+      // Programmatic resets/locks must also update the shadcn visible control.
+      window.templ?.checkbox?.setChecked(createRoot, create.checked);
+      createRoot.setAttribute('aria-disabled', String(create.disabled));
+      createRoot.toggleAttribute('data-disabled', create.disabled);
+      createRoot.tabIndex = create.disabled ? -1 : 0;
+    }
+    if (createLabel) createLabel.hidden = linked;
+    if (createHelp) createHelp.hidden = linked;
+    autofill.hidden = !linked;
+    const help = host.querySelector('#card-issue-autofill-help');
+    if (help) help.hidden = !linked;
+  }
+  function resetIntent() {
+    if (create) create.checked = true;
+    if (recovery()) { recovery().replaceChildren(); delete recovery().dataset.state; }
+    freshToken();
+    updateIntent();
+  }
+  function projectChanged() { clear(); resetIntent(); load(); }
+  function recoveryChanged() { updateIntent(); }
+  function fetchState(event) {
+    if (event.detail.el !== form) return;
+    if (event.detail.type === 'started') pending = true;
+    else if (event.detail.type === 'finished') pending = false;
+    else return;
+    if (pending) {
+      // Datastar emits started before constructing FormData. Preserve successful
+      // control values in hidden mirrors before locking the visible controls.
+      for (const control of [project, select, create]) {
+        if (!control?.name || control.disabled || (control.type === 'checkbox' && !control.checked)) continue;
+        const mirror = document.createElement('input');
+        mirror.type = 'hidden'; mirror.name = control.name; mirror.value = control.value;
+        form.append(mirror); pendingFields.push(mirror);
+      }
+    } else {
+      pendingFields.forEach(field => field.remove()); pendingFields = [];
+    }
+    project.disabled = pending;
+    refresh.disabled = pending;
+    if (pending) { cancel(); select.disabled = true; }
+    else select.disabled = sources.size === 0;
+    updateAutofill();
+    updateIntent();
+  }
+  const recoveryObserver = new MutationObserver(updateIntent);
+  if (recovery()) recoveryObserver.observe(host, {childList: true, subtree: true, attributes: true, attributeFilter: ['data-state']});
+  host.addEventListener('change', recoveryChanged);
+  document.addEventListener('datastar-fetch', fetchState);
   let loadedProject;
   let disposed = false;
   let generation = 0;
@@ -28,7 +96,8 @@ export function setupIssueSelector(host, cleanup) {
   }
 
   function updateAutofill() {
-    autofill.disabled = disposed || !dialog.open || select.disabled ||
+    updateIntent();
+    autofill.disabled = pending || disposed || !dialog.open || select.disabled ||
       project.value !== loadedProject || !sources.has(select.value);
   }
 
@@ -50,7 +119,7 @@ export function setupIssueSelector(host, cleanup) {
   }
 
   async function load() {
-    if (disposed) return;
+    if (disposed || pending) return;
     clearTimeout(resetTimer);
     cancel();
     clear();
@@ -110,10 +179,11 @@ export function setupIssueSelector(host, cleanup) {
   function onReset() {
     cancel();
     clear();
+    resetIntent();
     status.textContent = '';
     clearTimeout(resetTimer);
     // The reset event fires before the browser restores default project values.
-    resetTimer = setTimeout(load, 0);
+    resetTimer = setTimeout(() => { resetIntent(); load(); }, 0);
   }
 
   const observer = new MutationObserver(() => {
@@ -128,7 +198,7 @@ export function setupIssueSelector(host, cleanup) {
   observer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
   select.addEventListener('change', updateAutofill);
   autofill.addEventListener('click', copyIssue);
-  project.addEventListener('change', load);
+  project.addEventListener('change', projectChanged);
   refresh.addEventListener('click', load);
   form.addEventListener('reset', onReset);
   clear();
@@ -141,7 +211,11 @@ export function setupIssueSelector(host, cleanup) {
     observer.disconnect();
     select.removeEventListener('change', updateAutofill);
     autofill.removeEventListener('click', copyIssue);
-    project.removeEventListener('change', load);
+    project.removeEventListener('change', projectChanged);
+    pendingFields.forEach(field => field.remove());
+    recoveryObserver.disconnect();
+    host.removeEventListener('change', recoveryChanged);
+    document.removeEventListener('datastar-fetch', fetchState);
     refresh.removeEventListener('click', load);
     form.removeEventListener('reset', onReset);
     clear();

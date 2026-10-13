@@ -91,6 +91,10 @@ func OpenStore(path string) (*Store, error) {
 			return fail(err)
 		}
 	}
+	// A previous process cannot still own an in-flight reservation.
+	if _, err = db.Exec(`UPDATE issue_submissions SET state='uncertain',updated_at=? WHERE state='reserved'`, time.Now().Unix()); err != nil {
+		return fail(err)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -185,6 +189,23 @@ func (s *Store) CreateCard(project, title, desc string) (Card, error) {
 	return s.CreateCardDetails(project, title, desc, "")
 }
 func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, error) {
+	tx, err := s.writeTx()
+	if err != nil {
+		return Card{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	c, err := insertCardDetails(tx, project, title, desc, issue)
+	if err != nil {
+		return Card{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Card{}, err
+	}
+	return c, nil
+}
+
+// Shared by ordinary creation and ledger finalization in the same write transaction.
+func insertCardDetails(tx *sql.Tx, project, title, desc, issue string) (Card, error) {
 	title = strings.TrimSpace(title)
 	issue = strings.TrimSpace(issue)
 	if issue != "" {
@@ -196,32 +217,21 @@ func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, err
 	if title == "" {
 		return Card{}, errors.New("title required")
 	}
-	tx, err := s.writeTx()
-	if err != nil {
-		return Card{}, err
-	}
-	// Rollback is best-effort; after Commit it returns sql.ErrTxDone.
-	defer func() { _ = tx.Rollback() }()
 	var exists bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)`, project).Scan(&exists); err != nil {
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM projects WHERE id=?)`, project).Scan(&exists); err != nil {
 		return Card{}, err
 	}
 	if !exists {
 		return Card{}, errors.New("unknown project")
 	}
 	c := Card{ID: newID(), ProjectID: project, Title: title, Description: desc, IssueURL: issue, Status: "Todo", CreatedAt: time.Now().UTC().Truncate(time.Second)}
-	if err = tx.QueryRow(`SELECT coalesce(max(position)+1,0) FROM cards WHERE project_id=? AND status='Todo'`, project).Scan(&c.Position); err != nil {
+	if err := tx.QueryRow(`SELECT coalesce(max(position)+1,0) FROM cards WHERE project_id=? AND status='Todo'`, project).Scan(&c.Position); err != nil {
 		return Card{}, err
 	}
-	_, err = tx.Exec(`INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url) VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.ProjectID, c.Title, c.Description, c.Status, c.Position, c.CreatedAt.Unix(), c.IssueURL)
-	if err != nil {
-		return Card{}, err
-	}
-	if err = tx.Commit(); err != nil {
-		return Card{}, err
-	}
-	return c, nil
+	_, err := tx.Exec(`INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url) VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.ProjectID, c.Title, c.Description, c.Status, c.Position, c.CreatedAt.Unix(), c.IssueURL)
+	return c, err
 }
+
 func (s *Store) Cards(project string) ([]Card, error) {
 	return s.queryCards(context.Background(), project)
 }
