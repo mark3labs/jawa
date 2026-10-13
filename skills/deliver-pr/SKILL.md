@@ -44,6 +44,10 @@ Follow the `create-pr` skill for host detection, template, body and UI
 evidence, targeting the task's base branch. If a PR for this branch exists,
 update its description only when it is now inaccurate.
 
+For new or existing PRs, use `create-pr`'s GitHub screenshot-attachment example
+when UI evidence is relevant and posting is authorized; reuse the task's PR
+and existing evidence rather than creating a replacement PR or duplicate upload.
+
 ## 5. Get to green
 
 Loop until CI and review are clean:
