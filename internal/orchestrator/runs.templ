@@ -81,7 +81,7 @@ templ runRow(d pageData, a Attempt) {
 					<span class="run-title muted">Deleted card</span>
 				}
 			</span>
-			<span class={ "run-state", "tone-" + runTone(a) }>{ d.runLabel(a) }</span>
+			@badge.Badge(badge.Props{Class:"run-state tone-"+runTone(a), Variant:badge.VariantOutline}) { { d.runLabel(a) } }
 			<span class="run-attempt">#{ strconv.Itoa(a.Number) }</span>
 			<span class="run-agent">{ displayDash(a.AgentID) }</span>
 			<span class="run-pr">

@@ -45,12 +45,14 @@ func TestComponentSourceConformance(t *testing.T) {
 			t.Errorf("%s has non-transport input: %s", file, field)
 		}
 	}
-	source, err := os.ReadFile("issue_submission_http.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(source), "<input") || forbidden.Match(source) {
-		t.Fatal("recovery controls assembled in Go")
+	for _, file := range []string{"issue_submission_http.go", "sse.go"} {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(source), "<input") || strings.Contains(string(source), "<div") || forbidden.Match(source) {
+			t.Fatalf("controls assembled in %s", file)
+		}
 	}
 }
 

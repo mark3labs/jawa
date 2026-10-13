@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"bytes"
 	"errors"
-	"html"
 	"io"
 	"net/http"
 	"slices"
@@ -58,10 +57,13 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 		return
 	}
 	// Expected action failures are finite 200 responses, not retryable mutations.
-	// Escape explicitly: neither markup nor SSE fields may come from an error.
-	notice := `<div id="notice" class="notice" role="alert" aria-live="polite">` + html.EscapeString(message) + `</div>`
+	// Render through the same escaped component boundary as normal notices.
+	var notice bytes.Buffer
+	if err := notification(message, "").Render(r.Context(), &notice); err != nil {
+		return
+	}
 	stream := newSSEWriter(w)
-	if err := stream.write(elementsFrame(notice)); err != nil {
+	if err := stream.write(elementsFrame(notice.String())); err != nil {
 		return
 	}
 	if r.URL.Path == "/cards/cancel" {
