@@ -240,10 +240,10 @@ templ cardMenu(d pageData, c Card) {
 				@menuPost(d, c, "/cards/planning/cancel", "Cancel planning", "reset", nil)
 			}
 			if c.Status != "Todo" && c.Status != "Planning" {
-				if canAction(c, d.attempts, "reset") {
+				if d.canReset(c) {
 					@menuPost(d, c, "/cards/reset", "Reset to Todo", "reset", nil)
 				} else {
-					@menuDisabled("Reset to Todo", "reset", actionReason(c, d.attempts, "reset"))
+					@menuDisabled("Reset to Todo", "reset", d.resetReason(c))
 				}
 			}
 			if c.Status == "Building" || c.Status == "Fix" {

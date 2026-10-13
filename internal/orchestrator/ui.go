@@ -520,6 +520,13 @@ func (d pageData) cardActivity(c Card) time.Time {
 	return updated
 }
 
+func (d pageData) canReset(c Card) bool {
+	return d.resetReason(c) == ""
+}
+func (d pageData) resetReason(c Card) string {
+	return resetReason(c, d.attempts, d.pendingResumes[c.ID])
+}
+
 func (d pageData) canForceReady(c Card) bool {
 	return forceReadyReason(c, d.attempts, d.pendingResumes[c.ID]) == ""
 }

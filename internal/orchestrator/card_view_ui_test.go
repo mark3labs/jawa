@@ -51,3 +51,32 @@ func TestCardViewShortcutHTTP(t *testing.T) {
 		}
 	}
 }
+
+func TestCardResetPendingReservationUI(t *testing.T) {
+	w := actionWorkflow(t)
+	c := workflowCard(t, w.s)
+	a := actionAttempt(t, w, c, "failed", "failed")
+	c.Status = "Building"
+	d := pageData{attempts: []Attempt{a}, pendingResumes: map[string]bool{c.ID: true}}
+	if d.canReset(c) || d.resetReason(c) != resetReason(c, []Attempt{a}, true) {
+		t.Fatal("page ignored pending reservation")
+	}
+	var out strings.Builder
+	if err := cardMenu(d, c).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Resume pending — use Force stop first.") || strings.Contains(out.String(), `action="/cards/reset"`) {
+		t.Fatalf("pending reset menu: %s", out.String())
+	}
+	d.pendingResumes[c.ID] = false
+	if !d.canReset(c) || d.resetReason(c) != "" {
+		t.Fatal("inactive failure not resettable")
+	}
+	out.Reset()
+	if err := cardMenu(d, c).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `action="/cards/reset"`) {
+		t.Fatal("Reset action missing after reservation cleared")
+	}
+}
