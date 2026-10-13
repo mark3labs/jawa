@@ -35,6 +35,14 @@ templ head(title string) {
 		<title>{ title }</title>
 		<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"/>
 		<link rel="preload" href="/assets/inter.woff2" as="font" type="font/woff2" crossorigin/>
+		// Keep this first-paint fallback aligned with frontend/src/style.css.
+		// Full styling and contextual icon sizes remain in the external stylesheet.
+		<style>
+			html, body { background: #130f0b; color: #eee2cf; }
+			body { margin: 0; font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+			.ic { width: 16px; height: 16px; flex: none; }
+			.lane-ic, .tone-ic { width: 15px; height: 15px; flex: none; }
+		</style>
 		<link rel="stylesheet" href="/assets/style.css"/>
 		<script type="module" src="/assets/app.js"></script>
 	</head>
@@ -53,7 +61,7 @@ templ logo(size int) {
 }
 
 templ icon(name string) {
-	<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		switch name {
 			case "archive":
 				<rect x="3" y="4" width="18" height="4" rx="1"></rect>
@@ -131,7 +139,7 @@ templ icon(name string) {
 
 // laneIcon is the Linear-style status glyph shown on board columns.
 templ laneIcon(status string) {
-	<svg class={ "ic lane-ic lane-" + status } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+	<svg class={ "ic lane-ic lane-" + status } width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 		switch status {
 			case "Todo":
 				<circle cx="12" cy="12" r="8" stroke-dasharray="3.2 3.2"></circle>
@@ -153,7 +161,7 @@ templ laneIcon(status string) {
 
 // toneIcon is the glyph for an attempt's state.
 templ toneIcon(tone string) {
-	<svg class={ "ic tone-ic tone-" + tone } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg class={ "ic tone-ic tone-" + tone } width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		switch tone {
 			case "running":
 				<circle cx="12" cy="12" r="8"></circle>

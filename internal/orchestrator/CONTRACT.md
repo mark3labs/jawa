@@ -47,6 +47,30 @@ https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rock
 It includes Datastar v1.0.4 and Rocket beta.2 (beta API). Datastar's license is in
 frontend/DATASTAR-LICENSE.md, Inter's OFL license in frontend/INTER-LICENSE.
 
+## First-paint and card fixture checks
+
+Export deterministic **real Board and Archive pages** (the Archive export uses
+`.archive` as a suffix) from the repository root:
+
+```sh
+JAWA_CARD_VISUAL_HTML=/tmp/jawa-first-paint.html go test ./internal/orchestrator -run '^TestCardVisualFixture$' -count=1
+cd internal/orchestrator/frontend
+JAWA_CARD_VISUAL_HTML=/tmp/jawa-first-paint.html CHROMIUM_PATH=/path/to/chromium JAWA_FIRST_PAINT_SCREENSHOT_DIR=/tmp/jawa-first-paint-images npm run test:first-paint
+JAWA_CARD_VISUAL_HTML=/tmp/jawa-first-paint.html CHROMIUM_PATH=/path/to/chromium npm run test:cards
+```
+
+The first-paint check serves only fixtures and embedded assets, blocks service
+workers, and gates CSS and JavaScript independently with bounded cleanup. It
+covers cold loads, reloads, native Board→Archive links and back at 390/1440px.
+DOM geometry sampled while CSS is held is **not evidence of paint**: the normal
+stylesheet is render-blocking. Failed CSS with JavaScript held supplies an
+actually paintable fallback; paint timing, colors and bounded icon sizes are
+checked before releasing JavaScript. Successful CSS with delayed/disabled JS
+must remain visible and preserve contextual icon sizes. Optional Chromium PNGs
+capture fallback and styled loading intervals; these are local test artifacts,
+not committed assets. Exact reporter-flash reproduction and physical-device
+checks must be recorded separately, not inferred from these regressions.
+
 ## Mobile and PWA checks
 
 The public `/sw.js` endpoint serves the embedded worker with `no-cache`, before
