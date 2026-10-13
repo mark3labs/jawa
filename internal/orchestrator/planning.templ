@@ -9,7 +9,16 @@ templ planningContent(d pageData) {
 				<div class="view-title"><div><p class="meta">{ cardKey(d.projects, c) } · { c.Status }</p><h1>{ c.Title }</h1></div></div>
 				<a class="btn" href={ templ.SafeURL(boardPath(c.ProjectID)) }>Back to board</a>
 			</div>
-			<section class="planning-section" aria-label="Original description">
+			if la := latestAttempt(c.ID,d.attempts); len(la)>0 {
+    <section class="planning-section" aria-label="Latest run">
+     <h2>Latest run</h2>
+     @cardChips(d,c)
+     if r,ok := d.readyOverrides[la[0].ID]; ok {
+      <dl class="facts"><div><dt>Operator</dt><dd>{ r.Operator }</dd></div><div><dt>Reason</dt><dd>{ r.Reason }</dd></div></dl>
+     }
+    </section>
+   }
+   <section class="planning-section" aria-label="Original description">
 				<h2>Original description</h2>
 				if c.Description != "" {
 					@planningMarkdownText(c.Description)

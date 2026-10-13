@@ -160,7 +160,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/guide", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/force-stop", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/cards/force-ready", "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/guide", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/force-stop", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -322,6 +322,19 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = a.workflow.CancelCard(r.Context(), r.FormValue("card_id"))
 			if err == nil {
 				fx.flash = "Cancellation was requested; it is not confirmed until the agent reports cancellation. External actions already taken cannot be undone."
+			}
+		}
+	case "/cards/force-ready":
+		var operator string
+		operator, err = a.requestOperator(r)
+		if err == nil {
+			if a.workflow == nil {
+				err = errors.New("workflow unavailable")
+			} else {
+				err = a.workflow.ForceReady(r.Context(), r.FormValue("card_id"), r.FormValue("expected"), r.FormValue("pr_number"), r.FormValue("reason"), operator, r.FormValue("acknowledge") == "yes")
+				if err == nil {
+					fx.flash = "Card moved to Done. Readiness checks were bypassed; the PR was not merged."
+				}
 			}
 		}
 	case "/cards/force-stop":
@@ -826,6 +839,7 @@ func Command() *cobra.Command {
 			}
 		}()
 		workflow.SetProviderChecks(ProviderVerifier(s, nil), ProviderConflictChecker(s, nil))
+		workflow.SetProviderIdentity(ProviderIdentity(s, nil))
 		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -969,4 +983,18 @@ func (a *app) refreshPRChecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, parseViewParams(r, "").Path(), http.StatusSeeOther)
+}
+
+// Attribution is derived from a currently valid server session, never the form.
+func (a *app) requestOperator(r *http.Request) (string, error) {
+	c, err := r.Cookie("session")
+	if err != nil {
+		return "", errors.New("authenticated operator required")
+	}
+	var user string
+	err = a.s.db.QueryRowContext(r.Context(), `SELECT a.username FROM admin a WHERE a.id=1 AND EXISTS(SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?)`, tokenHash(c.Value), time.Now().Unix()).Scan(&user)
+	if err != nil || strings.TrimSpace(user) == "" {
+		return "", errors.New("authenticated operator required")
+	}
+	return user, nil
 }

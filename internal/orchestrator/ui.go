@@ -23,6 +23,8 @@ var uiAssets embed.FS
 
 // uiSnapshot is shared by full pages and SSE, so both show the same guards.
 type uiSnapshot struct {
+	readyOverrides map[string]readyOverride
+	pendingResumes map[string]bool
 	autoResumes    map[string]autoResumeStatus
 	blockers       map[string]BlockerGuidance // open build blockers by card
 	projects       []Project
@@ -55,6 +57,27 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	}
 	if !snap.natsConfigured {
 		snap.nats.Username = "worker"
+	}
+	if snap.readyOverrides, err = s.readyOverrides(); err != nil {
+		return snap, err
+	}
+	snap.pendingResumes = make(map[string]bool)
+	rows, err := s.db.Query(`SELECT DISTINCT card_id FROM failed_resumes WHERE status='pending'`)
+	if err != nil {
+		return snap, err
+	}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return snap, err
+		}
+		snap.pendingResumes[id] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return snap, err
 	}
 	if snap.autoResumes, err = s.autoResumeStatuses(); err != nil {
 		return snap, err
@@ -229,6 +252,8 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 	legacy := len(latest) == 0
 	terminal := !legacy && terminalFailure(latest[0])
 	switch action {
+	case "force-ready":
+		return forceReadyReason(c, attempts, false) == ""
 	case "start":
 		return c.Status == "Building" && legacy && !active
 	case "resume":
@@ -275,6 +300,9 @@ func passwordMinLength(kind string) string {
 }
 
 func actionReason(c Card, attempts []Attempt, action string) string {
+	if action == "force-ready" {
+		return forceReadyReason(c, attempts, false)
+	}
 	for _, a := range attempts {
 		if a.CardID != c.ID {
 			continue
@@ -520,4 +548,23 @@ func (d pageData) cardActivity(c Card) time.Time {
 		}
 	}
 	return updated
+}
+
+func (d pageData) canForceReady(c Card) bool {
+	return forceReadyReason(c, d.attempts, d.pendingResumes[c.ID]) == ""
+}
+func (d pageData) readyDialogAction(c Card) string {
+	a := latestAttempt(c.ID, d.attempts)[0]
+	p, ok := selectedProject(d.projects, c.ProjectID)
+	if !ok || p.ID != c.ProjectID {
+		return ""
+	}
+	pr, _ := forceReadyPR(c, a, p, "")
+	return "$readyCard = " + strconv.Quote(c.ID) + "; $readyToken = " + strconv.Quote(forceReadyToken(c, a, p)) + "; $readyPR = " + strconv.Quote(pr) + "; $readyLane = " + strconv.Quote(c.Status) + "; $readyNumber = ''; $readyReason = ''; $readyAcknowledged = false; $readyOpen = true"
+}
+func (d pageData) runLabel(a Attempt) string {
+	if _, ok := d.readyOverrides[a.ID]; ok && a.Ready {
+		return "Ready (manual)"
+	}
+	return runLabel(a)
 }

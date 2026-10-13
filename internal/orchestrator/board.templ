@@ -127,7 +127,7 @@ templ cardChips(d pageData, c Card) {
 				if d.prChecks[c.ID].State == "merged" && la[0].Ready {
 					<span>Merged</span>
 				} else {
-					<span>{ runLabel(la[0]) }</span>
+					<span>{ d.runLabel(la[0]) }</span>
 				}
 			</a>
 		}
@@ -139,6 +139,7 @@ templ cardChips(d pageData, c Card) {
 	}
 	@assignedAgent(d.cardAgent(c))
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
+		@manualReadyBadge(d, la[0])
 		if pr := safeActivityURL(la[0].PRURL); pr != "" {
 			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
 				@icon("pr")
@@ -255,6 +256,12 @@ templ cardMenu(d pageData, c Card) {
 					@menuDisabled("Cancel run", "reset", "Cancellation requires an active run with a confirmed agent and remote target.")
 				}
 			}
+   if d.canForceReady(c) {
+    <button type="button" class="menu-item danger" role="menuitem" data-on:click={ d.readyDialogAction(c) }>
+     @icon("check")
+     <span>Force ready…</span>
+    </button>
+   }
 			if canAction(c, d.attempts, "force-stop") {
 				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$forceCard = " + strconv.Quote(c.ID) + "; $forceAcknowledged = false; $forceOpen = true" }>
 					@icon("reset")
@@ -424,4 +431,10 @@ func hasArchivedCards(cards []Card, project string) bool {
 		}
 	}
 	return false
+}
+
+templ manualReadyBadge(d pageData, a Attempt) {
+ if r,ok := d.readyOverrides[a.ID]; ok {
+  <span class="chip" title={ "Manually readied at " + r.MarkedAt.UTC().Format("2006-01-02 15:04:05.000 UTC") }>Manually readied</span>
+ }
 }

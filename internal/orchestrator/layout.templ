@@ -231,7 +231,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
+	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,readyOpen:false,readyCard:'',readyToken:'',readyPR:'',readyNumber:'',readyReason:'',readyAcknowledged:false,readyLane:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -649,6 +649,29 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
+
+ <dialog id="ready-dialog" aria-labelledby="ready-dialog-title" data-effect="if ($readyOpen && !el.open) el.showModal(); else if (!$readyOpen && el.open) el.close()" data-on:close="$readyOpen = false" data-on:cancel="$readyOpen = false">
+  @dialog.Title(dialog.TitleProps{ID:"ready-dialog-title"}) { Force this card to Done? }
+  @dialog.Description() {
+   CI, review and mergeability checks will be skipped. Inspect the pull request manually before confirming. This only moves the card to Done; it does not merge the PR or make any changes on GitHub or Forgejo.
+  }
+  <form method="post" action="/cards/force-ready" data-on:submit__prevent="@post('/cards/force-ready', {contentType:'form'})">
+   <input type="hidden" name="_csrf" value={ d.csrf }/>
+   @viewFields(d.v)
+   <input type="hidden" name="card_id" data-bind:ready-card/>
+   <input type="hidden" name="expected" data-bind:ready-token/>
+   <p data-show="$readyPR !== ''"><a data-attr:href="$readyPR" data-text="$readyPR" target="_blank" rel="noopener noreferrer">Pull request</a></p>
+   <label data-show="$readyPR === ''">PR number
+    <input type="number" name="pr_number" min="1" step="1" data-bind:ready-number data-attr:disabled="$readyPR !== ''" data-attr:required="$readyPR === ''"/>
+   </label>
+   <label>Reason (optional, at most 1000 bytes)<textarea name="reason" data-bind:ready-reason></textarea></label>
+   <label><input type="checkbox" name="acknowledge" value="yes" data-bind:ready-acknowledged required/>I understand that CI, review and readiness checks are bypassed and I have inspected the PR manually.</label>
+   @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
+    @button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-on:click":"$readyOpen = false"}}) { <span data-text="'Keep in ' + $readyLane">Keep in lane</span> }
+    @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn danger"}) { Force ready }
+   }
+  </form>
+ </dialog>
 	<form id="move-form" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)

@@ -234,7 +234,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 16 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 17 {
 		t.Fatal(version, err)
 	}
 }
@@ -258,11 +258,12 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  ALTER TABLE cards DROP COLUMN archived;
  DROP TABLE auto_resumes;
  ALTER TABLE failed_resumes DROP COLUMN automatic;
+ DROP TABLE workflow_ready_overrides;
  DROP TABLE workflow_pr_merge_overrides;
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16)`)
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16,17)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -289,11 +290,12 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 		t.Fatal(err)
 	}
 	execTest(t, database, `DROP TABLE auto_resumes; ALTER TABLE failed_resumes DROP COLUMN automatic;
+ DROP TABLE workflow_ready_overrides;
  DROP TABLE workflow_pr_merge_overrides;
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16);
+ DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16,17);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -331,10 +333,11 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DROP TABLE workflow_interactions;
+	execTest(t, database, `DROP TABLE workflow_ready_overrides;
+ DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (15,16);
+ DELETE FROM goose_db_version WHERE version_id IN (15,16,17);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
@@ -367,7 +370,8 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DELETE FROM goose_db_version WHERE version_id=16;
+	execTest(t, database, `DELETE FROM goose_db_version WHERE version_id IN (16,17);
+ DROP TABLE workflow_ready_overrides;
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,state,run_state,outcome_json,created_at,updated_at) VALUES
@@ -383,5 +387,48 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 		if err := database.QueryRow(`SELECT run_state FROM workflow_attempts WHERE id=?`, id).Scan(&got); err != nil || got != want {
 			t.Fatalf("%s run_state=%q want %q (%v)", id, got, want, err)
 		}
+	}
+}
+
+func TestReadyOverrideMigrationFrom16(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	ctx := context.Background()
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `DROP TABLE workflow_ready_overrides;
+ DELETE FROM goose_db_version WHERE version_id=17;
+ INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
+ INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,outcome_json,created_at,updated_at) VALUES('a','c',1,'task','{}','original',1,1);
+ INSERT INTO typed_reports VALUES('report','task','call','agent','run','attempt','turn','complete_task','{}',1);`)
+	for range 2 {
+		if err := Migrate(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var version int
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 17 {
+		t.Fatal(version, err)
+	}
+	var original string
+	if err := database.QueryRow(`SELECT outcome_json FROM workflow_attempts WHERE id='a'`).Scan(&original); err != nil || original != "original" {
+		t.Fatal(original, err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM typed_reports`).Scan(&count); err != nil || count != 1 {
+		t.Fatal(count, err)
+	}
+	execTest(t, database, `PRAGMA foreign_keys=ON;
+ INSERT INTO workflow_ready_overrides VALUES('a','pr','sha','token','{}','operator','reason',1);`)
+	if _, err := database.Exec(`INSERT INTO workflow_ready_overrides VALUES('a','pr','sha','token','{}','operator','reason',2)`); err == nil {
+		t.Fatal("duplicate attempt allowed")
+	}
+	if _, err := database.Exec(`INSERT INTO workflow_ready_overrides VALUES('missing','pr','sha','token','{}','operator','reason',2)`); err == nil {
+		t.Fatal("missing attempt allowed")
+	}
+	execTest(t, database, `DELETE FROM workflow_attempts WHERE id='a'`)
+	if err := database.QueryRow(`SELECT count(*) FROM workflow_ready_overrides`).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
 	}
 }
