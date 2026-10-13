@@ -35,6 +35,8 @@ services:
       NATS_USERNAME: "${NATS_USERNAME:-worker}"
       NATS_PASSWORD: "${NATS_PASSWORD:-}"
       JAWA_NATS_AGENT_ID: "${JAWA_NATS_AGENT_ID:-jawa-1}"
+      JAWA_GIT_USER_NAME: "${JAWA_GIT_USER_NAME:-}"
+      JAWA_GIT_USER_EMAIL: "${JAWA_GIT_USER_EMAIL:-}"
       JAWA_MODEL: "${JAWA_MODEL:-opencode/glm-5.3-flash}"
       OPENCODE_API_KEY: "${OPENCODE_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"

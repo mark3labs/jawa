@@ -1,21 +1,17 @@
 ---
 name: code-audit
-description: "Perform a read-only repository audit for dead code, meaningful duplication, architecture boundary violations, and incremental refactor options. Use when the user asks for a code health audit or cleanup recommendations without implementing changes."
+description: "Perform a read-only repository audit for dead code, meaningful duplication, architecture boundary violations, and incremental refactor options. Use when asked for a code health audit or cleanup recommendations without implementing changes."
 ---
 
 # Read-only code audit
 
-## Task execution
+Follow the system instructions' Git (host detection and CLI use) and "Working without a human" rules.
 
-Derive scope, inputs, constraints, and authorization from the spawning task and repository context; this skill has no argument placeholders or interactive input step. Use repository evidence to resolve routine details. If essential information is unavailable or a decision cannot be made safely, stop and report the blocker and required input rather than relying on a follow-up conversation.
-
-Follow repository instructions. Authorization in the spawning task is sufficient for the operations it explicitly covers; do not request it again. Skill activation alone does not authorize committing, pushing, creating remote issues or requests, posting replies, or publishing. Run follow-up skills only when they are within the task's authorized scope. Where the workflow says to ask or wait for approval, proceed only if the task already provides the required decision or approval; otherwise report the blocked state.
-
-Do not edit, rename, delete, stage, or commit files. Do not install tools, update dependencies, or run formatters in write mode. Run analysis only when it does not modify the working tree; place necessary build output and caches outside it.
+Do not edit, rename, delete, stage, or commit files. Do not install tools, update dependencies, or run formatters in write mode. Run analysis only when it does not modify the working tree; place necessary build output and caches outside it. If the task forbids executing repository scripts or tests (for example a planning task), limit yourself to reading files and git history.
 
 ## Steps
 
-1. Map the repository's languages, packages, modules, applications, and public interfaces. Read applicable `AGENTS.md` files, README, architecture documents, manifests, and CI. Select audit scope from user input; otherwise prioritize central code paths. Skip generated code, vendor trees, and third-party copies.
+1. Map the repository's languages, packages, modules, applications, and public interfaces. Read applicable `AGENTS.md` files, README, architecture documents, manifests, and CI. Select audit scope from the task; otherwise prioritize central code paths. Skip generated code, vendor trees, and third-party copies.
 2. Find dead-code candidates through references, imports, call sites, obsolete files, removal TODOs, and commented-out blocks. Use available project-appropriate static analyzers in read-only mode. Do not assume Go or require an unavailable tool. Public APIs, plugins, reflection, generated entry points, and external consumers can make apparently unused symbols necessary; state confidence and limitations.
 3. Find duplication with the same purpose and maintenance needs. Do not flag independent code merely because it looks similar. Identify each site and a possible shared home that respects existing boundaries.
 4. Check documented boundaries: dependency direction, public API exposure, UI/business/data separation, cycles, and cross-module coupling. Cite the actual rule or evidence rather than imposing Kit-specific architecture or personal preferences.

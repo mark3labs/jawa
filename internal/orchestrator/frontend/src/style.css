@@ -289,6 +289,7 @@ jawa-menu, jawa-time, jawa-copy { display: inline-block; }
 .card-key { color: var(--text-3); font: 500 11.5px var(--mono); letter-spacing: 0; }
 .card-top .icon-btn { opacity: 0; }
 .task-card:hover .card-top .icon-btn, .card-top .icon-btn:focus-visible, .card-top .icon-btn:has(+ .menu:popover-open), jawa-menu:has(.menu:popover-open) .icon-btn { opacity: 1; }
+.card-top .card-view-action { opacity: 1; }
 .card-title { margin: 10px 0 0; font-size: 13.5px; font-weight: 500; line-height: 1.4; letter-spacing: -.008em; }
 .card-desc { margin-top: 8px; color: var(--text-3); font-size: 12px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
