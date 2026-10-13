@@ -198,3 +198,27 @@ draft retention, Trace filter, 320/390/768/1024/1440 overflow checks and real
 Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
 See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
+
+Chat uses a centered conversation transcript, distinct explicit roles and native
+collapsed tool activity. Trace uses separate snapshot, durable/live turn activity
+and received-order delivery inspectors; it does not imply a global timeline.
+Raw diagnostics are Trace-only. Missing timestamps are explicitly unavailable.
+Every disclosure has a deterministic display ID and preserves `open` during
+morphs. Content/occurrence snapshot fallback IDs are not durable journal IDs;
+changed or truncated snapshot content may change them. Search matches each full
+entry (including collapsed raw content), hides nonmatching entries/groups, and
+shows a separate no-matches state. Status remains inside the content patch root.
+
+Export real deterministic Chat/Trace and stale offline fixtures, then check them:
+
+```sh
+JAWA_RUN_DETAIL_HTML=/tmp/run-detail go test ./internal/orchestrator -run '^TestRunDetailVisualFixture$' -count=1
+cd internal/orchestrator/frontend
+JAWA_RUN_DETAIL_HTML=/tmp/run-detail CHROMIUM_PATH=/path/to/chromium npm run test:run-detail
+```
+
+Optional `JAWA_RUN_DETAIL_SCREENSHOTS=/tmp/run-detail-images` captures Chromium
+390/1440px screenshots for both tabs/offline. Tests cover five viewport widths,
+entry filtering, collapsed defaults, touch targets, no-JS links, keyboard
+activation and actual Datastar stream patches preserving disclosure/draft/focus.
+These fixtures are not evidence of external provider behavior or mobile devices.
