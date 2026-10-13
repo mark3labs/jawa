@@ -12,8 +12,11 @@ branch, PR assignment and repair context.
 Eligibility is intentionally narrow: latest execution on its current Building, Fix or
 Planning card, a versioned natural `failed` outcome with complete pinned ownership,
 no accepted terminal typed report, no active work or pending resume, and no retained
-competing execution. Explicit reportBlocker, completed-without-report, cancelled,
-waiting, interrupted, legacy and ambiguous executions cannot use this action.
+competing execution. Terminal (legacy) reportBlocker, completed-without-report, cancelled,
+waiting, interrupted, legacy and ambiguous executions cannot use this action. A
+blocker awaiting guidance is answered with guidance instead
+([BLOCKER_GUIDANCE.md](BLOCKER_GUIDANCE.md)); if that guided run later fails, it is
+resumable like any other execution failure.
 Planning review/clarification still uses Answer, not failed-run resume. Rendered
 forms carry a failure-generation token; stale forms are rejected.
 

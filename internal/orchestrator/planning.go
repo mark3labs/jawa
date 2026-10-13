@@ -47,6 +47,7 @@ type PlanningDetail struct {
 	Revisions        []PlanningRevision
 	Turns            []PlanningTurn
 	Questions        []string
+	Blocker          string // pending blocker awaiting operator guidance
 	CanApprove       bool
 	CanResume        bool
 	ResumeToken      string
@@ -117,7 +118,7 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 			d.Discussion = append(d.Discussion, message)
 		} else if kinds := reports[message.Content]; message.Role == "assistant" && len(kinds) > 0 {
 			reports[message.Content] = kinds[1:]
-			if kinds[0] == reportprotocol.Clarify {
+			if kinds[0] == reportprotocol.Clarify || kinds[0] == reportprotocol.ReportBlocker {
 				d.Discussion = append(d.Discussion, message)
 			}
 		}
@@ -143,8 +144,11 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 		if err = json.Unmarshal([]byte(request), &r); err != nil {
 			return d, err
 		}
-		if r.Kind == reportprotocol.Clarify {
+		switch r.Kind {
+		case reportprotocol.Clarify:
 			d.Questions = r.Payload.Questions
+		case reportprotocol.ReportBlocker:
+			d.Blocker = r.Payload.Reason
 		}
 	}
 	ts, err := q.ListPlanningTurns(ctx, p.ID)

@@ -92,7 +92,7 @@ func (w *Workflow) discoverAutoResumes(now time.Time) error {
 			continue
 		}
 		var excluded bool
-		e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND kind IN ('complete_task','report_blocker')) OR EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, c.a.TaskID, c.a.CardID).Scan(&excluded)
+		e = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports r WHERE r.task_id=? AND `+terminalReportClause+`) OR EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, c.a.TaskID, c.a.CardID).Scan(&excluded)
 		var count int
 		if e == nil && !excluded {
 			e = tx.QueryRow(`SELECT count(*) FROM failed_resumes WHERE task_id=? AND automatic=1`, c.a.TaskID).Scan(&count)

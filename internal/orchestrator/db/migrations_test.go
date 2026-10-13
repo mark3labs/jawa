@@ -224,15 +224,17 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 	if err := database.QueryRow(`SELECT request_json,tool_call_id FROM typed_reports WHERE report_id='receipt'`).Scan(&raw, &call); err != nil || raw != "original JSON" || call != "legacy:receipt" {
 		t.Fatal(raw, call, err)
 	}
-	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('other','task','other-call','agent','run','attempt','turn','report_blocker','{}',124)`); err == nil {
-		t.Fatal("second terminal accepted")
+	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('other','task','other-call','agent','run','attempt','turn','complete_task','{}',124)`); err == nil {
+		t.Fatal("second completion accepted")
 	}
+	// Blockers awaiting guidance park the run, so a task may report several.
+	execTest(t, database, `INSERT INTO typed_reports VALUES('blocker','task','blocker-call','agent','run','attempt','turn','report_blocker','{}',124)`)
 	execTest(t, database, `INSERT INTO typed_reports VALUES('interaction','task','new-call','agent','run','attempt','turn','clarify','{}',124)`)
 	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('conflict','task','new-call','agent','run','attempt','turn','clarify','{}',125)`); err == nil {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 14 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 15 {
 		t.Fatal(version, err)
 	}
 }
@@ -257,7 +259,10 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE auto_resumes;
  ALTER TABLE failed_resumes DROP COLUMN automatic;
  DROP TABLE workflow_pr_merge_overrides;
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14)`)
+ DROP TABLE workflow_interactions;
+ DROP INDEX typed_reports_terminal;
+ CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +290,10 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 	}
 	execTest(t, database, `DROP TABLE auto_resumes; ALTER TABLE failed_resumes DROP COLUMN automatic;
  DROP TABLE workflow_pr_merge_overrides;
- DELETE FROM goose_db_version WHERE version_id IN (13,14);
+ DROP TABLE workflow_interactions;
+ DROP INDEX typed_reports_terminal;
+ CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+ DELETE FROM goose_db_version WHERE version_id IN (13,14,15);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -314,5 +322,41 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
 	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		t.Fatal("foreign key violation")
+	}
+}
+
+func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	ctx := context.Background()
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `DROP TABLE workflow_interactions;
+ DROP INDEX typed_reports_terminal;
+ CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
+ DELETE FROM goose_db_version WHERE version_id=15;
+ INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
+ INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
+ INSERT INTO typed_reports VALUES('legacy','task','legacy-call','agent','run','attempt','turn','report_blocker','{}',1);`)
+	for range 2 {
+		if err := Migrate(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execTest(t, database, `INSERT INTO typed_reports VALUES('second','task','second-call','agent','run','attempt','turn','report_blocker','{}',2);
+ INSERT INTO workflow_interactions(report_id,task_id,created_at) VALUES('second','task',2);
+ INSERT INTO typed_reports VALUES('done','task','done-call','agent','run','attempt','turn','complete_task','{}',3);`)
+	if _, err := database.Exec(`INSERT INTO typed_reports VALUES('again','task','again-call','agent','run','attempt','turn','complete_task','{}',4)`); err == nil {
+		t.Fatal("second completion accepted")
+	}
+	execTest(t, database, `INSERT INTO typed_reports VALUES('third','task','third-call','agent','run','attempt','turn','report_blocker','{}',5)`)
+	if _, err := database.Exec(`INSERT INTO workflow_interactions(report_id,task_id,created_at) VALUES('third','task',5)`); err == nil {
+		t.Fatal("two open blockers accepted for one task")
+	}
+	execTest(t, database, `DELETE FROM cards WHERE id='c'`)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM workflow_interactions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cascade %d %v", count, err)
 	}
 }

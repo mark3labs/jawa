@@ -406,6 +406,7 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 
 func (w *Workflow) dispatch() {
 	w.dispatchPlanning()
+	w.dispatchBlockerGuidance()
 	w.autoResumePass(time.Now())
 	if w.resumeConn != nil {
 		w.dispatchFailedResumes(w.resumeConn)
@@ -505,11 +506,14 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	case "failed":
 		state, reason = "failed", "agent run failed"
 	case "interrupted":
-		state, reason = "blocked", "agent run interrupted; awaiting agent recovery"
+		state, reason = "blocked", interruptedNotice
 	case "waiting":
 		state, reason = "blocked", "agent run waiting for input"
 	case "completed":
 		state, reason = "blocked", "awaiting agent outcome"
+	}
+	if state, reason, err = guidedStatus(tx, a.TaskID, string(ev.State), state, reason); err != nil {
+		return err
 	}
 	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,error=?,event_seq=?,updated_at=? WHERE id=?`, ev.AgentID, ev.RunID, ev.AttemptID, state, string(ev.State), reason, ev.Seq, time.Now().UnixMilli(), a.ID)
 	if err != nil {
@@ -590,6 +594,15 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		if !current {
 			return nil
 		}
+	}
+	if handled, e := blockerOutcome(tx, a, out, string(data)); e != nil {
+		return e
+	} else if handled {
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		w.logAttempt(log.InfoLevel, "Blocker outcome received", a)
+		return nil
 	}
 	if err = applyOutcome(tx, a, out); err != nil {
 		return err

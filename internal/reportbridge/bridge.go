@@ -321,7 +321,7 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 				return reportprotocol.Ack{}, errors.New("report retry owner mismatch")
 			}
 			request = old
-		} else if !resolved || (ack.Accepted && (old.Kind == reportprotocol.CompleteTask || old.Kind == reportprotocol.ReportBlocker)) {
+		} else if !resolved || ack.Terminal(old.Kind) {
 			return reportprotocol.Ack{}, errors.New("task has a terminal report or unconfirmed interaction; retry the identical payload")
 		}
 	}
@@ -394,12 +394,19 @@ func (b *Bridge) recoverIntent(ctx context.Context, runID string) error {
 
 // KIT preserves dynamic FinalValue types; BONNIE accepts only its actual
 // SuspendRequest value/pointer. Public after-tool hooks can only rewrite text.
-func suspensionValue(r reportprotocol.Request) any {
+// A blocker parks the run only when the orchestrator durably committed it as
+// awaiting guidance; otherwise (older receivers) it remains terminal.
+func suspensionValue(r reportprotocol.Request, ack reportprotocol.Ack) any {
 	switch r.Kind {
 	case reportprotocol.Clarify:
 		return runtime.SuspendRequest{Kind: runtime.SuspendQuestion, Prompt: strings.Join(r.Payload.Questions, "\n"), TurnID: r.TurnID, ToolCallID: r.ToolCallID}
 	case reportprotocol.ProposeSpec:
 		return runtime.SuspendRequest{Kind: runtime.SuspendApproval, Prompt: r.Payload.Spec, Options: []string{"approve", "reject"}, TurnID: r.TurnID, ToolCallID: r.ToolCallID}
+	case reportprotocol.ReportBlocker:
+		if ack.AwaitGuidance {
+			return runtime.SuspendRequest{Kind: runtime.SuspendQuestion, Prompt: r.Payload.Reason, TurnID: r.TurnID, ToolCallID: r.ToolCallID}
+		}
+		return r
 	default:
 		return r
 	}
@@ -495,6 +502,7 @@ func (b *Bridge) restorePendingSuspensions(ctx context.Context) error {
 		requests := map[string]reportprotocol.Request{}
 		consumed := map[string]bool{}
 		var pending *reportprotocol.Request
+		var pendingAck reportprotocol.Ack
 		var suspendedCall string
 		for _, rec := range recs {
 			switch rec.ExtType {
@@ -511,8 +519,8 @@ func (b *Bridge) restorePendingSuspensions(ctx context.Context) error {
 				}
 				req, exists := requests[ack.ReportID]
 				if ack.Accepted && exists && !consumed[req.ToolCallID] {
-					if req.Kind == reportprotocol.Clarify || req.Kind == reportprotocol.ProposeSpec {
-						pending = &req
+					if ack.Suspends(req.Kind) {
+						pending, pendingAck = &req, ack
 					} else {
 						pending = nil
 					}
@@ -535,7 +543,7 @@ func (b *Bridge) restorePendingSuspensions(ctx context.Context) error {
 			continue
 		}
 		if suspendedCall != pending.ToolCallID {
-			sus := suspensionValue(*pending).(runtime.SuspendRequest)
+			sus := suspensionValue(*pending, pendingAck).(runtime.SuspendRequest)
 			data, _ := json.Marshal(sus)
 			if _, err := r.Journal().Append(ctx, runtime.Record{RunID: runID, Kind: runtime.RecordSuspend, Timestamp: time.Now().UTC(), Text: sus.Prompt, Payload: data}); err != nil {
 				return err

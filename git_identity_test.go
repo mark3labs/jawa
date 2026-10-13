@@ -106,7 +106,7 @@ func TestGitIdentityCommits(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					defer sb.Close()
+					defer func() { _ = sb.Close() }()
 				}
 				run := func(args ...string) string {
 					t.Helper()

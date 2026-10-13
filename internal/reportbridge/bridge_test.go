@@ -543,3 +543,54 @@ func TestAmbiguousRetryKeepsOriginalInteraction(t *testing.T) {
 		t.Fatal("resolved identical later interaction was coalesced")
 	}
 }
+
+// A blocker ACKed as awaiting guidance parks like clarify (including the
+// ACK-before-RecordSuspend repair); a legacy terminal ACK never parks.
+func TestBlockerSuspensionFollowsDurableAck(t *testing.T) {
+	for _, guided := range []bool{true, false} {
+		ctx := context.Background()
+		j := runtime.NewMemoryJournal()
+		id := reportprotocol.Identity{TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "attempt", TurnID: "turn", ToolCallID: "call"}
+		req, err := reportprotocol.NewRequest(id, reportprotocol.ReportBlocker, reportprotocol.Payload{Reason: "Need credentials"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ack := reportprotocol.Ack{Version: 1, ReportID: req.ReportID, Accepted: true, AwaitGuidance: guided}
+		switch v := suspensionValue(req, ack).(type) {
+		case runtime.SuspendRequest:
+			if !guided || v.Kind != runtime.SuspendQuestion || v.Prompt != "Need credentials" || v.ToolCallID != "call" || v.TurnID != "turn" {
+				t.Fatalf("guided=%v suspension %+v", guided, v)
+			}
+		default:
+			if guided {
+				t.Fatal("guided blocker did not suspend")
+			}
+		}
+		if ack.Terminal(req.Kind) == guided || ack.Suspends(req.Kind) != guided {
+			t.Fatal("terminal/suspension classification", guided)
+		}
+		appendRec := func(rec runtime.Record) {
+			rec.RunID = "run"
+			rec.Timestamp = time.Now().UTC()
+			if _, err := j.Append(ctx, rec); err != nil {
+				t.Fatal(err)
+			}
+		}
+		appendRec(runtime.Record{Kind: runtime.RecordTurn, Text: "turn"})
+		intent, _ := json.Marshal(req)
+		receipt, _ := json.Marshal(ack)
+		appendRec(runtime.Record{Kind: runtime.RecordExtensionData, ExtType: intentType, Payload: intent})
+		appendRec(runtime.Record{Kind: runtime.RecordExtensionData, ExtType: receiptType, Payload: receipt})
+		if err := j.Checkpoint(ctx, "run", runtime.RunRunning); err != nil {
+			t.Fatal(err)
+		}
+		b := Bridge{runner: runtime.NewRunner(j, nil)}
+		if err := b.restorePendingSuspensions(ctx); err != nil {
+			t.Fatal(err)
+		}
+		state, _ := j.State(ctx, "run")
+		if (state == runtime.RunWaiting) != guided {
+			t.Fatalf("guided=%v restored state %s", guided, state)
+		}
+	}
+}

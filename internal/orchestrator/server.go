@@ -156,7 +156,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/guide", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -286,6 +286,12 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("workflow unavailable")
 		} else {
 			err = a.workflow.FixCard(r.FormValue("card_id"), r.FormValue("message"))
+		}
+	case "/cards/guide":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else {
+			err = a.workflow.GuideBlocked(r.FormValue("card_id"), r.FormValue("message"), r.FormValue("expected_interaction"))
 		}
 	case "/cards/retry":
 		if a.workflow == nil {

@@ -8,8 +8,9 @@ import (
 )
 
 type Binding struct {
-	Identity   func(context.Context) (reportprotocol.Identity, error)
-	FinalValue func(reportprotocol.Request) any
+	Identity func(context.Context) (reportprotocol.Identity, error)
+	// FinalValue maps a committed report and its ACK to KIT's halting value.
+	FinalValue func(reportprotocol.Request, reportprotocol.Ack) any
 	// Prepare preserves original durable interaction identity on ambiguous retry.
 	Prepare func(context.Context, reportprotocol.Request) (reportprotocol.Request, error)
 	Submit  func(context.Context, reportprotocol.Request) (reportprotocol.Ack, error)
@@ -55,9 +56,13 @@ func (b Binding) execute(ctx context.Context, kind reportprotocol.Kind, p report
 	}
 	var final any = r
 	if b.FinalValue != nil {
-		final = b.FinalValue(r)
+		final = b.FinalValue(r, ack)
 	}
-	return kit.ToolOutput{Content: "Typed report committed.", Halt: true, FinalValue: final, Metadata: ack}, nil
+	content := "Typed report committed."
+	if kind == reportprotocol.ReportBlocker && ack.AwaitGuidance {
+		content = "Typed report committed. This run is paused until the operator replies with guidance."
+	}
+	return kit.ToolOutput{Content: content, Halt: true, FinalValue: final, Metadata: ack}, nil
 }
 func ProposeSpec(b Binding) kit.Tool {
 	return kit.NewTool("proposeSpec", "Submit an implementation-ready specification for operator review. Planning tasks only. Success pauses this run until review; rejected proposals may be revised in this same conversation.", func(ctx context.Context, in SpecInput) (kit.ToolOutput, error) {
@@ -75,7 +80,7 @@ func CompleteTask(b Binding) kit.Tool {
 	})
 }
 func ReportBlocker(b Binding) kit.Tool {
-	return kit.NewTool("reportBlocker", "Report a terminal blocker for the current planning or build task. Success means durable orchestrator commit and ends this run.", func(ctx context.Context, in BlockerInput) (kit.ToolOutput, error) {
+	return kit.NewTool("reportBlocker", "Report a concrete blocker for the current planning or build task that you cannot resolve yourself. Success means durable orchestrator commit and pauses this run until the operator replies with guidance; then continue this same conversation using that guidance.", func(ctx context.Context, in BlockerInput) (kit.ToolOutput, error) {
 		return b.execute(ctx, reportprotocol.ReportBlocker, reportprotocol.Payload{Reason: in.Reason})
 	})
 }

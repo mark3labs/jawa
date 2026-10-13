@@ -63,7 +63,10 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	}
 	var old *reportprotocol.FailedResume
 	var receipt *reportprotocol.FailedResumeReply
-	terminalIntent := false
+	// Completion and legacy terminal blockers end the task. A blocker committed
+	// as awaiting guidance only parks the run, so a later failure stays resumable.
+	reportIntents := map[string]reportprotocol.Request{}
+	reportAcks := map[string]reportprotocol.Ack{}
 	intents := map[string]reportprotocol.FailedResume{}
 	for _, rec := range records {
 		if rec.ExtType == resumeIntentType {
@@ -100,9 +103,22 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		}
 		if rec.ExtType == intentType {
 			var v reportprotocol.Request
-			if json.Unmarshal(rec.Payload, &v) == nil && (v.Kind == reportprotocol.CompleteTask || v.Kind == reportprotocol.ReportBlocker) {
-				terminalIntent = true
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				reportIntents[v.ReportID] = v
 			}
+		}
+		if rec.ExtType == receiptType {
+			var v reportprotocol.Ack
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				reportAcks[v.ReportID] = v
+			}
+		}
+	}
+	terminalIntent := false
+	for id, v := range reportIntents {
+		ack, resolved := reportAcks[id]
+		if v.Kind == reportprotocol.CompleteTask || (v.Kind == reportprotocol.ReportBlocker && (!resolved || ack.Terminal(v.Kind))) {
+			terminalIntent = true
 		}
 	}
 	if receipt != nil {

@@ -87,3 +87,10 @@ failure tokens persist across restart; budgets are derived from automatic comman
 reservations, never a separate counter. Card deletion cascades scheduling hints.
 The default-enabled setting requires no data rewrite; absent overrides mean true.
 See `../FAILED_RESUME.md` for budget, rejection and disable semantics.
+
+Version `00015_blocker_guidance.sql` narrows the one-per-task terminal index to
+`complete_task`, because a blocker awaiting guidance only parks its run and a task
+may block more than once. It adds `workflow_interactions`, the durable build
+guidance outbox (one pending/queued blocker per task, cascading with attempts).
+Existing blockers have no interaction row and remain terminal. See
+`../BLOCKER_GUIDANCE.md`.

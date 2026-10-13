@@ -16,9 +16,22 @@ import (
 	"jawa/internal/reportprotocol"
 )
 
+// terminalReportClause matches accepted reports that end their task: completion,
+// and blockers never committed as awaiting guidance (legacy or post-approval).
+// A blocker with an interaction row only parked its run for operator guidance.
+const terminalReportClause = `(r.kind='complete_task' OR (r.kind='report_blocker' AND NOT EXISTS(SELECT 1 FROM workflow_interactions wi WHERE wi.report_id=r.report_id) AND NOT EXISTS(SELECT 1 FROM planning_interactions pi WHERE pi.report_id=r.report_id)))`
+
 func acceptedReport(tx *sql.Tx, task string) (bool, error) {
 	var found bool
-	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND kind IN ('complete_task','report_blocker'))`, task).Scan(&found)
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM typed_reports r WHERE r.task_id=? AND `+terminalReportClause+`)`, task).Scan(&found)
+	return found, err
+}
+
+// awaitsGuidance reports the durable decision recorded when a report was
+// accepted, so duplicate deliveries return the same suspension semantics.
+func awaitsGuidance(tx *sql.Tx, reportID string) (bool, error) {
+	var found bool
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_interactions WHERE report_id=?) OR EXISTS(SELECT 1 FROM planning_interactions i JOIN typed_reports r ON r.report_id=i.report_id WHERE i.report_id=? AND r.kind='report_blocker')`, reportID, reportID).Scan(&found)
 	return found, err
 }
 
@@ -95,6 +108,9 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if previous.ReportID != r.ReportID || previous.Identity != r.Identity {
 			return ack, errors.New("typed report conflicts with accepted report or owner")
 		}
+		if ack.AwaitGuidance, err = awaitsGuidance(tx, r.ReportID); err != nil {
+			return ack, err
+		}
 		ack.Accepted, ack.Duplicate = true, true
 		return ack, nil
 	}
@@ -152,6 +168,11 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if cancelling {
 			return ack, errors.New("build task cancellation requested")
 		}
+		if _, waiting, e := pendingBlocker(tx, a.TaskID); e != nil {
+			return ack, e
+		} else if waiting {
+			return ack, errors.New("build task is waiting for operator guidance")
+		}
 	}
 	// BONNIE's NATS Status queries its runtime Observe snapshot, not model text.
 	// It also resolves admission when the durable accepted event has not arrived yet.
@@ -178,7 +199,13 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		return ack, err
 	}
 	if planning {
-		err = persistPlanningReport(tx, ctx, t, r, string(raw), now)
+		ack.AwaitGuidance, err = persistPlanningReport(tx, ctx, t, r, string(raw), now)
+	} else if r.Kind == reportprotocol.ReportBlocker {
+		// Park the run for operator guidance; it is answered in the same run.
+		if _, err = tx.Exec(`INSERT INTO workflow_interactions(report_id,task_id,created_at) VALUES(?,?,?)`, r.ReportID, a.TaskID, now); err == nil {
+			_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state='blocked',error=?,pr_url='',updated_at=? WHERE id=?`, r.AgentID, r.RunID, r.AttemptID, r.Payload.Reason, now, a.ID)
+		}
+		ack.AwaitGuidance = true
 	} else {
 		pr, reason := "", r.Payload.Reason
 		if r.Kind == reportprotocol.CompleteTask {
@@ -206,22 +233,30 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 	return ack, nil
 }
 
-func persistPlanningReport(tx *sql.Tx, ctx context.Context, t sqlc.PlanningTurn, r reportprotocol.Request, raw string, now int64) error {
+// persistPlanningReport reports whether a blocker parks the planning run for
+// operator guidance. After approval nobody reviews planning, so a blocker there
+// stays terminal bookkeeping.
+func persistPlanningReport(tx *sql.Tx, ctx context.Context, t sqlc.PlanningTurn, r reportprotocol.Request, raw string, now int64) (bool, error) {
 	p, err := sqlc.New(tx).GetPlanningSessionByID(ctx, t.SessionID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if r.Kind == reportprotocol.CompleteTask {
 		_, err = tx.Exec(`UPDATE planning_turns SET state='completed',result=?,outcome_json=?,error='',updated_at=? WHERE id=?`, raw, raw, now, t.ID)
-		return err // Approved snapshot and the distinct build are immutable here.
+		return false, err // Approved snapshot and the distinct build are immutable here.
 	}
 	state, session, reason := "waiting", "ready", ""
 	message := r.Payload.Spec
 	terminal := ""
+	guidance := false
 	switch r.Kind {
 	case reportprotocol.ReportBlocker:
-		state, session, reason = "failed", "failed", r.Payload.Reason
-		message, terminal = reason, raw
+		message, reason = r.Payload.Reason, r.Payload.Reason
+		if p.State == "approved" {
+			state, session, terminal = "failed", "failed", raw
+		} else {
+			session, guidance = "questions", true
+		}
 	case reportprotocol.Clarify:
 		session = "questions"
 		for _, question := range r.Payload.Questions {
@@ -229,33 +264,33 @@ func persistPlanningReport(tx *sql.Tx, ctx context.Context, t sqlc.PlanningTurn,
 		}
 	default:
 		if p.RepoCommit != "" && p.RepoCommit != r.Payload.RepoCommit {
-			return errors.New("planner inspected a different commit than the pinned session")
+			return false, errors.New("planner inspected a different commit than the pinned session")
 		}
 		var revision int64
 		if err = tx.QueryRow(`SELECT coalesce(max(r.number),0)+1 FROM planning_revisions r JOIN planning_sessions s ON s.id=r.session_id WHERE s.card_id=?`, p.CardID).Scan(&revision); err != nil {
-			return err
+			return false, err
 		}
 		if _, err = tx.Exec(`INSERT INTO planning_revisions(session_id,number,spec,questions_json,repo_commit,created_at) VALUES(?,?,?,'[]',?,?)`, p.ID, revision, r.Payload.Spec, r.Payload.RepoCommit, now); err != nil {
-			return err
+			return false, err
 		}
 		if _, err = tx.Exec(`UPDATE planning_sessions SET spec=?,repo_commit=?,revision=? WHERE id=?`, r.Payload.Spec, r.Payload.RepoCommit, revision, p.ID); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if terminal == "" {
 		if _, err = tx.Exec(`INSERT INTO planning_interactions(report_id,task_id,created_at) VALUES(?,?,?)`, r.ReportID, t.ID, now); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if _, err = tx.Exec(`UPDATE planning_turns SET state=?,agent_id=?,run_id=?,remote_attempt_id=?,result=?,outcome_json=?,error=?,updated_at=? WHERE id=?`, state, r.AgentID, r.RunID, r.AttemptID, message, terminal, reason, now, t.ID); err != nil {
-		return err
+		return false, err
 	}
 	if err = planningMessage(tx, p.ID, "assistant", message); err != nil {
-		return err
+		return false, err
 	}
 	if p.State == "approved" {
-		return nil
+		return false, nil
 	}
 	_, err = tx.Exec(`UPDATE planning_sessions SET state=?,error=?,updated_at=? WHERE id=?`, session, reason, now, p.ID)
-	return err
+	return guidance, err
 }
