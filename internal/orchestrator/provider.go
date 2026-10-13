@@ -593,3 +593,35 @@ func (p providerReader) forgejoReviews(path string) error {
 	}
 	return nil
 }
+
+// ProviderIdentity reads only PR identity, deliberately not readiness evidence.
+func ProviderIdentity(s *Store, supplied *http.Client) IdentityChecker {
+	c := http.Client{}
+	if supplied != nil {
+		c = *supplied
+	}
+	c.Timeout = 20 * time.Second
+	c.Jar = nil
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return func(ctx context.Context, a Attempt, selected string) (string, error) {
+		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		a.PRURL = selected
+		p, _, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
+		if err != nil {
+			return "", err
+		}
+		branch, err := assignedBranch(a)
+		if err != nil {
+			return "", err
+		}
+		var pr providerPR
+		if err = p.read(path, &pr); err != nil {
+			return "", err
+		}
+		if !pr.identityMatches(owner+"/"+name, base, branch, number) || !(pr.State == "open" && !pr.Merged || pr.State == "closed" && pr.Merged) {
+			return "", errors.New("provider: PR identity or state invalid")
+		}
+		return pr.Head.SHA, nil
+	}
+}

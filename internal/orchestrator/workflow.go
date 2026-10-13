@@ -43,6 +43,7 @@ type Workflow struct {
 	wg               sync.WaitGroup
 	mu               sync.RWMutex
 	verifier         Verifier
+	identity         IdentityChecker
 	conflicts        *conflictMonitor
 	reports          *nats.Subscription
 	observeReport    func(context.Context, client.Target) (client.Status, error)
