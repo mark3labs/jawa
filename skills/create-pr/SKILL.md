@@ -27,3 +27,39 @@ For user-visible UI work, encourage screenshots before creating the request when
 - Use sanitized fixture data where possible and inspect images for credentials, tokens, personal information, or private project data before publishing.
 - Embed or link actual images in the request body using the host's supported Markdown or attachment mechanism. Use only verified, authorized host capabilities, not guessed CLI upload flags. Ensure reviewers can access the images: a local filesystem path is not an attachment.
 - If running the UI, capturing images, or attaching them is unavailable or outside authorization, record the specific limitation and necessary manual follow-up in the request's validation/evidence section. Do not fabricate images, image URLs, screenshots, or visual verification.
+
+### GitHub screenshot attachments
+
+After creating or finding the task's PR, attach already captured and inspected
+images in a PR comment when posting is authorized. First check the installed
+`gh pr comment --help` for `--attach` support. `PR_NUMBER` is the verified
+existing PR number; `REPOSITORY` is its target `OWNER/REPO`.
+
+```sh
+# Replace the PR number, repository, and paths with this task's values.
+gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" \
+  --body "Screenshots: desktop and mobile views of the updated UI" \
+  --attach './desktop.png#Updated screen, after-state, desktop viewport' \
+  --attach './mobile.png#Updated screen, after-state, mobile viewport'
+```
+
+Repeated `--attach` flags upload the files and append rendered attachments to
+the comment when the body does not reference them. Local paths alone are not
+reviewer-accessible images. Use only relevant captures: the desktop/mobile pair
+is an example, not a requirement. Keep captions identifying each screen, state,
+and viewport. The `#` suffix supplies per-image alt text; replace these example
+labels with descriptions of the actual captures.
+
+A screenshot comment is valid UI evidence. When practical, link its returned URL
+from the PR body's Screenshots / UI evidence section. Verify the resulting
+comment and image accessibility using supported host read operations before
+claiming successful attachment. If an upload outcome is ambiguous, inspect the
+PR discussion before retrying; do not blindly post duplicate evidence comments.
+
+For older `gh` versions without `--attach`, or other providers, use only an
+already available, verified and authorized host mechanism. Otherwise record the
+concrete limitation and necessary manual follow-up in the evidence section;
+missing screenshots alone do not block an otherwise authorized PR. Do not
+install software, publish to unrelated artifact services, invent upload flags,
+or require additional credentials to work around the limitation. The rendering,
+sanitization, authorization and no-screenshot-commits safeguards above still apply.
