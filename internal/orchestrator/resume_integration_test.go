@@ -124,6 +124,22 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				}
 				return false
 			})
+			if explicit {
+				waitWorkflow(t, func() bool {
+					status, e := w.client.Status(t.Context(), client.Target{TaskID: task, AgentID: "resume-agent", RunID: run, AttemptID: attempt})
+					return e == nil && status.State == runtime.RunCompleted && !status.Active
+				})
+			}
+			if explicit {
+				waitWorkflow(t, func() bool {
+					js, e := nc.JetStream()
+					if e != nil {
+						return false
+					}
+					info, e := js.StreamInfo(channel.DefaultResultStreamName("bonnie.results"))
+					return e == nil && info.State.Msgs > 0
+				})
+			}
 			// Additional saved context must survive process restart and continuation.
 			contextJSON := []byte(`{"context":["saved-context-marker"]}`)
 			if _, err = journal.Append(t.Context(), runtime.Record{RunID: run, Kind: runtime.RecordContext, Payload: contextJSON, Text: "saved-context-marker"}); err != nil {
@@ -153,7 +169,6 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 			}
 			beforeRequests := len(healthy.Requests())
 			start(healthy)
-			defer stop()
 			action := w.ResumeFailed
 			if explicit {
 				action = func(id string) error {
@@ -188,6 +203,9 @@ func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
 				close(results)
 				successes := 0
 				for e := range results {
+					if e != nil {
+						t.Logf("resume reservation: %v", e)
+					}
 					if e == nil {
 						successes++
 					}
