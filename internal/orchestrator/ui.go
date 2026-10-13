@@ -247,6 +247,16 @@ func canAction(c Card, attempts []Attempt, action string) bool {
 		}
 		a := latest[0]
 		return a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.State == "running" || a.State == "waiting" || a.State == "interrupted" || a.RunState == "waiting")
+	case "force-stop":
+		if c.Status == "Planning" || legacy {
+			return false
+		}
+		for _, a := range attempts {
+			if a.CardID == c.ID && forceStoppable(a, a.ID == latest[0].ID) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }
@@ -271,12 +281,15 @@ func actionReason(c Card, attempts []Attempt, action string) string {
 		}
 		for _, state := range []string{a.State, a.RunState} {
 			if state == "queued" || state == "submitted" || state == "running" || state == "waiting" || state == "interrupted" {
-				return "Active attempt — wait for work to finish."
+				return "Active attempt — wait for it to finish, or use Force stop."
 			}
 		}
 	}
 	if action == "reset" && c.Status == "Todo" {
 		return "Already in Todo."
+	}
+	if latest := latestAttempt(c.ID, attempts); len(latest) > 0 && forceStoppable(latest[0], true) {
+		return "Attempt has not finished — use Force stop to release it."
 	}
 	return "Reset requires a failed or blocked attempt."
 }

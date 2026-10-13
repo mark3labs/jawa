@@ -231,7 +231,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
+	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -620,6 +620,31 @@ templ dialogs(d pageData) {
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
 					Request cancellation
+				}
+			}
+		</form>
+	</dialog>
+	<dialog id="force-dialog" aria-labelledby="force-dialog-title" data-effect="if ($forceOpen && !el.open) el.showModal(); else if (!$forceOpen && el.open) el.close()" data-on:close="$forceOpen = false" data-on:cancel="$forceOpen = false">
+		@dialog.Title(dialog.TitleProps{ID: "force-dialog-title"}) {
+			Force stop this run?
+		}
+		@dialog.Description() {
+			Use this when a run is stuck or its agent is gone. JAWA stops tracking the run now and ignores anything it reports later. The agent is asked to stop, but it may keep running and could still push commits or update its pull request. Afterwards you can retry, reset to Todo, or delete the card.
+		}
+		<form method="post" action="/cards/force-stop" data-on:submit__prevent="@post('/cards/force-stop', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" data-bind:force-card/>
+			<label>
+				<input type="checkbox" name="acknowledge" value="yes" data-bind:force-acknowledged required/>
+				I understand the agent may still be running.
+			</label>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$forceOpen = false"}}) {
+					Keep run
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+					Force stop
 				}
 			}
 		</form>

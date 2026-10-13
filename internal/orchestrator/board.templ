@@ -255,6 +255,12 @@ templ cardMenu(d pageData, c Card) {
 					@menuDisabled("Cancel run", "reset", "Cancellation requires an active run with a confirmed agent and remote target.")
 				}
 			}
+			if canAction(c, d.attempts, "force-stop") {
+				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$forceCard = " + strconv.Quote(c.ID) + "; $forceAcknowledged = false; $forceOpen = true" }>
+					@icon("reset")
+					<span>Force stop…</span>
+				</button>
+			}
 			if len(latestAttempt(c.ID, d.attempts)) > 0 {
 				<a class="menu-item" role="menuitem" href={ templ.SafeURL(runsForCardPath(c.ID)) }>
 					@icon("runs")

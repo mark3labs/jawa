@@ -234,7 +234,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 15 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 16 {
 		t.Fatal(version, err)
 	}
 }
@@ -262,7 +262,7 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15)`)
+ DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id IN (13,14,15);
+ DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -334,7 +334,7 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
 	execTest(t, database, `DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DELETE FROM goose_db_version WHERE version_id=15;
+ DELETE FROM goose_db_version WHERE version_id IN (15,16);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
@@ -358,5 +358,30 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
 	var count int
 	if err := database.QueryRow(`SELECT count(*) FROM workflow_interactions`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("cascade %d %v", count, err)
+	}
+}
+
+func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	ctx := context.Background()
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, `DELETE FROM goose_db_version WHERE version_id=16;
+ INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
+ INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,state,run_state,outcome_json,created_at,updated_at) VALUES
+  ('stuck','c',1,'stuck','{}','failed','running','{"state":"running","error":"admitted answer resume interrupted"}',1,1),
+  ('live','c',2,'live','{}','running','running','',1,1),
+  ('quiet','c',3,'quiet','{}','failed','running','{"state":"running"}',1,1),
+  ('waiting','c',4,'waiting','{}','blocked','waiting','{"state":"waiting","error":"x"}',1,1);`)
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"stuck": "failed", "live": "running", "quiet": "running", "waiting": "waiting"} {
+		var got string
+		if err := database.QueryRow(`SELECT run_state FROM workflow_attempts WHERE id=?`, id).Scan(&got); err != nil || got != want {
+			t.Fatalf("%s run_state=%q want %q (%v)", id, got, want, err)
+		}
 	}
 }

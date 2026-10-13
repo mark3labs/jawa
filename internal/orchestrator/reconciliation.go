@@ -64,6 +64,9 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) (retErr erro
 	if a.Ready || (status != "Building" && status != "Fix") || latest != a.Number {
 		return errors.New("reconcile: requires latest unready attempt on a Building card")
 	}
+	if a.RunState == abandonedRunState {
+		return errors.New("reconcile: attempt was force-stopped; use Retry or Reset")
+	}
 	// Select the most recently received terminal report for this execution. A
 	// waiting report does not hide its later completion. Agent ambiguity is
 	// rejected because the public selector cannot distinguish those executions.

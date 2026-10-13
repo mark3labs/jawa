@@ -160,7 +160,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/guide", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
+	case "/cards/mark-merged", "/prs/refresh", "/logout", "/projects", "/cards", "/cards/move", "/cards/fix", "/cards/guide", "/cards/retry", "/cards/resume", "/cards/reset", "/cards/delete", "/cards/cancel", "/cards/force-stop", "/cards/archive", "/cards/restore", "/cards/plan", "/cards/planning/reply", "/cards/planning/retry", "/cards/planning/resume", "/cards/planning/approve", "/cards/planning/cancel", "/settings/nats", "/settings/orchestrator", "/settings/orchestrator/reset":
 	default:
 		http.NotFound(w, r)
 		return
@@ -322,6 +322,17 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = a.workflow.CancelCard(r.Context(), r.FormValue("card_id"))
 			if err == nil {
 				fx.flash = "Cancellation was requested; it is not confirmed until the agent reports cancellation. External actions already taken cannot be undone."
+			}
+		}
+	case "/cards/force-stop":
+		if a.workflow == nil {
+			err = errors.New("workflow unavailable")
+		} else if r.FormValue("acknowledge") != "yes" {
+			err = errors.New("confirm that the agent may still be running before force stopping")
+		} else {
+			err = a.workflow.ForceStop(r.FormValue("card_id"))
+			if err == nil {
+				fx.flash = "Run force-stopped. Later reports from it are ignored; the agent was asked to stop but may still be running."
 			}
 		}
 	case "/settings/orchestrator/reset":
@@ -860,7 +871,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", orchestratorEnv("JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", orchestratorEnv("JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), "Authenticated embedded NATS listen address")
 	providerFlags(cmd, providerDefaults)
-	cmd.AddCommand(ReconcileCommand())
+	cmd.AddCommand(ReconcileCommand(), ForceStopCommand())
 	return cmd
 }
 

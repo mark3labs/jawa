@@ -26,7 +26,7 @@ func TestSharedIconIntrinsicGeometry(t *testing.T) {
 				if err := helper.render(variant).Render(t.Context(), &out); err != nil {
 					t.Fatal(err)
 				}
-				root := strings.SplitN(out.String(), ">", 2)[0]
+				root, _, _ := strings.Cut(out.String(), ">")
 				for _, attr := range []string{fmt.Sprintf(`width="%d"`, helper.size), fmt.Sprintf(`height="%d"`, helper.size), `viewBox="0 0 24 24"`, `aria-hidden="true"`} {
 					if !strings.Contains(root, attr) {
 						t.Errorf("SVG root missing %s: %s", attr, root)

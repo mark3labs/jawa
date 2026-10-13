@@ -544,6 +544,10 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	return nil
 }
 func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
+	if transientOutcome(out) {
+		w.noteTransientOutcome(out)
+		return nil
+	}
 	tx, err := w.s.writeTx()
 	if err != nil {
 		return err
@@ -584,7 +588,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		// Keep the pinned identity and run state, but surface unusable terminal
 		// reports. Never infer a missing AgentID or readiness from a conflict.
 		if !a.Ready && (string(out.State) == "failed" || string(out.State) == "completed" || string(out.State) == "cancelled") {
-			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>?`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
+			if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND card_id IN (SELECT id FROM cards WHERE status IN ('Building','Fix')) AND number=(SELECT max(number) FROM workflow_attempts WHERE card_id=?) AND error<>? AND run_state<>'abandoned'`, executionConflictNotice, time.Now().UnixMilli(), a.ID, a.CardID, executionConflictNotice); err != nil {
 				return err
 			}
 		}
@@ -627,7 +631,7 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return err
 	}
 	a.AgentID, a.RunID, a.RemoteAttemptID = out.AgentID, out.RunID, out.AttemptID
-	a.RunState = string(out.State)
+	a.RunState = outcomeRunState(out)
 	w.logAttempt(log.InfoLevel, "Execution result received", a)
 	return nil
 }
@@ -638,6 +642,51 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 func resumableOutcome(a Attempt) bool {
 	var out client.Outcome
 	return json.Unmarshal([]byte(a.OutcomeJSON), &out) == nil && (string(out.State) == "waiting" || string(out.State) == "cancelled" || string(out.State) == "interrupted")
+}
+
+// transientOutcome reports a delivery error for a run whose snapshot is still
+// live (pending or running). BONNIE sends these when one delivery fails, for
+// example "admitted answer resume interrupted; cannot auto continue safely"
+// after an agent restart, while the runner itself recovers the run and keeps
+// working. It does not end the run, so it must not end the attempt: doing so
+// rejects every later status event and typed report, including completeTask.
+// Status events keep tracking the run; if it really stalls, resync marks it
+// interrupted and Force stop releases it.
+func transientOutcome(out client.Outcome) bool {
+	switch string(out.State) {
+	case "pending", "queued", "submitted", "running":
+		return true
+	}
+	return false
+}
+
+// transientNoticed logs each transient outcome once per process; result
+// recovery replays retained history every sweep.
+var transientNoticed sync.Map
+
+func (w *Workflow) noteTransientOutcome(out client.Outcome) {
+	key := out.TaskID + "\x00" + out.RunID + "\x00" + out.Error
+	if _, seen := transientNoticed.LoadOrStore(key, true); seen {
+		return
+	}
+	w.log().Warn("Ignoring non-terminal agent outcome; continuing to follow the run", "task_id", out.TaskID, "agent_id", out.AgentID, "run_id", out.RunID, "remote_attempt_id", out.AttemptID, "run_state", string(out.State), "error", out.Error)
+}
+
+// outcomeRunState records the run state for a final outcome that arrives through
+// a trusted path (resume receipts, reconciliation). Live transport outcomes with
+// a pending/running snapshot never get here; see transientOutcome. A trusted
+// receipt describing a still-running snapshot ended that command, and status
+// events stop applying once the outcome is stored, so keeping "running" would
+// leave the attempt looking active forever. The outcome JSON keeps the original
+// state, so Resume stays unavailable for it.
+func outcomeRunState(out client.Outcome) string {
+	switch string(out.State) {
+	case "pending", "queued", "submitted", "running":
+		if out.Error != "" {
+			return "failed"
+		}
+	}
+	return string(out.State)
 }
 
 // applyOutcome is shared by guarded delivery and explicit reconciliation. The
@@ -662,7 +711,7 @@ func applyOutcome(tx *sql.Tx, a Attempt, out client.Outcome) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, state, string(out.State), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
+	_, err = tx.Exec(`UPDATE workflow_attempts SET agent_id=?,run_id=?,remote_attempt_id=?,state=?,run_state=?,result=?,outcome_json=?,error=?,pr_url=?,updated_at=? WHERE id=?`, out.AgentID, out.RunID, out.AttemptID, state, outcomeRunState(out), out.Response, string(data), reason, pr, time.Now().UnixMilli(), a.ID)
 	return err
 }
 func (w *Workflow) verifyPending() {
