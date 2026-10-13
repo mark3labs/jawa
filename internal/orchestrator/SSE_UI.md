@@ -45,3 +45,25 @@ refreshes coalesce durable/StepFinish changes and replace covered live activity.
 Closure shows unreachable and retries reads only with 1–30 second backoff.
 Offline/capacity states do not authorize mutations. Notices/drafts are never
 cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
+
+## UI component ownership
+
+- `layout.templ`: shared shell, sidebar, breadcrumb/header, agent chip, dialogs, auth.
+- `board.templ`: selected-project kanban, compact cards and Rocket action popovers.
+- `runs.templ`: newest-first attempt list, state/card filters, expandable details.
+- `agents.templ`: presence cards, endpoint table, inspection and connect empty state.
+- `settings.templ`: agent credential rotation, connect instructions, provider status.
+- `view.go`: validated routes/filters, presentation helpers; no secret values exposed.
+
+Datastar owns requests and DOM patches; templ owns server-rendered markup. Rocket's
+light-DOM setup/cleanup encapsulates gestures, menus, shortcuts, relative time and
+copy behavior. Stable keyed roots keep the shell, filter and drafts intact. No manual
+fetch loop or page reload is used for card actions.
+
+- `run_detail.templ`: run-detail page, Chat/Trace history and separate controls;
+  composer, filter and tab links are outside patch roots.
+- `run_detail.go`: pinned routing, state policy, finite actions and viewer SSE.
+- `runapi.go`: signed HTTP-over-NATS requests and bounded shared observation hubs.
+- `run_display.go`: ordered safe message/tool projection; BONNIE MIT attribution.
+
+See CONTRACT.md for run-detail routes and build instructions.

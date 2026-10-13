@@ -52,3 +52,29 @@ func TestServingConfigurationFlags(t *testing.T) {
 		t.Fatal("help leaked credentials")
 	}
 }
+
+// Check the actual production flag registration, not just test-only adapters.
+func TestServingDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		name, env, flag, fallback string
+	}{
+		{"root", "JAWA_SANDBOX_ROOT", "sandbox-root", defaultSandboxRoot},
+		{"image", "JAWA_SANDBOX_IMAGE", "sandbox-image", defaultSandboxImage},
+		{"bucket", "JAWA_NATS_PRESENCE_BUCKET", "nats-presence-bucket", defaultPresenceBucket},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, value := range []string{"", "custom"} {
+				t.Setenv(tc.env, value)
+				cmd := &cobra.Command{Use: "jawa", RunE: func(*cobra.Command, []string) error { return nil }}
+				configureServing(cmd, bonnie.New())
+				want := value
+				if want == "" {
+					want = tc.fallback
+				}
+				if got := cmd.Flags().Lookup(tc.flag).Value.String(); got != want {
+					t.Fatalf("%s: got %q, want %q", tc.flag, got, want)
+				}
+			}
+		})
+	}
+}

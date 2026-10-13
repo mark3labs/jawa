@@ -1,4 +1,4 @@
-import {chromium} from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import {createServer} from 'node:http';
 import {readFile, mkdir} from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -26,7 +26,7 @@ const server = createServer(async (req, res) => {
   else res.setHeader('Content-Type', 'text/html'), res.end(req.url === '/native' ? markup.toString().replace('<dialog id="card-dialog"', '<dialog open id="card-dialog"') : markup);
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-const browser = await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {})});
+const browser = await launchBrowser();
 const screenshotDir = process.env.JAWA_ISSUE_SCREENSHOTS;
 if (screenshotDir) await mkdir(screenshotDir,{recursive:true});
 try {

@@ -1,4 +1,4 @@
-import {chromium} from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -43,10 +43,7 @@ const server = createServer(async (req, res) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
 try {
-  browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
-    headless: true, args: ['--no-sandbox'],
-  });
+  browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(5000);
   const errors = [];

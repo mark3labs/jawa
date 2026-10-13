@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 // playwright (without @playwright/test) supplies locators, not expect.
 const expect = locator => {
@@ -27,10 +27,7 @@ const control = process.env.JAWA_SMOKE_CONTROL;
 assert.ok(control, 'Run go run ./cmd/factory-smoke to supply the offline BONNIE agent');
 const agent = 'factory-smoke-agent';
 const pr = 'https://github.com/example/smoke/pull/1';
-const browser = await chromium.launch({
- executablePath: process.env.CHROMIUM_PATH || '/etc/profiles/per-user/space_cowboy/bin/chromium',
- headless: true, args: ['--no-sandbox'],
-});
+const browser = await launchBrowser();
 const context = await browser.newContext({viewport: {width: 1440, height: 1000}});
 const page = await context.newPage();
 page.setDefaultTimeout(20000);
