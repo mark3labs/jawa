@@ -236,3 +236,40 @@ func TestFollowupCannotChangeTerminalWorkflow(t *testing.T) {
 		t.Fatal(lane, err)
 	}
 }
+
+func TestObserveWaitsForTabSwitchTeardown(t *testing.T) {
+	a := testApp(t)
+	p := a.workflow.runAPI
+	attempt := Attempt{AgentID: "tab-switch-agent", RunID: "tab-switch-run"}
+	old := &runHub{done: make(chan struct{}), viewers: 0, cancel: func() {}}
+	p.mu.Lock()
+	p.hubs[runKey(attempt)] = old
+	p.mu.Unlock()
+	returned := make(chan *runHub, 1)
+	go func() {
+		h, release, err := p.observe(attempt)
+		if err != nil {
+			returned <- nil
+			return
+		}
+		defer release()
+		returned <- h
+	}()
+	select {
+	case <-returned:
+		t.Fatal("returned before old upstream closed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	p.mu.Lock()
+	delete(p.hubs, runKey(attempt))
+	close(old.done)
+	p.mu.Unlock()
+	select {
+	case h := <-returned:
+		if h == nil || h == old {
+			t.Fatal("tab switch did not get replacement")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("tab switch did not resume")
+	}
+}

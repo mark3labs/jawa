@@ -135,7 +135,25 @@ func (p *runAPI) reserveSend(a Attempt) (func(), bool) {
 	return func() { p.mu.Lock(); delete(p.sends, k); p.mu.Unlock() }, true
 }
 func (p *runAPI) observe(a Attempt) (*runHub, func(), error) {
-	p.mu.Lock()
+	// A tab switch can arrive while the previous viewer's stream is closing.
+	// Wait boundedly for that same hub, rather than returning a finite SSE error
+	// or overlapping upstream streams outside the capacity accounting.
+	waitCtx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
+	defer cancel()
+	for {
+		p.mu.Lock()
+		stopping := p.hubs[runKey(a)]
+		if stopping == nil || stopping.viewers > 0 {
+			break
+		}
+		p.mu.Unlock()
+		select {
+		case <-stopping.done:
+		case <-waitCtx.Done():
+			return nil, nil, errRunBusy
+		}
+	}
+
 	defer p.mu.Unlock()
 	if p.closed {
 		return nil, nil, errRunBusy
