@@ -3,7 +3,9 @@ package orchestrator
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,6 +41,19 @@ func TestPRRefreshRoute(t *testing.T) {
 		invalid.Set("project_id", selection[0])
 		invalid.Set("card_id", selection[1])
 		status(t, request(a, "POST", "/prs/refresh", invalid, session, csrf), http.StatusNotFound)
+	}
+	if err := a.s.SetCardArchived(c.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	status(t, request(a, "POST", "/prs/refresh", form, session, csrf), http.StatusNotFound)
+	if calls.Load() != 0 {
+		t.Fatal("archived selection called provider")
+	}
+	if _, err := a.workflow.CardPRCheck(c.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("archived check: %v", err)
+	}
+	if err := a.s.SetCardArchived(c.ID, false); err != nil {
+		t.Fatal(err)
 	}
 	native := request(a, "POST", "/prs/refresh", form, session, csrf)
 	status(t, native, http.StatusSeeOther)
@@ -176,12 +191,35 @@ func TestPRRefreshBoardQueueCounts(t *testing.T) {
 		}
 		repairDone(t, a.workflow, c)
 	}
+	archived := []Attempt{}
+	before := map[string]string{}
+	latest, err := a.workflow.CardResult(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, state := range []string{"", "conflict", "checking"} {
+		extra := addArchivedConflictAttempt(t, a.s, latest, first.ProjectID, fmt.Sprintf("archived%d", i), state)
+		archived = append(archived, extra)
+		before[extra.ID] = conflictEvidenceSnapshot(t, a.s, extra.ID)
+	}
 	// Install only for this request, so the fixture's background loop cannot
 	// consume queued work before the response assertions.
-	a.workflow.SetProviderChecks(nil, func(context.Context, Attempt) (PRCheck, error) { return PRCheck{State: "unknown"}, nil })
+	a.workflow.SetProviderChecks(nil, func(_ context.Context, got Attempt) (PRCheck, error) {
+		for _, extra := range archived {
+			if got.ID == extra.ID {
+				t.Fatal("archived provider call")
+			}
+		}
+		return PRCheck{State: "unknown"}, nil
+	})
 	form := url.Values{"_csrf": {csrf.Value}, "project_id": {first.ProjectID}, "view": {"board"}, "project": {first.ProjectID}}
 	body := assertSSE(t, sseRequest(a, "POST", "/prs/refresh", form, session, csrf))
 	if !strings.Contains(body, "17 targeted, 16 checked, 1 queued for background checking") || !strings.Contains(body, `data-pr-check-state="checking"`) || !strings.Contains(body, "Awaiting a fresh check.") {
 		t.Fatal("queued work missing from response")
+	}
+	for _, extra := range archived {
+		if got := conflictEvidenceSnapshot(t, a.s, extra.ID); got != before[extra.ID] {
+			t.Fatalf("archived evidence changed: %s", got)
+		}
 	}
 }

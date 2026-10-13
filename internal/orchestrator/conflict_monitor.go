@@ -23,7 +23,7 @@ func (w *Workflow) SetProviderChecks(v Verifier, checker ConflictChecker) {
 	w.mu.Unlock()
 }
 
-// PollPRConflicts checks latest ready PRs on Done cards. It never moves a card,
+// PollPRConflicts checks latest ready PRs on non-archived Done cards. It never moves a card,
 // clears readiness, queues repairs, or holds a DB transaction over network I/O.
 // A poll is limited to 16 cards and 30 seconds; each provider call is also bounded.
 func (w *Workflow) PollPRConflicts(ctx context.Context) error {
@@ -43,7 +43,7 @@ func (w *Workflow) PollPRConflicts(ctx context.Context) error {
 	rows, err := w.s.db.QueryContext(ctx, `SELECT a.id FROM workflow_attempts a
  JOIN cards c ON c.id=a.card_id
  LEFT JOIN workflow_pr_checks p ON p.attempt_id=a.id
- WHERE c.status='Done' AND a.ready=1 AND a.state='ready' AND a.pr_url<>''
+ WHERE c.status='Done' AND c.archived=0 AND a.ready=1 AND a.state='ready' AND a.pr_url<>''
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)
  AND (p.checked_at IS NULL OR p.checked_at<?)
  ORDER BY coalesce(p.checked_at,0),a.id LIMIT 16`, time.Now().Add(-time.Minute).UnixMilli())
@@ -74,7 +74,11 @@ func (w *Workflow) checkPRBatch(ctx context.Context, monitor *conflictMonitor, i
 		if err = ctx.Err(); err != nil {
 			return completed, err
 		}
-		a, e := scanAttempt(w.s.db.QueryRowContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts WHERE id=?`, id))
+		// Revalidate selected IDs before provider I/O; visibility may have changed.
+		a, e := scanAttempt(w.s.db.QueryRowContext(ctx, `SELECT `+attemptColumns+` FROM workflow_attempts WHERE id=?
+ AND ready=1 AND state='ready' AND pr_url<>''
+ AND number=(SELECT max(number) FROM workflow_attempts latest WHERE latest.card_id=workflow_attempts.card_id)
+ AND EXISTS(SELECT 1 FROM cards c WHERE c.id=workflow_attempts.card_id AND c.status='Done' AND c.archived=0)`, id))
 		if errors.Is(e, sql.ErrNoRows) {
 			continue
 		}
@@ -98,11 +102,11 @@ func (w *Workflow) checkPRBatch(ctx context.Context, monitor *conflictMonitor, i
 		default:
 			check.State = "unknown"
 		}
-		// CAS against latest attempt, lane and project config after the network wait.
+		// CAS against latest attempt, lane, archive state and project config after the network wait.
 		_, e = w.s.db.ExecContext(ctx, `INSERT INTO workflow_pr_checks(attempt_id,pr_url,provider,repo,base_branch,state,head_sha,base_sha,error,checked_at)
  SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS(
  SELECT 1 FROM workflow_attempts a JOIN cards c ON c.id=a.card_id JOIN projects p ON p.id=c.project_id
- WHERE a.id=? AND a.pr_url=? AND a.ready=1 AND a.state='ready' AND c.status='Done'
+ WHERE a.id=? AND a.pr_url=? AND a.ready=1 AND a.state='ready' AND c.status='Done' AND c.archived=0
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)
  AND p.provider=? AND p.repo=? AND p.base_branch=?)
  ON CONFLICT(attempt_id) DO UPDATE SET pr_url=excluded.pr_url,provider=excluded.provider,repo=excluded.repo,
@@ -127,9 +131,9 @@ type PRRefreshResult struct {
 var ErrPRRefreshBusy = errors.New("PR checks already running")
 var ErrPRChecksUnavailable = errors.New("PR checks unavailable")
 
-// RefreshPRChecks bypasses the minute cooldown for a project's eligible Done cards.
-// Empty cardID means the whole project. Invalid projects, unrelated cards, and
-// cards without a latest verified ready PR return sql.ErrNoRows without writes.
+// RefreshPRChecks bypasses the minute cooldown for a project's eligible non-archived Done cards.
+// Empty cardID means the whole project. Invalid projects, unrelated or archived
+// cards, and cards without a latest verified ready PR return sql.ErrNoRows without writes.
 // All targets are durably marked checking, then at most 16 are checked in 30s.
 // Cancellation leaves unfinished targets queued for normal polling (and restart).
 func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string) (result PRRefreshResult, err error) {
@@ -156,7 +160,7 @@ func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string
 	res, err := w.s.db.ExecContext(ctx, `INSERT INTO workflow_pr_checks(attempt_id,pr_url,provider,repo,base_branch,state,head_sha,base_sha,error,checked_at)
  SELECT a.id,a.pr_url,p.provider,p.repo,p.base_branch,'checking','','','',0
  FROM workflow_attempts a JOIN cards c ON c.id=a.card_id JOIN projects p ON p.id=c.project_id
- WHERE c.project_id=? AND (?='' OR c.id=?) AND c.status='Done'
+ WHERE c.project_id=? AND (?='' OR c.id=?) AND c.status='Done' AND c.archived=0
  AND a.ready=1 AND a.state='ready' AND a.pr_url<>''
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id)
  ON CONFLICT(attempt_id) DO UPDATE SET pr_url=excluded.pr_url,provider=excluded.provider,repo=excluded.repo,
@@ -175,7 +179,7 @@ func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string
 	rows, err := w.s.db.QueryContext(ctx, `SELECT a.id FROM workflow_attempts a JOIN cards c ON c.id=a.card_id
  JOIN workflow_pr_checks p ON p.attempt_id=a.id
  WHERE c.project_id=? AND (?='' OR c.id=?) AND p.state='checking' AND p.checked_at=0
- AND c.status='Done' AND a.ready=1 AND a.state='ready' AND a.pr_url=p.pr_url
+ AND c.status='Done' AND c.archived=0 AND a.ready=1 AND a.state='ready' AND a.pr_url=p.pr_url
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id)
  ORDER BY a.id LIMIT 16`, projectID, cardID, cardID)
 	if err != nil {
