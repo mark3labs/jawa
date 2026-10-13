@@ -277,6 +277,7 @@ func TestProviderVerifier(t *testing.T) {
 }
 
 func TestGitHubCISkipped(t *testing.T) {
+	t.Parallel()
 	sha := strings.Repeat("a", 40)
 	type check struct {
 		Name       string           `json:"name"`
@@ -413,6 +414,7 @@ func TestGitHubCISkipped(t *testing.T) {
 }
 
 func TestProviderRepository(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"https://github.com/acme/repo.git", "git@github.com:acme/repo.git", "ssh://git@github.com/acme/repo"} {
 		host, owner, name, err := providerRepository(raw)
 		if err != nil || host != "github.com" || owner != "acme" || name != "repo" {
@@ -427,6 +429,7 @@ func TestProviderRepository(t *testing.T) {
 }
 
 func TestProviderReaderSafety(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"pagination", "timeout", "oversize", "status"} {
 		t.Run(scenario, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -606,6 +609,7 @@ func TestForgejoVerifier(t *testing.T) {
 }
 
 func TestMergedPRStillRequiresIdentity(t *testing.T) {
+	t.Parallel()
 	var pr providerPR
 	raw := `{"number":177,"state":"closed","merged":true,"mergeable":null,"head":{"ref":"jawa/update-ci-abcdef-a1","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repo":{"full_name":"example/repo"}},"base":{"ref":"main","repo":{"full_name":"example/repo"}}}`
 	if err := json.Unmarshal([]byte(raw), &pr); err != nil {

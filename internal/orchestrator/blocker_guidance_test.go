@@ -40,6 +40,7 @@ func statusEvent(r reportprotocol.Request, state runtime.RunState, seq int) clie
 }
 
 func TestBlockerParksRunAndSurvivesStatusUpdates(t *testing.T) {
+	t.Parallel()
 	w, c, r := parkedBuild(t)
 	a, _ := w.CardResult(c.ID)
 	if a.State != "blocked" || a.RunState != "waiting" || a.Error != "Need credentials" || a.OutcomeJSON != "" || terminalFailure(a) || runLabel(a) != "Blocked" {
@@ -99,6 +100,7 @@ func TestBlockerParksRunAndSurvivesStatusUpdates(t *testing.T) {
 }
 
 func TestAnsweredBlockerIgnoresStaleWaitingReplay(t *testing.T) {
+	t.Parallel()
 	w, c, r := parkedBuild(t)
 	// Emulate delivered guidance: the run continues in the same conversation.
 	if _, err := w.s.db.Exec(`UPDATE workflow_interactions SET status='answered' WHERE report_id=?`, r.ReportID); err != nil {
@@ -128,6 +130,7 @@ func TestAnsweredBlockerIgnoresStaleWaitingReplay(t *testing.T) {
 }
 
 func TestBlockerFromAgentThatCannotParkStaysRetryable(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Building", 0); err != nil {
 		t.Fatal(err)
@@ -156,6 +159,7 @@ func TestBlockerFromAgentThatCannotParkStaysRetryable(t *testing.T) {
 }
 
 func TestPostApprovalPlanningBlockerStaysTerminal(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)
@@ -181,6 +185,7 @@ func TestPostApprovalPlanningBlockerStaysTerminal(t *testing.T) {
 }
 
 func TestBlockerGuidanceCardUI(t *testing.T) {
+	t.Parallel()
 	attempt := Attempt{CardID: "card", TaskID: "task", AgentID: "agent", RunID: "run", RemoteAttemptID: "remote", State: "blocked", RunState: "waiting", Error: "Need credentials"}
 	for _, tc := range []struct {
 		name, lane string
@@ -226,6 +231,7 @@ func TestBlockerGuidanceCardUI(t *testing.T) {
 }
 
 func TestBlockerGuidanceHTTP(t *testing.T) {
+	t.Parallel()
 	app := testApp(t)
 	session, csrf := setupTest(t, app)
 	w := app.workflow

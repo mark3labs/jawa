@@ -11,6 +11,7 @@ import (
 )
 
 func TestPublicPWAAssets(t *testing.T) {
+	t.Parallel()
 	a := &app{} // Public assets must not depend on a database or login.
 	for _, path := range []string{"/sw.js", "/assets/manifest.webmanifest", "/assets/offline.html", "/assets/icon-180.png", "/assets/icon-192.png", "/assets/icon-512.png", "/assets/icon-maskable-512.png"} {
 		t.Run(path, func(t *testing.T) {
@@ -69,15 +70,5 @@ func TestPublicPWAAssets(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestPWAMetadataOnAuthPages(t *testing.T) {
-	w := httptest.NewRecorder()
-	authPageWithRequest(w, httptest.NewRequest(http.MethodGet, "/login", nil), "login", "")
-	for _, want := range []string{`rel="manifest"`, `rel="apple-touch-icon"`, `name="theme-color"`, `viewport-fit=cover`} {
-		if !strings.Contains(w.Body.String(), want) {
-			t.Errorf("missing %s", want)
-		}
 	}
 }

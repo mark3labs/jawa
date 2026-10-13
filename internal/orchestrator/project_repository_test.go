@@ -7,6 +7,7 @@ import (
 )
 
 func TestProjectRepositoryURL(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ provider, name, host, want string }{
 		{"github", " acme/repo ", "https://ignored.example", "https://github.com/acme/repo"},
 		{"forgejo", "acme/repo", "https://codeberg.org", "https://codeberg.org/acme/repo"},
@@ -36,6 +37,7 @@ func TestProjectRepositoryURL(t *testing.T) {
 }
 
 func TestCreateProjectRepositoryNames(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	for _, tc := range []struct{ provider, name, host, want string }{

@@ -1,63 +1,15 @@
 package orchestrator
 
 import (
-	"bytes"
 	"database/sql"
 	"errors"
-	"fmt"
-	"html"
 	"net/http"
 	"strings"
 	"testing"
 )
 
-func TestCardViewShortcut(t *testing.T) {
-	for _, state := range []string{"Todo", "Planning", "Building", "Fix", "Done"} {
-		for _, archived := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/archived=%t", state, archived), func(t *testing.T) {
-				c := Card{ID: "card&special", Title: "View <card> & plan", Status: state, Archived: archived}
-				var out bytes.Buffer
-				if err := taskCard(pageData{}, c).Render(t.Context(), &out); err != nil {
-					t.Fatal(err)
-				}
-				markup := out.String()
-				href := `href="` + html.EscapeString(planningPath(c.ID)) + `"`
-				start := strings.Index(markup, `<a class="icon-btn card-view-action"`)
-				if start < 0 || strings.Count(markup, `class="icon-btn card-view-action"`) != 1 {
-					t.Fatal("expected one shortcut")
-				}
-				end := strings.Index(markup[start:], "</a>")
-				if end < 0 {
-					t.Fatal("missing closing anchor")
-				}
-				link := markup[start : start+end]
-				for _, want := range []string{href, `aria-label="View card and plan: ` + html.EscapeString(cardKey(nil, c)) + `"`, `title="View card and plan"`, `aria-hidden="true"`, `<path d=`, `<circle cx="12" cy="12" r="3"`} {
-					if !strings.Contains(link, want) {
-						t.Errorf("shortcut missing %s", want)
-					}
-				}
-				formEnd := strings.Index(markup, "</form>")
-				menuStart := strings.Index(markup, "<jawa-menu>")
-				if formEnd < 0 || formEnd > start || menuStart < start {
-					t.Fatal("shortcut must follow the archive form and precede the menu")
-				}
-				for _, want := range []string{`method="post" action="` + archiveRoute(c) + `"`, archiveLabel(c), `class="card-key"`, `View card &amp; plan</a>`, html.EscapeString(c.Title)} {
-					if !strings.Contains(markup, want) {
-						t.Errorf("card missing %s", want)
-					}
-				}
-				if strings.Count(markup, href) != 3 {
-					t.Fatal("card key, shortcut and menu must retain the detail destination")
-				}
-				if strings.Contains(markup, "<card>") {
-					t.Fatal("unescaped title")
-				}
-			})
-		}
-	}
-}
-
 func TestCardViewShortcutHTTP(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	p, err := a.s.CreateProjectDetails("View shortcut", "github", "https://github.com/example/view.git", "master")

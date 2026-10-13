@@ -9,6 +9,7 @@ import (
 )
 
 func TestTaskBranch(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("abcdef", 10)
 	for _, tc := range []struct{ title, slug string }{
 		{"Update CI", "update-ci"}, {" Fix / session_timeout... ", "fix-session-timeout"}, {"你好 🚀", "task"}, {"foo.lock @{bar}", "foo-lock-bar"}, {strings.Repeat("a", 100), strings.Repeat("a", 40)},
@@ -22,6 +23,7 @@ func TestTaskBranch(t *testing.T) {
 }
 
 func TestAssignedBranchCompatibility(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("a", 64)
 	fresh := taskBranch("Update CI", id, 1)
 	legacy := fmt.Sprintf("jawa/card/%s/attempt/1", id)

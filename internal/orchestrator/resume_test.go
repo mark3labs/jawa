@@ -13,6 +13,7 @@ import (
 )
 
 func TestFailedResumeEligibility(t *testing.T) {
+	t.Parallel()
 	out := client.Outcome{Version: 1, TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunFailed, Error: "connection reset"}
 	raw, _ := json.Marshal(out)
 	valid := Attempt{CardID: "card", TaskID: "task", AgentID: "agent", RunID: "run", RemoteAttemptID: "remote", State: "failed", RunState: "failed", OutcomeJSON: string(raw)}
@@ -69,6 +70,7 @@ func TestFailedResumeEligibility(t *testing.T) {
 }
 
 func TestFailedResumeReservationRejectStaleAndRestart(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	w := &Workflow{s: s, ctx: t.Context(), resumeConn: nc}
 	c, err := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true})

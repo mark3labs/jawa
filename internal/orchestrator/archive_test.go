@@ -5,6 +5,7 @@ import (
 )
 
 func TestSetCardArchivedPreservesWorkflowState(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	p := testProject(t, s)
 	c := testCard(t, s, p, "archive me")

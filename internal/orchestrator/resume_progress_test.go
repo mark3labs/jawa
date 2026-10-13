@@ -17,6 +17,7 @@ import (
 // observed executing; afterwards the normal working state is displayed while
 // the resume row keeps blocking competing deliveries.
 func TestResumeShowsWorkingOnceContinuationRuns(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {
@@ -79,6 +80,7 @@ func TestResumeShowsWorkingOnceContinuationRuns(t *testing.T) {
 // Before the stale threshold, the dispatch loop confirms an active owner and
 // switches the display without waiting for status events.
 func TestResumeDispatchPromotesActiveOwner(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {
@@ -125,6 +127,7 @@ func TestResumeDispatchPromotesActiveOwner(t *testing.T) {
 // a failed outcome. It must restore an execution failure (not an ambiguous
 // notice) and let automatic resume schedule the next bounded attempt.
 func TestResumeRepeatedFailureReschedulesAutomaticResume(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {

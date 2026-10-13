@@ -13,6 +13,7 @@ import (
 )
 
 func TestManualPRMergePersistence(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	original := repairDone(t, w, c)
@@ -83,6 +84,7 @@ func TestManualPRMergePersistence(t *testing.T) {
 }
 
 func TestManualPRMergeRejectsInvalid(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"lane", "not ready", "no PR", "active", "attempt", "URL", "cancelled"} {
 		t.Run(change, func(t *testing.T) {
 			w := actionWorkflow(t)
@@ -123,6 +125,7 @@ func TestManualPRMergeRejectsInvalid(t *testing.T) {
 }
 
 func TestManualPRMergeDuringProviderIO(t *testing.T) {
+	t.Parallel()
 	for _, refresh := range []bool{false, true} {
 		t.Run(map[bool]string{false: "poll", true: "refresh"}[refresh], func(t *testing.T) {
 			w := actionWorkflow(t)
@@ -165,6 +168,7 @@ func TestManualPRMergeDuringProviderIO(t *testing.T) {
 }
 
 func TestMarkMergedRoute(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)
@@ -229,6 +233,7 @@ func TestManualPRMergeStoreRestart(t *testing.T) {
 }
 
 func TestManualPRMergeRacingFix(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	a := repairDone(t, w, c)

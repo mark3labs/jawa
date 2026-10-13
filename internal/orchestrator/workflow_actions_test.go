@@ -67,6 +67,7 @@ func assertActionLane(t *testing.T, w *Workflow, project, lane string, ids ...st
 }
 
 func TestWorkflowLegacyActions(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"retry", "move", "reset", "delete"} {
 		t.Run(action, func(t *testing.T) {
 			w := actionWorkflow(t)
@@ -112,6 +113,7 @@ func TestWorkflowLegacyActions(t *testing.T) {
 }
 
 func TestWorkflowActionGuards(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		state, run    string
 		reset, delete bool
@@ -181,6 +183,7 @@ func TestWorkflowActionGuards(t *testing.T) {
 }
 
 func TestWorkflowActionsUnknownCard(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	for name, action := range map[string]func(string) error{
 		"retry": w.Retry, "reset": w.ResetCard, "delete": w.DeleteCard,
@@ -195,6 +198,7 @@ func TestWorkflowActionsUnknownCard(t *testing.T) {
 }
 
 func TestWorkflowConcurrentRetry(t *testing.T) {
+	t.Parallel()
 	for _, legacy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "terminal", true: "legacy"}[legacy], func(t *testing.T) {
 			w := actionWorkflow(t)
@@ -251,6 +255,7 @@ func TestWorkflowConcurrentRetry(t *testing.T) {
 }
 
 func TestWorkflowDeleteCompactsLane(t *testing.T) {
+	t.Parallel()
 	for _, lane := range []string{"Todo", "Building", "Done"} {
 		t.Run(lane, func(t *testing.T) {
 			w := actionWorkflow(t)
@@ -280,6 +285,7 @@ func TestWorkflowDeleteCompactsLane(t *testing.T) {
 }
 
 func TestWorkflowResetCompactsLanesAndRollback(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	a := actionAttempt(t, w, c, "blocked", "completed")
@@ -327,6 +333,7 @@ func TestWorkflowResetCompactsLanesAndRollback(t *testing.T) {
 }
 
 func TestWorkflowActionsGuardAllAttempts(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	first := actionAttempt(t, w, c, "failed", "failed")

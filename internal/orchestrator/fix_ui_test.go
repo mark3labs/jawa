@@ -9,6 +9,7 @@ import (
 )
 
 func TestFixEndpointAndSnapshot(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)
@@ -69,6 +70,7 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 }
 
 func TestConflictWarningOnlyForConflict(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "done", Status: "Done"}
 	attempts := []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/18"}}
 	for _, state := range []string{"checking", "conflict", "clear", "unknown", "error", "merged", "closed", ""} {
@@ -95,6 +97,7 @@ func TestConflictWarningOnlyForConflict(t *testing.T) {
 }
 
 func TestFixNativeAndUnavailable(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)

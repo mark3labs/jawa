@@ -120,6 +120,7 @@ func reconcileResumeState(t *testing.T, w *Workflow, req reportprotocol.FailedRe
 }
 
 func TestResumeReconcileAmbiguousRestoresFailureAndStopsAuto(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {
@@ -166,6 +167,7 @@ func TestResumeReconcileAmbiguousRestoresFailureAndStopsAuto(t *testing.T) {
 }
 
 func TestResumeReconcileStaleDispatch(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {
@@ -273,6 +275,7 @@ func TestResumeReconcileStaleDispatch(t *testing.T) {
 }
 
 func TestResumeStaleCheckThrottled(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"active", "unreachable"} {
 		t.Run(scenario, func(t *testing.T) {
 			w, nc, _, req, _ := reconcileResumeFixture(t, false, false)
@@ -367,6 +370,7 @@ func TestResumeStaleDuration(t *testing.T) {
 // A receipt that arrives after the resumed run already reported completion
 // must not restore the pre-resume failure over a ready attempt.
 func TestResumeReconcileLateReceiptKeepsAcceptedReport(t *testing.T) {
+	t.Parallel()
 	for _, planning := range []bool{false, true} {
 		mode := "build"
 		if planning {

@@ -34,6 +34,7 @@ func (w *startupLogWriter) String() string {
 }
 
 func TestCommandStartupLogs(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	output := &startupLogWriter{cancel: cancel}

@@ -8,6 +8,7 @@ import (
 )
 
 func TestPendingResumeBadges(t *testing.T) {
+	t.Parallel()
 	a := Attempt{State: "running", RunState: "running", Error: resumePendingNotice}
 	if runTone(a) != "resuming" || runLabel(a) != "Resuming…" || !attemptActive(a) {
 		t.Fatal("pending resume must be visible and still exclude competing work")

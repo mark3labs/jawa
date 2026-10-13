@@ -12,6 +12,7 @@ import (
 )
 
 func TestCardPlanningAssignmentMatrix(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		session, turn string
 		assigned      bool
@@ -66,6 +67,7 @@ func TestCardPlanningAssignmentMatrix(t *testing.T) {
 }
 
 func TestCardSharedAssignmentAndDiagnostics(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "card", Status: "Planning"}
 	detail := PlanningDetail{Session: PlanningSession{State: "running"}, Turns: []PlanningTurn{{Number: 1, State: "running", AgentID: "worker"}}}
 	d := pageData{planning: map[string]PlanningDetail{c.ID: detail}, attempts: []Attempt{{CardID: c.ID, State: "running", AgentID: "worker"}}}
@@ -127,6 +129,7 @@ func TestCardSharedAssignmentAndDiagnostics(t *testing.T) {
 }
 
 func TestCardActivityTime(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
 		name                                   string
@@ -163,6 +166,7 @@ func TestCardActivityTime(t *testing.T) {
 }
 
 func TestPersistedPlannerAssignmentSnapshot(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)
@@ -219,6 +223,7 @@ func TestPersistedPlannerAssignmentSnapshot(t *testing.T) {
 }
 
 func TestPlannerAssignmentFullPageAndSSEArchiveRestore(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)

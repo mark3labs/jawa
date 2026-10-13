@@ -22,6 +22,7 @@ func reportRequest(t *testing.T, task string, kind reportprotocol.Kind, p report
 }
 
 func TestTypedReportCommitReplayConflictAndNaturalOutcome(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Building", 0); err != nil {
 		t.Fatal(err)
@@ -127,6 +128,7 @@ func TestTypedReportCommitReplayConflictAndNaturalOutcome(t *testing.T) {
 }
 
 func TestTypedReportExactRuntimeAuthorizationAndMode(t *testing.T) {
+	t.Parallel()
 	for _, field := range []string{"task", "agent", "run", "attempt", "turn", "inactive", "cancelled", "unavailable", "mode", "hash"} {
 		t.Run(field, func(t *testing.T) {
 			_, w, c := planningLocal(t)
@@ -175,6 +177,7 @@ func TestTypedReportExactRuntimeAuthorizationAndMode(t *testing.T) {
 }
 
 func TestTypedPlanningProposalQuestionsReceiptAndBlocker(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)
@@ -245,6 +248,7 @@ func TestTypedPlanningProposalQuestionsReceiptAndBlocker(t *testing.T) {
 }
 
 func TestNaturalPlanningJSONNeverProposes(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)
@@ -260,6 +264,7 @@ func TestNaturalPlanningJSONNeverProposes(t *testing.T) {
 }
 
 func TestTypedPlanningBlockerAndPayloadRejections(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)

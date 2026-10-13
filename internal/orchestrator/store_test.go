@@ -65,6 +65,7 @@ func assertLane(t *testing.T, s *Store, p Project, status string, want ...string
 	}
 }
 func TestStorePersistence(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "store.db")
 	s, err := OpenStore(path)
 	if err != nil {
@@ -134,6 +135,7 @@ func TestStorePersistence(t *testing.T) {
 	}
 }
 func TestMoveCardOrdering(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	p := testProject(t, s)
 	other := testProject(t, s)
@@ -179,6 +181,7 @@ func TestMoveCardOrdering(t *testing.T) {
 	assertLane(t, s, other, "Todo", untouched.ID)
 }
 func TestStoreValidationAndConstraints(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	for _, tc := range []struct{ name, provider, repo string }{{" ", "", ""}, {"p", "gitlab", ""}, {"p", "github", "http://example.org/repo"}, {"p", "forgejo", "file:///tmp/repo"}, {"p", "", "https://"}, {"p", "", "/local/repo"}, {"p", "", "https://example.org/has space"}} {
 		if _, err := s.CreateProjectDetails(tc.name, tc.provider, tc.repo, ""); err == nil {
@@ -212,6 +215,7 @@ func TestStoreValidationAndConstraints(t *testing.T) {
 	}
 }
 func TestStoreLegacySchemaMigration(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -266,6 +270,7 @@ func TestStoreLegacySchemaMigration(t *testing.T) {
 	testCard(t, s, p, "new")
 }
 func TestConcurrentSetupAndCardCreation(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	p := testProject(t, s)
 	var wg sync.WaitGroup
@@ -310,6 +315,7 @@ func TestConcurrentSetupAndCardCreation(t *testing.T) {
 }
 
 func TestMoveCardRollback(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	p := testProject(t, s)
 	a := testCard(t, s, p, "a")
@@ -336,6 +342,7 @@ func TestMoveCardRollback(t *testing.T) {
 }
 
 func TestCardIssueURLValidation(t *testing.T) {
+	t.Parallel()
 	s := testStore(t)
 	p := testProject(t, s)
 	for _, issue := range []string{"javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "//example.com/issue", "https:///issue", "https://user:secret@example.com/issue", "https://example.com/\nissue"} {

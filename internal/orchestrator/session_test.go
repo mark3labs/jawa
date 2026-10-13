@@ -34,6 +34,7 @@ func assertPersistentCookies(t *testing.T, a *app, session, csrf *http.Cookie, b
 }
 
 func TestSessionSetupLoginAndCSRFRegeneration(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	before := time.Now()
 	session, csrf := setupTest(t, a)
@@ -83,6 +84,7 @@ func TestSessionSetupLoginAndCSRFRegeneration(t *testing.T) {
 }
 
 func TestSessionStoreRestartAndExpiry(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "sessions.db")
 	s, err := OpenStore(path)
 	if err != nil {

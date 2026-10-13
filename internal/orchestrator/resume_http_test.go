@@ -12,6 +12,7 @@ import (
 )
 
 func TestFailedResumeWorkLaneHTTP(t *testing.T) {
+	t.Parallel()
 	for _, lane := range []string{"Building", "Fix", "Planning"} {
 		t.Run(lane, func(t *testing.T) {
 			app := testApp(t)

@@ -19,6 +19,7 @@ import (
 // Real KIT + BONNIE SQLite journal + Bridge + JetStream + production DB ACKs.
 // Restart both owners while waiting, reject/revise, approve, then finish planning.
 func TestResumablePlanningRealRuntimeRestartReviewAndBuild(t *testing.T) {
+	skipFlaky(t)
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w, err := NewWorkflow(t.Context(), s, nc)

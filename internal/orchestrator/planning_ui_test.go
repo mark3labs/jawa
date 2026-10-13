@@ -11,6 +11,7 @@ import (
 )
 
 func TestPlanningViewParams(t *testing.T) {
+	t.Parallel()
 	v := parseViewParams(httptest.NewRequest("GET", "/planning?card=abc&project=def", nil), viewPlanning)
 	if v.Path() != "/planning?card=abc" {
 		t.Fatalf("path: %s", v.Path())
@@ -27,6 +28,7 @@ func TestPlanningViewParams(t *testing.T) {
 }
 
 func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "abc", Title: "A card", Description: "<script>original</script>", Status: "Planning"}
 	d := pageData{csrf: "csrf", v: viewParams{View: viewPlanning, Card: c.ID},
 		cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: {
@@ -67,6 +69,7 @@ func TestPlanningContentEscapesAndFreezesApprovalSelection(t *testing.T) {
 }
 
 func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	p, err := a.s.CreateProjectDetails("Planning", "github", "https://github.com/example/planning.git", "main")
@@ -118,6 +121,7 @@ func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
 }
 
 func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
+	t.Parallel()
 	raw := "## Human plan\n\nUse **safe** rendering.\n\n## Questions\n\nWhich `branch`?"
 	c := Card{ID: "abc", Title: "Card", Description: "# Original", Status: "Planning"}
 	detail := PlanningDetail{
@@ -153,6 +157,7 @@ func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 }
 
 func TestPlanningDiscussionFallback(t *testing.T) {
+	t.Parallel()
 	for _, message := range []PlanningMessage{
 		{Role: "assistant", Content: `{"spec":"invalid report"}`},
 		{Role: "assistant", Content: "Ordinary **reply**"},
@@ -169,6 +174,7 @@ func TestPlanningDiscussionFallback(t *testing.T) {
 }
 
 func TestClarifyUIHasQuestionsWithoutProposalAndStaleTokenRejected(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	p, err := a.s.CreateProjectDetails("Planning", "github", "https://github.com/example/repo", "main")
@@ -210,6 +216,7 @@ func TestClarifyUIHasQuestionsWithoutProposalAndStaleTokenRejected(t *testing.T)
 }
 
 func TestFailedResumePlanningUI(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "card", Status: "Planning", Title: "Recover investigation"}
 	d := pageData{csrf: "csrf", v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: {Session: PlanningSession{State: "failed"}, CanResume: true, ResumeToken: "failure-token"}}}
 	var out bytes.Buffer

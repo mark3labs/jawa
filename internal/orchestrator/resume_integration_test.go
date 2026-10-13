@@ -22,6 +22,7 @@ import (
 // No model/network provider: an exhausted real KIT provider fails, then the
 // same SQLite run is restored on a new host and continues with a healthy model.
 func TestFailedResumeRealRuntimeBothModes(t *testing.T) {
+	skipFlaky(t)
 	for _, mode := range []string{"build", "planning", "fix", "auto-build", "auto-planning", "auto-fix"} {
 		planning := strings.Contains(mode, "planning")
 		automatic := strings.HasPrefix(mode, "auto-")

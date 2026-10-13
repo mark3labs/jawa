@@ -12,6 +12,7 @@ import (
 )
 
 func TestFailedResumeCardMenu(t *testing.T) {
+	t.Parallel()
 	raw, _ := json.Marshal(client.Outcome{Version: 1, TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunFailed})
 	attempt := Attempt{CardID: "card", TaskID: "task", AgentID: "agent", RunID: "run", RemoteAttemptID: "remote", State: "failed", RunState: "failed", OutcomeJSON: string(raw)}
 	for _, tc := range []struct {

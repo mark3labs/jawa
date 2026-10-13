@@ -129,6 +129,10 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	return w, nil
 }
 
+// workflowLoopInterval paces the dispatch and consumer retry loops. Tests
+// shorten it.
+var workflowLoopInterval = 250 * time.Millisecond
+
 func (w *Workflow) loop(f func() error) { w.consumerLoop("dispatch", f) }
 
 func (w *Workflow) consumerLoop(consumer string, f func() error) {
@@ -144,7 +148,7 @@ func (w *Workflow) consumerLoop(consumer string, f func() error) {
 		select {
 		case <-w.ctx.Done():
 			return
-		case <-time.After(250 * time.Millisecond):
+		case <-time.After(workflowLoopInterval):
 		}
 	}
 }

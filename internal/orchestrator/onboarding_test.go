@@ -10,6 +10,7 @@ import (
 )
 
 func TestNATSOnboarding(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupAccountTest(t, a)
 	assertReady := func(want bool) {

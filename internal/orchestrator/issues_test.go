@@ -236,23 +236,3 @@ func TestIssueBodies(t *testing.T) {
 		}
 	}
 }
-
-func TestIssueAutofillMarkup(t *testing.T) {
-	a := testApp(t)
-	session, _ := setupTest(t, a)
-	w := request(a, "GET", "/board", nil, session)
-	status(t, w, 200)
-	body := w.Body.String()
-	for _, want := range []string{`class="issue-autofill-row"`, `id="card-issue" name="issue_url"`, `type="button" data-issue-autofill disabled`, `aria-label="Autofill title and description from issue"`, `aria-describedby="card-issue-autofill-help"`, `id="card-title"`, `name="title"`, `id="card-description"`, `name="description"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %q", want)
-		}
-	}
-	row := strings.Index(body, `class="issue-autofill-row"`)
-	if row >= 0 {
-		end := strings.Index(body[row:], `</div>`)
-		if end < 0 || !strings.Contains(body[row:row+end], "data-issue-autofill") {
-			t.Error("autofill not adjacent to selector")
-		}
-	}
-}

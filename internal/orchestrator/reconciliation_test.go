@@ -20,6 +20,7 @@ func conflictCount(t *testing.T, s *Store, task string) int {
 }
 
 func TestReconcileRetainedNATSOutcome(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	card := workflowCard(t, s)
 	w, err := NewWorkflow(t.Context(), s, nc)
@@ -130,6 +131,7 @@ func stoppedReconciliationWorkflow(t *testing.T) (*Workflow, Card) {
 }
 
 func TestReconcileGuardsAndFailure(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"unknown", "empty", "waiting", "cancelled", "missing-agent", "superseded", "todo", "ambiguous", "failed"} {
 		t.Run(kind, func(t *testing.T) {
 			w, card := stoppedReconciliationWorkflow(t)
@@ -206,6 +208,7 @@ func TestReconcileGuardsAndFailure(t *testing.T) {
 }
 
 func TestRecoveryPreviouslyAckedResult(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	card := workflowCard(t, s)
 	w, err := NewWorkflow(t.Context(), s, nc)
@@ -299,6 +302,7 @@ func TestRecoveryPreviouslyAckedResult(t *testing.T) {
 }
 
 func TestReconcileAtomicRollbackAndStaleVerification(t *testing.T) {
+	t.Parallel()
 	w, card := stoppedReconciliationWorkflow(t)
 	a, _ := w.CardResult(card.ID)
 	old := client.Outcome{TaskID: a.TaskID, AgentID: "A", RunID: "A", AttemptID: "A", State: runtime.RunCompleted, Response: `{"pr_number":1}`}

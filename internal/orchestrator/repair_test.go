@@ -27,6 +27,7 @@ func repairDone(t *testing.T, w *Workflow, c Card) Attempt {
 }
 
 func TestRepairLifecycle(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	original := repairDone(t, w, c)
@@ -127,6 +128,7 @@ func TestRepairLifecycle(t *testing.T) {
 }
 
 func TestRepairGuardsAndConcurrentRequests(t *testing.T) {
+	t.Parallel()
 	w := actionWorkflow(t)
 	c := workflowCard(t, w.s)
 	if err := w.FixCard(c.ID, "fix"); err == nil {

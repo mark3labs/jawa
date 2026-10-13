@@ -83,6 +83,7 @@ func publishOutcome(t *testing.T, nc *nats.Conn, out client.Outcome) {
 }
 
 func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w, e := NewWorkflow(t.Context(), s, nc)
@@ -232,6 +233,7 @@ func TestWorkflowDurableProtocolAndVerification(t *testing.T) {
 }
 
 func TestWorkflowOutboxRestartAndOfflinePresence(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w, e := NewWorkflow(t.Context(), s, nc)
@@ -307,6 +309,7 @@ func TestWorkflowOutboxRestartAndOfflinePresence(t *testing.T) {
 }
 
 func TestWorkflowAtomicRollbackAndBlockedResults(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w, e := NewWorkflow(t.Context(), s, nc)
@@ -369,6 +372,7 @@ func TestWorkflowAtomicRollbackAndBlockedResults(t *testing.T) {
 }
 
 func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w, err := NewWorkflow(t.Context(), s, nc)
@@ -415,6 +419,7 @@ func TestWorkflowRetryCreatesIsolatedAttempt(t *testing.T) {
 }
 
 func TestWorkflowFailureAndWaitingRemainBuilding(t *testing.T) {
+	t.Parallel()
 	for _, state := range []runtime.RunState{runtime.RunFailed, runtime.RunWaiting} {
 		t.Run(string(state), func(t *testing.T) {
 			s, nc := workflowFixture(t)

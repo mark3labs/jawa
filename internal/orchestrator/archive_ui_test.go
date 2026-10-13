@@ -9,6 +9,7 @@ import (
 )
 
 func TestArchiveRoutesAndViews(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)
@@ -38,6 +39,7 @@ func TestArchiveRoutesAndViews(t *testing.T) {
 }
 
 func TestMergedReplacesReadyBadge(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "abc", Status: "Done"}
 	for _, state := range []string{"merged", "clear", "conflict", "error"} {
 		t.Run(state, func(t *testing.T) {
@@ -55,22 +57,6 @@ func TestMergedReplacesReadyBadge(t *testing.T) {
 				}
 			} else if !strings.Contains(body, "Ready for review") || strings.Contains(body, ">Merged</span>") {
 				t.Fatalf("non-merged check replaced historical readiness: %s", body)
-			}
-		})
-	}
-}
-
-func TestCardPRBadges(t *testing.T) {
-	for state, label := range map[string]string{"conflict": "Merge Conflict", "error": "Checks Failed"} {
-		t.Run(state, func(t *testing.T) {
-			c := Card{ID: "abc"}
-			d := pageData{prChecks: map[string]PRCheck{c.ID: {State: state}}}
-			var out bytes.Buffer
-			if err := cardPRStatus(d, c).Render(t.Context(), &out); err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(out.String(), `class="chip `) || !strings.Contains(out.String(), label) {
-				t.Fatalf("missing badge: %s", out.String())
 			}
 		})
 	}

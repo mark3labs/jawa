@@ -508,7 +508,7 @@ func (a *app) setup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid username or password (password must be 12–72 bytes)", http.StatusBadRequest)
 		return
 	}
-	h, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	h, err := bcrypt.GenerateFromPassword([]byte(p), passwordHashCost)
 	if err != nil {
 		http.Error(w, "unable to create account", http.StatusInternalServerError)
 		return
@@ -526,7 +526,7 @@ func (a *app) setup(w http.ResponseWriter, r *http.Request) {
 }
 
 var dummyLoginHash = func() []byte {
-	h, _ := bcrypt.GenerateFromPassword([]byte("not-a-real-account-password"), bcrypt.DefaultCost)
+	h, _ := bcrypt.GenerateFromPassword([]byte("not-a-real-account-password"), passwordHashCost)
 	return h
 }()
 
@@ -653,7 +653,7 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	if a.ns != nil && a.options == nil {
 		return fmt.Errorf("NATS options unavailable")
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(pass), passwordHashCost)
 	if err != nil {
 		return err
 	}
@@ -773,7 +773,7 @@ func Command() *cobra.Command {
 		}
 		// Internal credentials are process-local and independent of agent rotation.
 		systemPassword := newID()
-		systemHash, err := bcrypt.GenerateFromPassword([]byte(systemPassword), bcrypt.DefaultCost)
+		systemHash, err := bcrypt.GenerateFromPassword([]byte(systemPassword), passwordHashCost)
 		if err != nil {
 			return err
 		}

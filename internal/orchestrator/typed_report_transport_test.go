@@ -11,6 +11,7 @@ import (
 )
 
 func TestTypedReportNATSCommitAckAndLostReplyReplay(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w := &Workflow{s: s, ctx: context.Background(), observeReport: fakeReportObserver}
@@ -71,6 +72,7 @@ func TestTypedReportNATSCommitAckAndLostReplyReplay(t *testing.T) {
 }
 
 func TestTypedReportReceiptSurvivesDatabaseReopenAndCardDeletion(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "board.db")
 	s, err := OpenStore(path)
 	if err != nil {

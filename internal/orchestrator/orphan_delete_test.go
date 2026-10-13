@@ -3,6 +3,7 @@ package orchestrator
 import "testing"
 
 func TestDeleteUnreconciledRequiresAcknowledgment(t *testing.T) {
+	t.Parallel()
 	s, _ := workflowFixture(t)
 	if err := migrateWorkflow(s); err != nil {
 		t.Fatal(err)

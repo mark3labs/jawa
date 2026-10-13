@@ -8,6 +8,7 @@ import (
 )
 
 func TestPlanningMarkdownFormatting(t *testing.T) {
+	t.Parallel()
 	source := "# Plan\n\n## Details\n\n**bold** and *emphasis*, ~~removed~~ and `inline`\n\n- first\n- second\n\n1. ordered\n2. next\n\n> quoted\n\n```go\nif a < b { print(\"<script>\") }\n```\n\n| Name | Value |\n| --- | --- |\n| foo | bar |\n\n[docs](https://example.com/docs)"
 	got := renderPlanningMarkdown(source)
 	for _, want := range []string{"<h1>Plan</h1>", "<h2>Details</h2>", "<strong>bold</strong>", "<em>emphasis</em>", "<del>removed</del>", "<code>inline</code>", "<ul>", "<ol>", "<blockquote>", "<pre><code>", "a &lt; b", "&lt;script&gt;", "<table>", "<th>Name</th>", "<td>bar</td>", `href="https://example.com/docs"`, "nofollow", "noreferrer"} {
@@ -18,6 +19,7 @@ func TestPlanningMarkdownFormatting(t *testing.T) {
 }
 
 func TestPlanningMarkdownUntrustedContent(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{
 		`<script>alert(1)</script><img src=x onerror=alert(1)>`,
 		`<a href="javascript:alert(1)" onclick="alert(1)">click</a>`,
@@ -61,6 +63,7 @@ func TestPlanningMarkdownUntrustedContent(t *testing.T) {
 }
 
 func TestPlanningMarkdownSafeLinks(t *testing.T) {
+	t.Parallel()
 	for _, dest := range []string{"https://example.com", "http://example.com", "mailto:hello@example.com", "/planning?card=abc", "#details"} {
 		if got := renderPlanningMarkdown("[link](" + dest + ")"); !strings.Contains(got, `href="`+dest+`"`) {
 			t.Errorf("lost safe link %q: %s", dest, got)

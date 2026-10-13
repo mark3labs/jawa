@@ -15,6 +15,7 @@ import (
 )
 
 func TestAutoResumeFiveGenerations(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c, err := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true})
 	if err != nil {
@@ -125,6 +126,7 @@ func TestAutoResumeFiveGenerations(t *testing.T) {
 }
 
 func TestAutoResumeToggleAndMissingOwner(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c, err := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true})
 	if err != nil {
@@ -178,6 +180,7 @@ func TestAutoResumeToggleAndMissingOwner(t *testing.T) {
 }
 
 func TestAutoResumeManualRaceAndRejection(t *testing.T) {
+	t.Parallel()
 	for _, manualRace := range []bool{false, true} {
 		t.Run(map[bool]string{false: "rejection", true: "manual-race"}[manualRace], func(t *testing.T) {
 			s, nc := workflowFixture(t)
@@ -281,6 +284,7 @@ func TestAutoResumeManualRaceAndRejection(t *testing.T) {
 }
 
 func TestAutoResumeStatusRendering(t *testing.T) {
+	t.Parallel()
 	out := client.Outcome{Version: 1, TaskID: "task", AgentID: "agent", RunID: "run", AttemptID: "remote", State: runtime.RunFailed}
 	raw, _ := json.Marshal(out)
 	a := Attempt{TaskID: "task", CardID: "card", State: "failed", RunState: "failed", AgentID: "agent", RunID: "run", RemoteAttemptID: "remote", OutcomeJSON: string(raw), Error: "authoritative runtime failure"}

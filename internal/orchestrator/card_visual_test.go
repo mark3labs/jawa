@@ -11,6 +11,7 @@ import (
 // Optionally export the real page renderer for browser visual review, with test
 // evidence only (no provider requests, credentials, or production data).
 func TestCardVisualFixture(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 	p := Project{ID: "abc", Name: "Card status fixtures", Provider: "github", Repo: "example/visual-fixtures", BaseBranch: "main"}
 	d := pageData{v: viewParams{View: viewBoard, Project: p.ID}, now: now, projects: []Project{p}, prChecks: map[string]PRCheck{}}
@@ -54,9 +55,10 @@ func TestCardVisualFixture(t *testing.T) {
 	} {
 		d.projects = append(d.projects, Project{ID: fixture.id, Name: fixture.name})
 		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: fixture.id, Status: fixture.mode, Archived: fixture.archived})
-		if fixture.mode == "Planning" {
+		switch fixture.mode {
+		case "Planning":
 			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "running"}, Turns: []PlanningTurn{{State: "running"}}}
-		} else if fixture.mode == "Fix" || fixture.mode == "Building" {
+		case "Fix", "Building":
 			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running"})
 		}
 	}

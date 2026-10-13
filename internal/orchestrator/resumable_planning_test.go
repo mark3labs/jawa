@@ -12,6 +12,7 @@ import (
 )
 
 func TestPlanningReplyBeforeSuspendExactMatchAndDisconnectedOutbox(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w := &Workflow{s: s, ctx: context.Background(), observeReport: fakeReportObserver}
@@ -115,6 +116,7 @@ func TestPlanningReplyBeforeSuspendExactMatchAndDisconnectedOutbox(t *testing.T)
 }
 
 func TestPlanningUnexpectedCompletionWithProposalFailsAndCancellationRevokesOutbox(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)

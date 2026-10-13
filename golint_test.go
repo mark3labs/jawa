@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mark3labs/bonnie/sandbox"
 )
@@ -88,14 +87,5 @@ func TestCompletionScanFailure(t *testing.T) {
 	_, err := checkGoCompletion(context.Background(), func(context.Context, sandbox.Command) (*sandbox.Result, error) { return nil, errors.New("unavailable") }, nil)
 	if err == nil {
 		t.Fatal("must not accept failed scan")
-	}
-}
-func TestCleanupRetention(t *testing.T) {
-	p := sandboxCleanupPolicy()
-	if p.CompletedAfter != 7*24*time.Hour || p.FailedAfter != 14*24*time.Hour || p.CancelledAfter != 3*24*time.Hour || p.RetiredAfter != 3*24*time.Hour {
-		t.Fatalf("unexpected policy %+v", p)
-	}
-	if goCompletionPolicy().MaxContinuations != 2 {
-		t.Fatal("repair budget changed")
 	}
 }

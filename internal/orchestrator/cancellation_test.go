@@ -9,6 +9,7 @@ import (
 )
 
 func TestWorkflowCancelledRunRestarts(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"resume", "retry", "reset"} {
 		t.Run(action, func(t *testing.T) {
 			s, _ := workflowFixture(t)

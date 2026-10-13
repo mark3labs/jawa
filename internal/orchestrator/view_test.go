@@ -7,6 +7,7 @@ import (
 )
 
 func TestSeparatedViewsAndSnapshotScope(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	p, err := a.s.CreateProjectDetails("Kit", "github", "https://github.com/example/kit", "main")
@@ -63,6 +64,7 @@ func TestSeparatedViewsAndSnapshotScope(t *testing.T) {
 }
 
 func TestViewParamsRejectUntrustedInput(t *testing.T) {
+	t.Parallel()
 	r := httptest.NewRequest("GET", "/events?view=evil&project=javascript:alert(1)&state=unknown&card=../../etc", nil)
 	v := parseViewParams(r, "")
 	if v.View != viewBoard || v.Project != "" || v.Card != "" || v.State != "all" {

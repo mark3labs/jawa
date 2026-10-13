@@ -9,6 +9,7 @@ import (
 )
 
 func TestPlanningBadgesUseStateIcons(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		state, label, tone string
 		spinning           bool

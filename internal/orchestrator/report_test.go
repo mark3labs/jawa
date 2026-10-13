@@ -3,6 +3,7 @@ package orchestrator
 import "testing"
 
 func TestProjectPRURL(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		provider, repo string
 		number         int

@@ -10,6 +10,7 @@ import (
 )
 
 func TestPlanningDiscussionOnlyQuestionsAndReplies(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 		t.Fatal(err)

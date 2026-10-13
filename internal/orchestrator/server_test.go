@@ -33,7 +33,7 @@ func testApp(t *testing.T) *app {
 		t.Fatal(err)
 	}
 	internalPassword := newID()
-	hash, err := bcrypt.GenerateFromPassword([]byte(internalPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(internalPassword), passwordHashCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +117,7 @@ func setupAccountTest(t *testing.T, a *app) (*http.Cookie, *http.Cookie) {
 	return cookie(t, w, "session"), cookie(t, w, "csrf")
 }
 func TestAuthCSRFAndRoutes(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	status(t, request(a, "GET", "/login", nil), 303)
 	status(t, request(a, "POST", "/setup", url.Values{"password": {"long-secure-password"}}), 403)
@@ -198,6 +199,7 @@ func TestAuthCSRFAndRoutes(t *testing.T) {
 	status(t, request(a, "POST", "/login", url.Values{"_csrf": {c.Value}}, c), 429)
 }
 func TestSecureCookiesBodyLimitAndAssets(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	r := httptest.NewRequest("GET", "https://example.com/setup", nil)
 	r.TLS = &tls.ConnectionState{}
@@ -225,6 +227,7 @@ func TestSecureCookiesBodyLimitAndAssets(t *testing.T) {
 	}
 }
 func TestNATSAuthenticationAndRotation(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	opts := a.options
 	initial := opts.Users[0]

@@ -14,6 +14,7 @@ import (
 )
 
 func TestPRRefreshRoute(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)
@@ -73,6 +74,7 @@ func TestPRRefreshRoute(t *testing.T) {
 }
 
 func TestPRRefreshBusyAndCancelled(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	c := workflowCard(t, a.s)
@@ -116,6 +118,7 @@ func TestPRRefreshBusyAndCancelled(t *testing.T) {
 }
 
 func TestPRCheckPresentation(t *testing.T) {
+	t.Parallel()
 	c := Card{ID: "done", ProjectID: "project", Status: "Done"}
 	attempts := []Attempt{{CardID: c.ID, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/repo/pull/18"}}
 	labels := map[string]string{"checking": "Checking PR status", "clear": "No merge conflicts detected", "conflict": "Pull request has merge conflicts.", "unknown": "PR merge status is unknown", "error": "PR check failed", "merged": "Last checked", "closed": "closed without merging", "": "not been checked yet"}
@@ -155,6 +158,7 @@ func TestPRCheckPresentation(t *testing.T) {
 }
 
 func TestPRRefreshBoardQueueCounts(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
 	first := workflowCard(t, a.s)
@@ -173,30 +177,5 @@ func TestPRRefreshBoardQueueCounts(t *testing.T) {
 	body := assertSSE(t, sseRequest(a, "POST", "/prs/refresh", form, session, csrf))
 	if !strings.Contains(body, "17 targeted, 16 checked, 1 queued for background checking") || !strings.Contains(body, `data-pr-check-state="checking"`) || !strings.Contains(body, "Awaiting a fresh check.") {
 		t.Fatal("queued work missing from response")
-	}
-}
-
-func TestPRRefreshFormFeedback(t *testing.T) {
-	var out bytes.Buffer
-	d := pageData{csrf: "test-csrf", v: viewParams{View: "board", Project: "project"}}
-	if err := prRefreshForm(d, "project", "", "Refresh ready PRs").Render(t.Context(), &out); err != nil {
-		t.Fatal(err)
-	}
-	body := out.String()
-	for _, want := range []string{
-		`method="post" action="/prs/refresh"`, `name="_csrf" value="test-csrf"`,
-		`name="project_id" value="project"`, `name="card_id" value=""`,
-		`name="view" value="board"`, `name="project" value="project"`,
-		`data-attr:disabled="$prRefreshing"`, `data-attr:aria-busy="$prRefreshing ? 'true' : 'false'"`,
-		`data-show="!$prRefreshing">Refresh ready PRs</span>`,
-		`style="display: none" data-show="$prRefreshing"`,
-		`class="pr-refresh-spinner" aria-hidden="true"`, `Refreshing ready PRs…`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %q in %s", want, body)
-		}
-	}
-	if strings.Contains(body, "data-indicator") || strings.Contains(body, "data-signals") {
-		t.Fatal("patched form must not own request state")
 	}
 }

@@ -47,7 +47,26 @@ func (s *Store) providerSettings() (map[string]string, error) {
 	return values, nil
 }
 
+// passwordHashCost is the bcrypt work factor for stored credentials. Tests
+// lower it; production must keep the default.
+var passwordHashCost = bcrypt.DefaultCost
+
+// storeTemplate, when set (tests only), holds a fully migrated database image
+// that seeds new store files so each one skips re-running every migration.
+var storeTemplate []byte
+
+// storeTestPragmas (tests only) runs after the standard PRAGMAs, e.g. to skip
+// fsync on throwaway databases.
+var storeTestPragmas string
+
 func OpenStore(path string) (*Store, error) {
+	if storeTemplate != nil && path != "" && path != ":memory:" && !strings.HasPrefix(path, "file:") {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			if err := os.WriteFile(path, storeTemplate, 0600); err != nil {
+				return nil, err
+			}
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
@@ -58,6 +77,11 @@ func OpenStore(path string) (*Store, error) {
 	fail := func(err error) (*Store, error) { _ = db.Close(); return nil, err }
 	if _, err = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;`); err != nil {
 		return fail(err)
+	}
+	if storeTestPragmas != "" {
+		if _, err = db.Exec(storeTestPragmas); err != nil {
+			return fail(err)
+		}
 	}
 	if err = migrateDatabase(db); err != nil {
 		return fail(err)
@@ -365,7 +389,7 @@ func (s *Store) NATSConfigured() (bool, error) {
 }
 
 func (s *Store) saveNATS(url, user, pass string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(pass), passwordHashCost)
 	if err != nil {
 		return err
 	}

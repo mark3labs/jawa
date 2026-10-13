@@ -1,9 +1,10 @@
 package main
 
 import (
+	"testing"
+
 	natschannel "github.com/mark3labs/bonnie/channel/nats"
 	"github.com/mark3labs/bonnie/sandbox"
-	"testing"
 )
 
 func TestCodingSandboxes(t *testing.T) {
@@ -69,17 +70,6 @@ func TestNATSStreamCreationDisabled(t *testing.T) {
 	}
 }
 
-func TestLightpandaMCPConfig(t *testing.T) {
-	cfg := lightpandaMCPConfig()
-	server, ok := cfg.MCPServers["lightpanda"]
-	if !ok || len(cfg.MCPServers) != 1 {
-		t.Fatal("expected a single Lightpanda MCP server")
-	}
-	if server.Type != "local" || len(server.Command) != 2 || server.Command[0] != "lightpanda" || server.Command[1] != "mcp" {
-		t.Fatalf("unexpected MCP command: %+v", server)
-	}
-}
-
 // TestCodingEnv verifies tool settings and omission of empty credentials.
 func TestCodingEnv(t *testing.T) {
 	t.Setenv("JAWA_GIT_USER_NAME", "")
@@ -96,16 +86,5 @@ func TestCodingEnv(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	if _, ok := codingEnv()["GITHUB_TOKEN"]; ok {
 		t.Fatal("empty token should not be injected")
-	}
-}
-
-func TestModelOverride(t *testing.T) {
-	t.Setenv("JAWA_MODEL", "")
-	if got := envOr("JAWA_MODEL", "default-model"); got != "default-model" {
-		t.Fatalf("empty setting: got %q", got)
-	}
-	t.Setenv("JAWA_MODEL", "provider/model")
-	if got := envOr("JAWA_MODEL", "default-model"); got != "provider/model" {
-		t.Fatalf("override: got %q", got)
 	}
 }

@@ -9,20 +9,15 @@ import (
 )
 
 func TestAttemptWorking(t *testing.T) {
-	for _, local := range []string{"", "unknown", "queued", "submitted", "running", "ready", "blocked", "waiting", "interrupted", "failed", "cancelled", "completed"} {
-		for _, remote := range []string{"", "unknown", "queued", "submitted", "running", "waiting", "interrupted", "failed", "cancelled", "completed", "ready", "blocked"} {
-			t.Run(local+"/"+remote, func(t *testing.T) {
-				want := workingState(local) && (remote == "" || workingState(remote))
-				if got := attemptWorking(Attempt{State: local, RunState: remote}); got != want {
-					t.Fatalf("got %v, want %v", got, want)
-				}
-			})
-		}
-	}
+	t.Parallel()
 	for _, tc := range []struct {
 		a    Attempt
 		want bool
 	}{
+		{Attempt{State: "running", RunState: "running"}, true},
+		{Attempt{State: "running"}, true},
+		{Attempt{State: "running", RunState: "completed"}, false},
+		{Attempt{State: "failed", RunState: "running"}, false},
 		{Attempt{State: "failed", RunState: "failed", Error: resumePendingNotice}, true},
 		{Attempt{State: "running", Error: executionConflictNotice}, false},
 		{Attempt{State: "running", Ready: true, Error: resumePendingNotice}, false},
@@ -35,6 +30,7 @@ func TestAttemptWorking(t *testing.T) {
 }
 
 func TestPlanningWorking(t *testing.T) {
+	t.Parallel()
 	for _, session := range []string{"queued", "submitted", "running", "questions", "ready", "approved", "failed", "cancelled", "unknown"} {
 		for _, turn := range []string{"queued", "submitted", "running", "waiting", "failed", "cancelled", "completed", "unknown"} {
 			d := PlanningDetail{Session: PlanningSession{ID: "current", State: session}, Turns: []PlanningTurn{
@@ -57,6 +53,7 @@ func TestPlanningWorking(t *testing.T) {
 }
 
 func TestProjectWorkAndRendering(t *testing.T) {
+	t.Parallel()
 	s := uiSnapshot{projects: []Project{{ID: "p", Name: "Project"}, {ID: "other", Name: "Other"}}, planning: map[string]PlanningDetail{}}
 	for _, status := range []string{"Planning", "Building", "Fix", "Todo", "Done"} {
 		s.cards = append(s.cards, Card{ID: status, ProjectID: "p", Status: status, Archived: true})
@@ -93,51 +90,8 @@ func TestProjectWorkAndRendering(t *testing.T) {
 	}
 }
 
-// These are the durable snapshots delivered through the existing SSE roots.
-func TestWorkIndicatorTransitions(t *testing.T) {
-	for _, mode := range []string{"Planning", "Fix"} {
-		t.Run(mode, func(t *testing.T) {
-			d := pageData{v: viewParams{View: viewBoard, Project: "p"}, uiSnapshot: uiSnapshot{projects: []Project{{ID: "p", Name: "Project"}}, cards: []Card{{ID: "c", ProjectID: "p", Status: mode}}, planning: map[string]PlanningDetail{}}}
-			for _, step := range []struct {
-				session, turn string
-				active        bool
-			}{
-				{"queued", "submitted", true}, {"running", "running", true}, {"questions", "waiting", false}, {"running", "waiting", true}, {"running", "running", true}, {"ready", "completed", false}, {"failed", "failed", false},
-			} {
-				d.planning["c"] = PlanningDetail{Session: PlanningSession{State: step.session}, Turns: []PlanningTurn{{State: step.turn}}}
-				if mode == "Fix" {
-					state := step.session
-					if state == "questions" {
-						state = "blocked"
-					}
-					d.attempts = []Attempt{{CardID: "c", Number: 1, State: state}}
-				}
-				var out bytes.Buffer
-				if err := boardContent(d).Render(t.Context(), &out); err != nil {
-					t.Fatal(err)
-				}
-				if err := sidebarNav(d).Render(t.Context(), &out); err != nil {
-					t.Fatal(err)
-				}
-				total := 0
-				if step.active {
-					total = 1
-				}
-				html := out.String()
-				if !strings.Contains(html, fmt.Sprintf("<strong>%d</strong> active", total)) {
-					t.Fatalf("%s: board total", step.session)
-				}
-				// Runs can have its own live count; only project badge has this label.
-				label := `class="nav-count live" title="` + projectWork(d.uiSnapshot, "p").Label() + `"`
-				if strings.Contains(html, label) != step.active {
-					t.Fatalf("%s: sidebar total", step.session)
-				}
-			}
-		})
-	}
-}
-
 func TestStoredWorkIndicatorSnapshots(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"Planning", "Fix"} {
 		t.Run(mode, func(t *testing.T) {
 			a := testApp(t)

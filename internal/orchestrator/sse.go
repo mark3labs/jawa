@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+// SSE timings are variables so tests can shorten them.
+var (
+	ssePollInterval      = time.Second
+	sseHeartbeatInterval = 15 * time.Second
+)
+
 func datastarRequest(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("Datastar-Request"), "true")
 }
@@ -169,8 +175,8 @@ func (a *app) events(w http.ResponseWriter, r *http.Request) {
 	if err := stream.write(elementsFrame(content)); err != nil {
 		return
 	}
-	poll := time.NewTicker(time.Second)
-	heartbeat := time.NewTicker(15 * time.Second)
+	poll := time.NewTicker(ssePollInterval)
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer poll.Stop()
 	defer heartbeat.Stop()
 	for {

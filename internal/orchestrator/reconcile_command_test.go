@@ -13,6 +13,7 @@ import (
 )
 
 func TestReconcileCommandValidation(t *testing.T) {
+	t.Parallel()
 	flags := []string{"data-dir", "task", "run", "attempt", "nats-url"}
 	for _, missing := range flags {
 		t.Run(missing, func(t *testing.T) {
@@ -146,6 +147,7 @@ func TestReconcileCommandRetainedResult(t *testing.T) {
 }
 
 func TestReconcileCommandConnectionErrorRedacted(t *testing.T) {
+	t.Parallel()
 	cmd := ReconcileCommand()
 	cmd.SetArgs([]string{"--data-dir", t.TempDir(), "--task", "task", "--run", "run", "--attempt", "attempt", "--nats-url", "nats://private-user:private-password@127.0.0.1:0"})
 	var output bytes.Buffer

@@ -11,6 +11,7 @@ import (
 )
 
 func TestCancelCardRequiresRemoteClient(t *testing.T) {
+	t.Parallel()
 	s, _ := workflowFixture(t)
 	if err := migrateWorkflow(s); err != nil {
 		t.Fatal(err)
@@ -33,6 +34,7 @@ func TestCancelCardRequiresRemoteClient(t *testing.T) {
 }
 
 func TestCancelCardNATSRequestReply(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		mode     string

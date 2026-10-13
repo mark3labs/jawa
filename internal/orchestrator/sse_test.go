@@ -55,6 +55,7 @@ func assertSSE(t *testing.T, w *httptest.ResponseRecorder) string {
 }
 
 func TestSSESnapshotAndAuthentication(t *testing.T) {
+	t.Parallel()
 	a := &app{s: actionWorkflow(t).s}
 	session, csrf := sseCookies(t, a)
 	p, err := a.s.CreateProjectDetails("Real project", "github", "https://github.com/example/repo", "main")
@@ -97,6 +98,7 @@ func TestSSESnapshotAndAuthentication(t *testing.T) {
 }
 
 func TestSSEMutationsAndErrors(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, csrf := sseCookies(t, a)
 	form := url.Values{"_csrf": {csrf.Value}, "name": {"SSE project"}, "provider": {"github"}, "repo": {"https://github.com/example/repo"}, "base_branch": {"main"}}
@@ -184,6 +186,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 // Exercise real streaming, rather than reading a recorder concurrently with a
 // handler. EOF proves cancellation/revocation releases the long-lived handler.
 func TestSSELiveLifecycle(t *testing.T) {
+	t.Parallel()
 	for _, end := range []string{"cancel", "revoke", "expire", "shutdown"} {
 		t.Run(end, func(t *testing.T) {
 			a := &app{s: actionWorkflow(t).s}
@@ -295,6 +298,7 @@ func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
 }
 
 func TestSSEFramesDeadlinesAndHeartbeat(t *testing.T) {
+	t.Parallel()
 	w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
 	stream := newSSEWriter(w)
 	if err := stream.write(elementsFrame("<div id=\"notice\">a\nb</div>")); err != nil {
@@ -313,6 +317,10 @@ func TestSSEFramesDeadlinesAndHeartbeat(t *testing.T) {
 }
 
 func TestSSEHeartbeatWithoutChanges(t *testing.T) {
+	// Long enough for many polls, so a spurious patch would arrive first.
+	old := sseHeartbeatInterval
+	sseHeartbeatInterval = 20 * ssePollInterval
+	t.Cleanup(func() { sseHeartbeatInterval = old })
 	a := &app{s: actionWorkflow(t).s}
 	session, csrf := sseCookies(t, a)
 	srv := httptest.NewServer(a)
@@ -332,7 +340,7 @@ func TestSSEHeartbeatWithoutChanges(t *testing.T) {
 	defer func() { _ = response.Body.Close() }()
 	reader := bufio.NewReader(response.Body)
 	// Consume exactly the initial snapshot. An unchanged workspace must not
-	// emit another patch; the next frame is the 15-second keepalive comment.
+	// emit another patch; the next frame is the keepalive comment.
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -350,7 +358,7 @@ func TestSSEHeartbeatWithoutChanges(t *testing.T) {
 	if line != ": heartbeat\n" {
 		t.Fatalf("unexpected periodic patch: %q", line)
 	}
-	if time.Since(started) < 14*time.Second {
+	if time.Since(started) < 19*ssePollInterval {
 		t.Fatal("heartbeat sent too early")
 	}
 	line, err = reader.ReadString('\n')

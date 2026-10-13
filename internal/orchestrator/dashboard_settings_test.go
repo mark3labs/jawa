@@ -8,6 +8,7 @@ import (
 )
 
 func TestDashboardOverridesPersistAndReset(t *testing.T) {
+	t.Parallel()
 	s, err := OpenStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +45,7 @@ func TestDashboardOverridesPersistAndReset(t *testing.T) {
 }
 
 func TestValidatedListenAddressPort(t *testing.T) {
+	t.Parallel()
 	for _, address := range []string{"127.0.0.1:0", "[::1]:65535"} {
 		if _, _, err := validatedListenAddress(address); err != nil {
 			t.Errorf("%q rejected: %v", address, err)
@@ -57,6 +59,7 @@ func TestValidatedListenAddressPort(t *testing.T) {
 }
 
 func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	a.runtimeDefaults = map[string]string{"listen": "127.0.0.1:9001", "nats-listen": "127.0.0.1:4222", "debug": "false", "allow-no-ci": "true"}
 	session, _ := setupTest(t, a)
@@ -150,6 +153,7 @@ func assertSettingsProviderUX(t *testing.T, body string) {
 }
 
 func TestDashboardSettingsClearTokenOverridesIndependently(t *testing.T) {
+	t.Parallel()
 	a := testApp(t)
 	session, _ := setupTest(t, a)
 	page := request(a, "GET", "/settings", nil, session)
@@ -188,6 +192,7 @@ func TestDashboardSettingsClearTokenOverridesIndependently(t *testing.T) {
 }
 
 func TestDashboardEffectiveValuesHonorRuntimeDefaultsAndReset(t *testing.T) {
+	t.Parallel()
 	d := pageData{defaults: map[string]string{"listen": "127.0.0.1:9001", "debug": "false", "allow-no-ci": "true"}}
 	if got := dashboardValue(d, "listen", "JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"); got != "127.0.0.1:9001" {
 		t.Fatalf("runtime CLI default lost: %q", got)

@@ -47,6 +47,7 @@ func planningOutcome(t *testing.T, w *Workflow, id, spec string, questions ...st
 	return client.Outcome{Version: 1, TaskID: d.Turns[len(d.Turns)-1].ID, AgentID: "planner", RunID: "run", AttemptID: "attempt", State: runtime.RunCompleted, Response: string(body)}
 }
 func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
@@ -134,6 +135,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 }
 
 func TestPlanningBackendCancellationNewSessionAndLateIdentity(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
@@ -180,6 +182,7 @@ func TestPlanningBackendCancellationNewSessionAndLateIdentity(t *testing.T) {
 }
 
 func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
@@ -215,6 +218,7 @@ func TestPlanningBackendInvalidOutputAndPinnedCommit(t *testing.T) {
 }
 
 func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	local := &Workflow{s: s, ctx: context.Background()}
@@ -304,6 +308,7 @@ func TestPlanningBackendQueuedRestartBONNIEIntegration(t *testing.T) {
 }
 
 func TestPlanningBackendApprovalTransactionRollsBack(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
@@ -328,6 +333,7 @@ func TestPlanningBackendApprovalTransactionRollsBack(t *testing.T) {
 }
 
 func TestPlanningBackendRevisionTokenAcrossSessions(t *testing.T) {
+	t.Parallel()
 	_, w, c := planningLocal(t)
 	if e := w.MoveCard(c.ID, "Planning", 0); e != nil {
 		t.Fatal(e)
@@ -370,6 +376,7 @@ func TestPlanningBackendRevisionTokenAcrossSessions(t *testing.T) {
 }
 
 func TestPlanningBackendActualStoreReopen(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "planning.db")
 	s, e := OpenStore(path)
 	if e != nil {
@@ -406,6 +413,7 @@ func TestPlanningBackendActualStoreReopen(t *testing.T) {
 }
 
 func TestPlanningBackendRetainedOutcomeRecovery(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	w := &Workflow{s: s, ctx: context.Background()}
@@ -438,6 +446,7 @@ func TestPlanningBackendRetainedOutcomeRecovery(t *testing.T) {
 }
 
 func TestPlanningBackendCancellationQueueUsesObservedTurn(t *testing.T) {
+	t.Parallel()
 	s, nc := workflowFixture(t)
 	c := workflowCard(t, s)
 	cli, e := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true})
@@ -506,6 +515,7 @@ func TestPlanningBackendCancellationQueueUsesObservedTurn(t *testing.T) {
 }
 
 func TestPlanningBackendHistoryCascadesAndLaneCompacts(t *testing.T) {
+	t.Parallel()
 	s, w, c := planningLocal(t)
 	other, e := s.CreateCard(c.ProjectID, "other", "desc")
 	if e != nil {
