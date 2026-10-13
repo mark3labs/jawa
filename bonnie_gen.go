@@ -2,7 +2,7 @@
 //
 // bonnie_gen.go is disposable: delete it and regenerate. Every other file in
 // this tree is authored and BONNIE never rewrites it. Discovery walks
-// tools/<name>/tool.go; each directory exports func Tool() kit.Tool and the
+// tools/<name>/tool.go; each directory exports Tool with an optional scope and the
 // directory name is the tool's name.
 package main
 
@@ -28,7 +28,7 @@ var _contextFiles embed.FS
 
 // init hands the tree's discovered code and embedded data to the runtime
 // before main runs, so main.go never has to name a tool or an embed. Each
-// tools/<name>/tool.go exports func Tool() kit.Tool.
+// tools/<name>/tool.go exports Tool with an optional bonnie.ToolScope.
 func init() {
 	bonnie.Register(bonnie.Tree{
 		Instructions: _instructions,
