@@ -32,9 +32,6 @@ func ForceStopCommand() *cobra.Command {
 				return errors.New("force-stop: unable to open store")
 			}
 			defer func() { _ = s.Close() }()
-			if err = migrateWorkflow(s); err != nil {
-				return errors.New("force-stop: unable to migrate workflow")
-			}
 			id, status, err := resolveCard(s, card)
 			if err != nil {
 				return err

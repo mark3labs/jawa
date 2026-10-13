@@ -87,7 +87,7 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 			if err = p.githubCI(root, base, sha); err != nil {
 				return false, err
 			}
-			if err = p.githubReviews(root, path, owner, name, number, sha); err != nil {
+			if err = p.githubReviews(path, owner, name, number, sha); err != nil {
 				return false, err
 			}
 		}
@@ -427,7 +427,7 @@ func (p providerReader) githubCI(root, base, sha string) error {
 	}
 	return nil
 }
-func (p providerReader) githubReviews(root, path, owner, name string, number int, sha string) error {
+func (p providerReader) githubReviews(path, owner, name string, number int, sha string) error {
 	var reviews []struct {
 		State string
 		User  struct{ ID int }

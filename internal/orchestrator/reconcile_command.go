@@ -44,9 +44,6 @@ func ReconcileCommand() *cobra.Command {
 			readProviderFlags(cmd, providerDefaults)
 			s.runtimeDefaults = providerDefaults
 			w := &Workflow{s: s, ctx: cmd.Context()}
-			if err = migrateWorkflow(s); err != nil {
-				return errors.New("reconcile: unable to migrate workflow")
-			}
 			if err = w.RecoverResults(cmd.Context(), conn); err != nil {
 				return errors.New("reconcile: unable to recover retained results")
 			}

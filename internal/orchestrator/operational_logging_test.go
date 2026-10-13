@@ -11,9 +11,6 @@ import (
 
 func TestCancellationLoggingOmitsRemoteDetails(t *testing.T) {
 	s, _ := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	var output bytes.Buffer
 	previous := log.Default()
 	log.SetDefault(log.NewWithOptions(&output, log.Options{Level: log.DebugLevel}))
@@ -30,9 +27,9 @@ func TestCancellationLoggingOmitsRemoteDetails(t *testing.T) {
 	}
 	const secret = "remote-secret-should-not-be-logged"
 	a.Error, a.Result, a.TaskJSON, a.OutcomeJSON, a.PRURL = secret, secret, secret, secret, secret
-	// The persisted notice is intentionally not safe for logging. Only IDs,
+	// Attempt details are intentionally not safe for logging. Only IDs,
 	// states and fixed operational messages should appear in the output.
-	if err := w.cancelRecordFailure(a, "uncertain", secret); err == nil {
+	if err := w.cancelRecordFailure(a); err == nil {
 		t.Fatal("expected unconfirmed cancellation error")
 	}
 	if strings.Contains(output.String(), secret) {
@@ -45,9 +42,6 @@ func TestCancellationLoggingOmitsRemoteDetails(t *testing.T) {
 
 func TestResyncLoggingRejectsRemoteError(t *testing.T) {
 	s, _ := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	var output bytes.Buffer
 	previous := log.Default()
 	log.SetDefault(log.NewWithOptions(&output, log.Options{Level: log.DebugLevel}))

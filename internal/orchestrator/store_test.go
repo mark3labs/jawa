@@ -79,7 +79,7 @@ func TestStorePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.setPassword("admin-hash"); err != nil {
+	if err = s.CreateAdmin("operator", "admin-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.saveNATS("nats://localhost:4222", "agent", "secret"); err != nil {
@@ -111,11 +111,12 @@ func TestStorePersistence(t *testing.T) {
 	if !reflect.DeepEqual(cards, []Card{c}) {
 		t.Fatalf("cards: %+v", cards)
 	}
-	if ok, err := s.HasAdmin(); err != nil || !ok || !s.checkPassword("admin-hash") {
+	if ok, err := s.HasAdmin(); err != nil || !ok {
 		t.Fatalf("admin: %v %v", ok, err)
 	}
 	var user, hash string
-	if err := s.db.QueryRow(`SELECT username,password_hash FROM admin`).Scan(&user, &hash); err != nil || user != "admin" {
+	user, hash, err = s.AdminCredentials()
+	if err != nil || user != "operator" || hash != "admin-hash" {
 		t.Fatalf("admin username: %q %v", user, err)
 	}
 	if got := s.NATSConfig(); got != (NATSConfig{URL: "nats://localhost:4222", Username: "agent"}) {
@@ -242,7 +243,7 @@ func TestStoreLegacySchemaMigration(t *testing.T) {
 		if err := s.db.QueryRow(`SELECT username FROM admin`).Scan(&user); err != nil || user != "admin" {
 			t.Fatalf("migration: %q %v", user, err)
 		}
-		if !s.checkPassword("legacy-hash") {
+		if _, hash, err := s.AdminCredentials(); err != nil || hash != "legacy-hash" {
 			t.Fatal("migration lost password")
 		}
 		ps, err := s.Projects()
@@ -276,7 +277,7 @@ func TestConcurrentSetupAndCardCreation(t *testing.T) {
 	var wg sync.WaitGroup
 	results := make(chan error, 16)
 	for range 16 {
-		wg.Go(func() { ; results <- s.setPassword("winner") })
+		wg.Go(func() { ; results <- s.CreateAdmin("race-winner", "winner") })
 	}
 	wg.Wait()
 	close(results)
@@ -289,8 +290,11 @@ func TestConcurrentSetupAndCardCreation(t *testing.T) {
 	if successes != 1 {
 		t.Fatalf("setup winners: %d", successes)
 	}
-	if err := s.setPassword("replacement"); err == nil || !s.checkPassword("winner") {
+	if err := s.CreateAdmin("replacement-user", "replacement"); err == nil {
 		t.Fatal("setup replaced existing password")
+	}
+	if user, hash, err := s.AdminCredentials(); err != nil || user != "race-winner" || hash != "winner" {
+		t.Fatal("setup replaced existing credentials")
 	}
 	for range 16 {
 		wg.Go(func() {

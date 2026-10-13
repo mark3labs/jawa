@@ -304,7 +304,7 @@ func (w *Workflow) ForceReady(ctx context.Context, cardID, expected, prNumber, r
 	if _, err = tx.Exec(`UPDATE workflow_attempts SET ready=1,state='ready',pr_url=?,error='',updated_at=? WHERE id=?`, pr, now, a.ID); err != nil {
 		return err
 	}
-	if err = moveWorkflowCard(tx, cardID, current.ProjectID, current.Status, "Done", int(^uint(0)>>1)); err != nil {
+	if err = moveWorkflowCard(tx, cardID, current.ProjectID, current.Status, "Done", laneEnd); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM auto_resumes WHERE card_id=?`, cardID); err != nil {

@@ -47,7 +47,7 @@ func (w *Workflow) FixCard(id, message string) error {
 	if err = queueRepair(tx, latest, message); err != nil {
 		return err
 	}
-	if err = moveWorkflowCard(tx, id, project, status, "Fix", int(^uint(0)>>1)); err != nil {
+	if err = moveWorkflowCard(tx, id, project, status, "Fix", laneEnd); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {

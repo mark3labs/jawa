@@ -178,9 +178,6 @@ func TestCancelPlanningAlwaysLeavesPlanning(t *testing.T) {
 	t.Run("pending resume", func(t *testing.T) {
 		t.Parallel()
 		s, w, c := planningLocal(t)
-		if err := migrateWorkflow(s); err != nil {
-			t.Fatal(err)
-		}
 		if err := w.MoveCard(c.ID, "Planning", 0); err != nil {
 			t.Fatal(err)
 		}
@@ -197,10 +194,7 @@ func TestCancelPlanningAlwaysLeavesPlanning(t *testing.T) {
 	})
 	t.Run("no active session", func(t *testing.T) {
 		t.Parallel()
-		s, w, c := planningLocal(t)
-		if err := migrateWorkflow(s); err != nil {
-			t.Fatal(err)
-		}
+		_, w, c := planningLocal(t)
 		mustExec(t, w, `UPDATE cards SET status='Planning' WHERE id=?`, c.ID)
 		if err := w.CancelPlanning(c.ID); err != nil {
 			t.Fatal(err)
@@ -209,10 +203,7 @@ func TestCancelPlanningAlwaysLeavesPlanning(t *testing.T) {
 	})
 	t.Run("force stop points to cancel planning", func(t *testing.T) {
 		t.Parallel()
-		s, w, c := planningLocal(t)
-		if err := migrateWorkflow(s); err != nil {
-			t.Fatal(err)
-		}
+		_, w, c := planningLocal(t)
 		mustExec(t, w, `UPDATE cards SET status='Planning' WHERE id=?`, c.ID)
 		if err := w.ForceStop(c.ID); err == nil || !strings.Contains(err.Error(), "Cancel planning") {
 			t.Fatalf("%v", err)

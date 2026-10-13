@@ -13,9 +13,6 @@ import (
 func TestCancelCardRequiresRemoteClient(t *testing.T) {
 	t.Parallel()
 	s, _ := workflowFixture(t)
-	if err := migrateWorkflow(s); err != nil {
-		t.Fatal(err)
-	}
 	w := &Workflow{s: s, ctx: context.Background()}
 	c := workflowCard(t, s)
 	if err := w.MoveCard(c.ID, "Building", 0); err != nil {
@@ -54,9 +51,6 @@ func TestCancelCardNATSRequestReply(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, nc := workflowFixture(t)
-			if err := migrateWorkflow(s); err != nil {
-				t.Fatal(err)
-			}
 			cl, err := client.New(nc, client.Config{RootSubject: "bonnie", CreateStream: true, TargetedTasks: true})
 			if err != nil {
 				t.Fatal(err)

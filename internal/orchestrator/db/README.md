@@ -1,7 +1,7 @@
 # Database migrations and generated queries
 
 `OpenStore` runs `db.Migrate` before returning a usable store. Workflow schema is
-now initialized there too; `migrateWorkflow` remains a compatibility no-op.
+initialized there too.
 Migrations are embedded, so deployment does not need SQL files on disk. Goose's
 provider API uses no global registration or dialect state.
 
@@ -46,7 +46,8 @@ queries to a caller's transaction. Generated position/timestamp fields are int64
 
 The initial slice includes card lookup/list/insert, lane IDs and updates, next
 lane position, and project lookup. `Store.Cards` uses the generated list query;
-`store_cards_sqlc.go` adapts generated rows to domain cards. Other existing Store
+`store_cards_sqlc.go` adapts generated rows to domain cards. Card creation and lane
+compaction use transaction-bound generated queries. Other existing Store
 mutations are being adopted incrementally. The generated lane update is a
 low-level primitive, not a replacement for lane compaction. CI verifies that
 regenerating with the pinned sqlc version produces no diff.
