@@ -17,12 +17,12 @@ func TestCardVisualFixture(t *testing.T) {
 	d := pageData{v: viewParams{View: viewBoard, Project: p.ID}, now: now, projects: []Project{p}, prChecks: map[string]PRCheck{}}
 	for i, state := range []string{"conflict", "merged", "error"} {
 		id := []string{"a1", "a2", "a3"}[i]
-		c := Card{ID: id, ProjectID: p.ID, Title: []string{"Resolve a branch conflict", "Ship the completed change", "Retry the provider status check"}[i], Description: "Visual test fixture — not a live provider result.", Status: "Done", CreatedAt: now}
+		c := Card{ID: id, ProjectID: p.ID, Title: []string{"Resolve a branch conflict", "Ship the completed change", "Retry the provider status check"}[i], Description: "Visual test fixture — not a live provider result.", Status: "Done", IssueURL: "https://github.com/example/visual-fixtures/issues/52", CreatedAt: now}
 		d.cards = append(d.cards, c)
 		d.attempts = append(d.attempts, Attempt{ID: id, CardID: id, Number: 1, Ready: true, State: "ready", PRURL: "https://github.com/example/visual-fixtures/pull/1", UpdatedAt: now})
 		d.prChecks[id] = PRCheck{State: state, CheckedAt: now}
 	}
-	d.cards = append(d.cards, Card{ID: "b1", ProjectID: p.ID, Title: "Improve card spacing and controls", Description: "Keep actions quiet and let the task content breathe.", Status: "Building", CreatedAt: now})
+	d.cards = append(d.cards, Card{ID: "b1", ProjectID: p.ID, Title: "Improve card spacing and controls", Description: "Keep actions quiet and let the task content breathe.", Status: "Building", IssueURL: "https://github.com/example/visual-fixtures/issues/52", CreatedAt: now})
 
 	d.planning = map[string]PlanningDetail{}
 	for _, fixture := range []struct {
@@ -33,11 +33,16 @@ func TestCardVisualFixture(t *testing.T) {
 		{"planner", "Planning", "Investigate the reusable cards", false},
 		{"fixer", "Fix", "Repair the existing pull request", false},
 		{"archived-planner", "Planning", "Archived active planning work", true},
+		{"unstarted", "Building", "Work not yet started", false},
+		{"archived-ready", "Done", "Archived completed work", true},
+		{"archived-todo", "Todo", "Archived new task", true},
 	} {
-		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: p.ID, Status: fixture.status, Title: fixture.title, Description: "Deterministic shared-card fixture", CreatedAt: now, Archived: fixture.archived})
+		d.cards = append(d.cards, Card{ID: fixture.id, ProjectID: p.ID, Status: fixture.status, Title: fixture.title, Description: "Deterministic shared-card fixture", IssueURL: "https://github.com/example/visual-fixtures/issues/52", CreatedAt: now, Archived: fixture.archived})
 		switch fixture.status {
 		case "Planning":
 			d.planning[fixture.id] = PlanningDetail{Session: PlanningSession{State: "running", UpdatedAt: now}, Turns: []PlanningTurn{{Number: 1, State: "running", AgentID: "planner-" + strings.Repeat("long-identity-", 20), UpdatedAt: now}}}
+		case "Done":
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/visual-fixtures/pull/1", UpdatedAt: now})
 		case "Fix":
 			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", AgentID: "fix-agent", UpdatedAt: now})
 		}
