@@ -648,6 +648,14 @@ allow 30 seconds of future clock skew. Rotation invalidates new requests; it
 need not revoke existing streams. The agent watches changes and rechecks the key
 with bounded reads, failing closed on deletion, malformed keys or outages.
 
+Chat is a conversation-first view: wrapping user prose, sanitized assistant
+Markdown, and collapsed tool activity with accessible arguments and outputs.
+Raw messages, event payloads, and stored deliveries belong in Trace, not Chat.
+Offline Chat explains stale/missing snapshots and links to diagnostic sources.
+Trace searches individual entries, including collapsed bodies and raw payloads,
+without requesting the server on each keystroke. Clear the filter to recover
+from no matches. Native tab links and disclosures work without JavaScript.
+
 Chat steers a current running build or queues a follow-up after accepted typed
 completion/readiness. A completed run without accepted completion, failed run,
 waiting/guidance run, pending recovery/cancellation, or offline agent is

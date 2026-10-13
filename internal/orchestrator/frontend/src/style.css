@@ -748,17 +748,64 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .issue-autofill-row select { flex: 1 1 12rem; min-width: 0; }
 .issue-autofill-row .btn { flex: 0 0 auto; }
 
-/* Run detail history owns no drafts or tab/filter controls. */
+/* Run detail: normal document flow; drafts/filter remain outside patch roots. */
 .run-detail-view { min-width: 0; max-width: 100%; }
-.run-detail-view h1, .run-detail-view h2, .run-detail-view h3 { overflow-wrap: anywhere; }
+.run-detail-view > .cn-button { width: fit-content; }
+.run-detail-header { margin: 1.5rem 0; }
+.run-detail-header h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+.run-detail-metadata { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; }
+.run-detail-metadata div { min-width: 0; flex: 1 1 12rem; }
+.run-detail-metadata dt { color: var(--text-3); font-size: .75rem; margin-bottom: .25rem; }
+.run-detail-metadata dd { color: var(--text-2); font-size: .85rem; overflow-wrap: anywhere; }
+.run-detail-tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--line); padding-bottom: 1rem; }
+.run-detail-view .cn-button { min-height: 44px; min-width: 44px; white-space: normal; height: auto; text-align: center; }
+.run-detail-view h1, .run-detail-view h2, .run-detail-view h3, .run-detail-view summary::marker { color: var(--text-3); }
+.run-detail-view summary { overflow-wrap: anywhere; }
+.run-detail-view summary::marker { color: var(--text-3); }
+.run-detail-view summary { min-height: 44px; padding: .75rem 0; cursor: pointer; color: var(--text-2); font-size: .85rem; }
+.run-detail-view summary:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.run-detail-view details[open] > summary { color: var(--text); }
 .run-detail-view textarea, .run-detail-view input[type="search"] { width: 100%; max-width: 100%; min-height: 44px; }
-.run-history { display: grid; gap: 1rem; margin-block: 1rem; min-width: 0; }
-.run-message { border: 1px solid var(--line); border-radius: .5rem; padding: .75rem; min-width: 0; overflow-wrap: anywhere; }
-.run-message summary { min-height: 44px; overflow-wrap: anywhere; cursor: pointer; }
-.run-message pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
-.run-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
-.run-controls .meta { flex-basis: 100%; }
-.run-controls .chip { min-height: 44px; }
+.run-history { display: grid; gap: 1rem; margin-block: 1.5rem; min-width: 0; }
+.run-detail-chat .run-history, .run-composer-surface { width: 100%; max-width: 56rem; margin-inline: auto; }
+.run-observed-state { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.run-notice { color: var(--text-2); line-height: 1.6; padding: 1rem; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.run-chat-transcript { display: grid; gap: 1.75rem; min-width: 0; }
+.run-chat-message { min-width: 0; border-left: 2px solid var(--line-strong); padding: .25rem 1.25rem; }
+.run-chat-message > .cn-badge { margin-bottom: .75rem; }
+.run-chat-message.run-role-user { background: var(--surface-2); border: 1px solid var(--line-strong); border-left: 3px solid var(--amber); border-radius: var(--radius); margin-left: min(6%, 3rem); padding: 1.25rem; }
+.run-chat-message.run-role-assistant { border-left-color: var(--sage); }
+.run-prose { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font); font-size: .95rem; line-height: 1.75; }
+.run-detail-view .planning-markdown { font-size: .95rem; line-height: 1.75; min-width: 0; overflow-wrap: anywhere; }
+.run-detail-view .planning-markdown pre, .run-detail-view pre.result { max-width: 100%; min-width: 0; overflow-x: auto; white-space: pre; padding: 1rem; font-size: .8rem; background: var(--bg); border-radius: .375rem; }
+.run-detail-view .planning-markdown table { display: block; max-width: 100%; overflow-x: auto; }
+.run-detail-view .planning-markdown code:not(pre code) { overflow-wrap: anywhere; white-space: pre-wrap; }
+.run-chat-activity { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 0 1rem; min-width: 0; }
+.run-tool { min-width: 0; border-top: 1px solid var(--line); margin-top: .5rem; }
+.run-tool h4 { font-size: .75rem; color: var(--text-3); margin-top: .75rem; }
+.run-composer-surface { padding: 1.25rem; gap: .5rem; }
+.run-composer-surface label { margin-bottom: .75rem; display: block; }
+.run-composer-surface textarea { background: var(--bg); line-height: 1.6; min-height: 8rem; field-sizing: fixed; }
+.run-controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: .75rem; align-items: center; }
+.run-controls .meta { flex-basis: 100%; line-height: 1.6; }
+.run-outcome { padding: 0 1rem; min-width: 0; }
+.run-empty { padding: 1.5rem; }
+.run-trace-search { margin-top: 1.25rem; max-width: 40rem; display: grid; gap: .5rem; }
+.run-trace-inspector { display: grid; gap: 1.5rem; min-width: 0; }
+.run-trace-source { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.25rem; background: var(--surface); }
+.run-trace-source h2 { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
+.run-trace-source > .meta { margin-bottom: 1rem; line-height: 1.6; }
+.run-trace-turn h3 { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .85rem; margin: 1rem 0 .5rem; }
+.run-message { border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.run-message summary .cn-badge { margin-right: .5rem; }
+@media (max-width: 600px) {
+ .run-detail-metadata { gap: .75rem; }
+ .run-detail-metadata div { flex-basis: 100%; }
+ .run-chat-message { padding-inline: .75rem; }
+ .run-chat-message.run-role-user { margin-left: 0; padding: 1rem; }
+ .run-trace-source, .run-composer-surface { padding: .75rem; }
+ .run-controls .cn-button { flex: 1 1 auto; }
+}
 
 [data-create-issue] { display: flex; align-items: center; gap: .5rem; min-height: 44px; white-space: nowrap; }
 [data-create-issue] [data-slot="checkbox"] { width: 20px; height: 20px; cursor: pointer; }

@@ -7,6 +7,7 @@
     "build": "sh ./build.sh",
     "dev": "esbuild src/app.js --bundle --outfile=../assets/app.js --watch",
     "test:first-paint": "node first-paint.mjs",
+    "test:run-detail": "node run-detail.mjs",
     "test:cards": "node card-fixture.mjs",
     "test:smoke": "node smoke.mjs",
     "test:issues": "node issues.mjs",
