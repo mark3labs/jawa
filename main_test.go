@@ -81,6 +81,8 @@ func TestLightpandaMCPConfig(t *testing.T) {
 }
 
 func TestCodingEnv(t *testing.T) {
+	t.Setenv("JAWA_GIT_USER_NAME", "")
+	t.Setenv("JAWA_GIT_USER_EMAIL", "")
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	t.Setenv("NATS_PASSWORD", "broker-secret")
 	env := codingEnv()

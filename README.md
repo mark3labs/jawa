@@ -349,6 +349,8 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | Variable | Default / purpose |
 | --- | --- |
 | `JAWA_NAME` | `jawa`; agent display name (`--name` overrides) |
+| `JAWA_GIT_USER_NAME` | Optional author and committer name for agent coding commands |
+| `JAWA_GIT_USER_EMAIL` | Optional author and committer email for agent coding commands |
 | `JAWA_MODEL` | `opencode/glm-5.3-flash` |
 | `JAWA_NATS_AGENT_ID` | Required, e.g. `jawa-1` (letters, digits, hyphens); `--nats-agent-id` overrides. |
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
@@ -370,7 +372,39 @@ The root derives `bonnie.tasks`, `bonnie.results`, `bonnie.events`, and the
 `bonnie.answers`, `bonnie.commands`, and `bonnie.queries` control routes.
 
 For GitHub pushes and PRs, give `GITHUB_TOKEN` repository **Contents** and
-**Pull requests** read/write permissions. Commits default to `Jawa <jawa@bonnie>`.
+**Pull requests** read/write permissions.
+
+### Agent Git identity
+
+Set commit metadata independently of Git host authentication:
+
+```dotenv
+JAWA_GIT_USER_NAME="Jawa Agent"
+JAWA_GIT_USER_EMAIL=jawa@example.com
+```
+
+For native deployments, put these environment-only settings in the `.env` loaded
+from the binary's working directory, or export them before starting the agent.
+For Docker, include them in `docker run --env-file .env ...`, or export them and
+add `-e JAWA_GIT_USER_NAME -e JAWA_GIT_USER_EMAIL` to the invocation above. The
+example Compose file forwards both settings from the host environment/`.env`
+only to the agent service. No image rebuild is needed. Restart the native agent
+or recreate the agent container after changing settings (for Compose, use
+`docker compose -f compose.example.yaml up -d --force-recreate agent`).
+
+Each nonempty setting supplies both Git's author and committer environment
+variables for new ordinary commits, overriding inherited standard Git identity
+variables and repository/global/system identity configuration. Name and email
+are independent: unset or empty values inject nothing for that component and
+preserve Git's existing environment/configuration fallback. The standard image's
+fallback is `Jawa <jawa@bonnie>`; native deployments retain their existing Git
+identity, and custom Microsandbox images need their own Git/default identity.
+No Git configuration files are rewritten. Explicit Git command-line overrides
+and operations that preserve an existing author retain their normal semantics.
+
+These settings do not authenticate, sign commits, change task routing, or rewrite
+history. Supply your desired verified/noreply email if Git host attribution
+matters.
 
 Run state and workspaces persist under `/data`. Completed workspaces are retained
 7 days, failed ones 14 days, and cancelled/retired ones 3 days. Export important
