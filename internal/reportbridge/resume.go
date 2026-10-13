@@ -206,8 +206,9 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 			b.submitMu.Unlock()
 		}()
 		result, e := r.StartRetry(ctx, req.Target.RunID, runtime.Input{Context: lines})
+		result = confirmedResumeResult(ctx, r, req, result, e)
 		done := reportprotocol.FailedResumeReply{Version: 1, ID: req.ID, Target: req.Target, Status: "completed"}
-		if e != nil {
+		if result == nil {
 			done.Status = "ambiguous"
 			done.Error = "resume execution could not be confirmed"
 		} else {
@@ -225,6 +226,35 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		}
 	})
 	return reply
+}
+
+// confirmedResumeResult returns the continuation's result when its outcome is
+// established, or nil when it is genuinely ambiguous. A continuation that ran
+// and failed again (for example a provider overload) is a confirmed failure,
+// not an unknown execution: BONNIE returns both the failed run and its error.
+func confirmedResumeResult(ctx context.Context, r *runtime.Runner, req reportprotocol.FailedResume, result *runtime.Run, err error) *runtime.Run {
+	if err == nil {
+		return result
+	}
+	if result != nil {
+		if result.State != runtime.RunFailed {
+			return nil
+		}
+		if result.Err == nil {
+			result.Err = err
+		}
+		return result
+	}
+	// Some failures (for example agent construction) checkpoint the run as
+	// failed without returning it. Accept them only when replay shows a new,
+	// idle, failed turn, proving this continuation started and ended.
+	snapCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	run, serr := r.Snapshot(snapCtx, req.Target.RunID)
+	if serr != nil || run.State != runtime.RunFailed || run.TurnID == "" || run.TurnID == req.TurnID || r.IsActive(req.Target.RunID) {
+		return nil
+	}
+	return &runtime.Run{ID: run.ID, TurnID: run.TurnID, State: runtime.RunFailed, Err: err}
 }
 
 // A completed receipt must describe the command's outcome beyond its CAS.

@@ -12,6 +12,7 @@ import (
 	channel "github.com/mark3labs/bonnie/channel/nats"
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/runtime"
+	kit "github.com/mark3labs/kit/pkg/kit"
 	"jawa/internal/reportprotocol"
 )
 
@@ -582,5 +583,55 @@ func TestMismatchedReceiptCannotClearEarlierInFlightIntent(t *testing.T) {
 	}
 	if b.runner.IsActive(req.Target.RunID) {
 		t.Fatal("new execution started")
+	}
+}
+
+// failingAgent fails every prompt like a provider overload would.
+type failingAgent struct{}
+
+func (failingAgent) PromptResult(context.Context, string) (*kit.TurnResult, error) {
+	return nil, errors.New("stream error: Our servers are currently overloaded")
+}
+func (failingAgent) InjectSteer(string) {}
+func (failingAgent) Close() error       { return nil }
+
+// A continuation that executes and fails again is a confirmed failed outcome,
+// not an ambiguous execution; otherwise automatic resume stops needlessly.
+func TestFailedResumeRepeatedFailureIsConfirmed(t *testing.T) {
+	for name, factory := range map[string]runtime.AgentFactory{
+		"turn failure": func(context.Context, *runtime.Session) (runtime.Agent, error) { return failingAgent{}, nil },
+		"agent construction failure": func(context.Context, *runtime.Session) (runtime.Agent, error) {
+			return nil, errors.New("agent construction failed")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			j := runtime.NewMemoryJournal()
+			b, req := resumeFixture(t, j)
+			b.runner = runtime.NewRunner(j, factory)
+			if reply := b.admitResume(context.Background(), req); reply.Status != "pending" {
+				t.Fatal(reply)
+			}
+			b.resumeWG.Wait()
+			reply := b.admitResume(context.Background(), req)
+			if reply.Status != "completed" || !validCompletedResumeReceipt(req, reply) {
+				t.Fatalf("receipt = %+v, want completed", reply)
+			}
+			if reply.Outcome.State != runtime.RunFailed || reply.Outcome.Error == "" {
+				t.Fatalf("outcome = %+v, want failed with error", reply.Outcome)
+			}
+		})
+	}
+}
+
+// Without proof that a new turn ran, a nil result stays ambiguous.
+func TestConfirmedResumeResultRequiresNewTurn(t *testing.T) {
+	j := runtime.NewMemoryJournal()
+	b, req := resumeFixture(t, j)
+	if got := confirmedResumeResult(context.Background(), b.runner, req, nil, errors.New("busy")); got != nil {
+		t.Fatalf("unchanged failed turn confirmed: %+v", got)
+	}
+	running := &runtime.Run{ID: "run", State: runtime.RunRunning, Err: errors.New("completion write")}
+	if got := confirmedResumeResult(context.Background(), b.runner, req, running, running.Err); got != nil {
+		t.Fatalf("non-failed result confirmed: %+v", got)
 	}
 }

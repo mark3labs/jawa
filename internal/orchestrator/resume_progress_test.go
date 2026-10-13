@@ -3,7 +3,9 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/runtime"
@@ -114,6 +116,41 @@ func TestResumeDispatchPromotesActiveOwner(t *testing.T) {
 			}
 			if queries != 1 {
 				t.Fatalf("owner queries = %d, want 1", queries)
+			}
+		})
+	}
+}
+
+// A continuation that ran and failed again arrives as a completed receipt with
+// a failed outcome. It must restore an execution failure (not an ambiguous
+// notice) and let automatic resume schedule the next bounded attempt.
+func TestResumeRepeatedFailureReschedulesAutomaticResume(t *testing.T) {
+	for _, planning := range []bool{false, true} {
+		mode := "build"
+		if planning {
+			mode = "planning"
+		}
+		t.Run(mode, func(t *testing.T) {
+			w, _, _, req, _ := reconcileResumeFixture(t, planning, true)
+			out := client.Outcome{Version: 1, TaskID: req.Target.TaskID, AgentID: req.Target.AgentID, RunID: req.Target.RunID, AttemptID: req.Target.AttemptID, State: runtime.RunFailed, Error: "stream error: overloaded"}
+			reply := reportprotocol.FailedResumeReply{Version: 1, ID: req.ID, Target: req.Target, Status: "completed", Seq: req.Seq + 40, Outcome: &out}
+			if err := w.finishFailedResume(req.ID, reply); err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(out)
+			notice := reconcileResumeState(t, w, req, planning, "completed", "failed", string(raw))
+			if strings.HasPrefix(notice, "Resume could not be confirmed") {
+				t.Fatalf("repeated failure reported as ambiguous: %q", notice)
+			}
+			if err := w.discoverAutoResumes(time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			var state string
+			if err := w.s.db.QueryRow(`SELECT state FROM auto_resumes WHERE task_id=?`, req.Target.TaskID).Scan(&state); err != nil {
+				t.Fatal(err)
+			}
+			if state != "scheduled" {
+				t.Fatalf("auto resume state = %q, want scheduled", state)
 			}
 		})
 	}
