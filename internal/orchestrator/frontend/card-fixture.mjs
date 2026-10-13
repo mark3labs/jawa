@@ -47,12 +47,43 @@ try {
         assert.equal(rows.length, 5);
         assert.ok(Math.max(...rows) - Math.min(...rows) <= 1, 'Desktop lane action rows are misaligned');
       }
-      await page.locator('.task-card .icon-btn').first().focus();
-      assert.ok(await page.locator('.task-card .icon-btn').first().evaluate(el => document.activeElement === el));
+      for (const card of await page.locator('.task-card').all()) {
+        const link = card.locator('.card-view-action');
+        assert.equal(await link.count(), 1);
+        const href = `/planning?card=${encodeURIComponent(await card.getAttribute('data-card-id'))}`;
+        assert.equal(await link.getAttribute('href'), href);
+        assert.equal(await link.getAttribute('aria-label'), 'View card and plan');
+        assert.equal(await link.evaluate(el => getComputedStyle(el).opacity), '1');
+        await card.locator('.archive-action').focus();
+        await page.keyboard.press('Tab');
+        assert.ok(await link.evaluate(el => document.activeElement === el));
+        assert.ok(await link.evaluate(el => getComputedStyle(el).outlineStyle !== 'none' && parseFloat(getComputedStyle(el).outlineWidth) >= 2));
+        if (width < 860) {
+          const box = await link.boundingBox();
+          assert.ok(box.width >= 44 && box.height >= 44, 'Shortcut touch target');
+        }
+      }
       if (process.env.JAWA_CARD_SCREENSHOT_DIR) {
         await page.screenshot({ path: `${process.env.JAWA_CARD_SCREENSHOT_DIR}/${view}-${width}.png`, fullPage: true });
       }
-      console.log(`${view} ${width}: overflow, assignment, focus passed`);
+      // Intercept only the detail destination: the fixture has no backend detail route.
+      for (const activation of ['click', 'Enter']) {
+        await page.goto(`http://127.0.0.1:${server.address().port}/${view}`);
+        const link = page.locator('.card-view-action').first();
+        const href = await link.getAttribute('href');
+        const requests = [];
+        const track = req => requests.push({ method: req.method(), path: new URL(req.url()).pathname });
+        page.on('request', track);
+        await page.route('**/planning?card=*', route => route.fulfill({ contentType: 'text/html', body: '<h1>Synthetic detail destination</h1>' }));
+        const navigation = page.waitForURL(`**${href}`);
+        if (activation === 'click') await link.click();
+        else { await link.focus(); await page.keyboard.press('Enter'); }
+        await navigation;
+        page.off('request', track);
+        assert.deepEqual(requests, [{ method: 'GET', path: '/planning' }], 'Activation must navigate only, never archive or drag');
+        await page.unroute('**/planning?card=*');
+      }
+      console.log(`${view} ${width}: overflow, assignment, shortcut, focus and native activation passed`);
     }
   }
 } finally {

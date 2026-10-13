@@ -175,8 +175,9 @@ a waiting update. Installation availability depends on the browser/platform.
 
 Keyboard shortcuts: `c` opens a new card, `/` focuses the board filter, and
 `g` followed by `b`, `r`, `a`, or `s` opens Board, Runs, Agents, or Settings.
-Shortcuts are disabled while typing or using a dialog. Card actions are in the
-ellipsis menu; detailed execution history lives in Runs, not inside board cards.
+Shortcuts are disabled while typing or using a dialog. The eye shortcut opens the
+full card and plan view; remaining card actions are in the ellipsis menu. Detailed
+execution history lives in Runs, not inside board cards.
 See [`internal/orchestrator/CONTRACT.md`](internal/orchestrator/CONTRACT.md) for
 UI regeneration and browser smoke-test instructions.
 
