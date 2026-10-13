@@ -84,7 +84,7 @@ func (w *Workflow) confirmUnblockOwner(a Attempt) (client.Status, error) {
 	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 	defer cancel()
 	status, err := w.client.Status(ctx, target)
-	if err != nil || status.Version != 1 || status.Error != "" || status.Target != target || status.Active || status.TurnID == "" || status.Seq < a.EventSeq || (status.State != runtime.RunCompleted && status.State != runtime.RunFailed) {
+	if err != nil || status.Version != 1 || status.Error != "" || status.Target != target || status.Active || status.CancelRequested || status.TurnID == "" || status.Seq < a.EventSeq || (status.State != runtime.RunCompleted && status.State != runtime.RunFailed) {
 		return status, errors.New("owning agent cannot confirm an idle completed or failed run; unblock refused")
 	}
 	return status, nil

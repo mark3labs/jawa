@@ -23,7 +23,7 @@ const fixture = `<!doctype html><html><head><script defer src="/app.js"></script
    </div>
    <div class="dialog-actions">
     <button type="button" class="btn" data-on:click="$unblockOpen = false">Keep blocked</button>
-    <button type="submit" class="btn primary" data-attr:disabled="$unblockPR ? !$unblockAcknowledged : !$unblockPrompt.trim()" data-text="$unblockPR ? 'Force ready' : 'Unblock and resume'"></button>
+    <button type="submit" class="btn primary" data-attr:disabled="$unblockPR ? !$unblockAcknowledged : (!$unblockPrompt.trim() || new TextEncoder().encode($unblockPrompt.trim()).length > 2048)" data-text="$unblockPR ? 'Force ready' : 'Unblock and resume'"></button>
    </div>
   </form>
  </dialog></body></html>`;
