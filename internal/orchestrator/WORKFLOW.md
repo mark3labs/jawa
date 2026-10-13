@@ -2,7 +2,19 @@
 
 `NewWorkflow(ctx, store, conn) (*Workflow, error)` migrates workflow tables and starts durable BONNIE v0.22 event/result readers and an outbox dispatcher. Caller owns Store and NATS connection: use the embedded server's trusted in-process connection, not public credentials. Close workflow before closing either dependency. Before dispatch, Workflow installs a Core NATS request/reply subscriber on `bonnie.reports.submit`. Close cancels and joins its goroutines (including report commits) and does not delete consumers.
 
-Route board mutations through `Workflow.MoveCard(id, status, position)` instead of Store.MoveCard. Todo -> Building atomically snapshots the task, inserts a queued attempt, and reorders lanes in one SQLite write transaction. Reordering Building does not create another attempt. Leaving Building is refused; `CancelCard(ctx, id)` requests cancellation only after confirming the latest attempt's exact agent/run/remote-attempt identity and active turn. A request is not confirmation: only an agent-confirmed cancellation is applied as cancelled, and cancellation cannot undo external actions already taken. Manual Done is forbidden. Store's legacy API is unchanged and must not be used to bypass these rules.
+Route board mutations through `Workflow.MoveCard(id, status, position)` instead of Store.MoveCard. Todo -> Building atomically snapshots the task, inserts a queued attempt, and reorders lanes in one SQLite write transaction. Reordering Building does not create another attempt. Leaving Building is refused; `CancelCard(ctx, id)` requests cancellation only after confirming the latest attempt's exact agent/run/remote-attempt identity and active turn. A request is not confirmation: only an agent-confirmed cancellation is applied as cancelled, and cancellation cannot undo external actions already taken. Ordinary manual Done is forbidden. The sole exception is authenticated,
+explicitly acknowledged `ForceReady`: an inactive latest unready Building/Fix
+attempt with no pending resumes, older active attempts or execution conflict can
+be bound to a server-selected PR after identity-only provider validation. A
+rendered snapshot/configuration token is required and rechecked in the final
+transaction. Provider failure rejects the action; CI, reviews, draft and
+mergeability checks are deliberately bypassed. Provider I/O runs before the write
+transaction, with cancellation and a 20-second deadline. The transaction stores
+the full prior attempt plus operator/reason/head/time audit, sets Ready, moves to
+Done, and clears auto-resume schedules and queued guidance without changing
+outcomes or typed reports. Ready fences late deliveries. Exact duplicate tokens
+preserve the original audit/time; repairs and configuration changes cannot reuse
+them. No provider mutation, merge or agent command is performed. Store's legacy API is unchanged and must not be used to bypass these rules.
 
 Tasks use shared `bonnie.tasks`; root provisioning enables targeted subjects for future use. Task UUID is deterministic from card ID and monotonically increasing attempt number. Persisted task payload and identity never change on publish retries. Broker ACK marks publication, not execution. Delivery is at least once, not exactly once outside the broker deduplication window; agents must deduplicate by task identity.
 

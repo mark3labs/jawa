@@ -67,6 +67,9 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 	if r.URL.Path == "/cards/cancel" {
 		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"cancelOpen\":false,\"cancelCard\":\"\"}\n\n")
 	}
+	if r.URL.Path == "/cards/force-ready" {
+		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"readyOpen\":false,\"readyCard\":\"\"}\n\n")
+	}
 	if r.URL.Path == "/cards/force-stop" {
 		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"forceOpen\":false,\"forceCard\":\"\"}\n\n")
 	}
@@ -124,6 +127,12 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	case "/cards/cancel":
 		signals["cancelOpen"] = "false"
 		signals["cancelCard"] = `""`
+	case "/cards/force-ready":
+		signals["readyOpen"] = "false"
+		signals["readyAcknowledged"] = "false"
+		for _, key := range []string{"readyCard", "readyToken", "readyPR", "readyNumber", "readyReason", "readyLane"} {
+			signals[key] = `""`
+		}
 	case "/cards/force-stop":
 		signals["forceOpen"] = "false"
 		signals["forceCard"] = `""`
