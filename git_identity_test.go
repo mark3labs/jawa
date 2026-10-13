@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/bonnie/sandbox"
 )
 
+// TestCodingEnvGitIdentity verifies independent identity mappings without process mutation.
 func TestCodingEnvGitIdentity(t *testing.T) {
 	for _, tc := range []struct {
 		label, name, email string
@@ -55,7 +56,7 @@ func TestCodingEnvGitIdentity(t *testing.T) {
 	}
 }
 
-// Exercise real Git commits through both a hermetic subprocess and BONNIE's
+// TestGitIdentityCommits exercises real Git commits through a hermetic subprocess and BONNIE's
 // environment wrapper used by WithSandboxEnv. All repositories/configs are temporary.
 func TestGitIdentityCommits(t *testing.T) {
 	git, err := exec.LookPath("git")

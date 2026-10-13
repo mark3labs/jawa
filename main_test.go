@@ -80,6 +80,7 @@ func TestLightpandaMCPConfig(t *testing.T) {
 	}
 }
 
+// TestCodingEnv verifies tool settings and omission of empty credentials.
 func TestCodingEnv(t *testing.T) {
 	t.Setenv("JAWA_GIT_USER_NAME", "")
 	t.Setenv("JAWA_GIT_USER_EMAIL", "")

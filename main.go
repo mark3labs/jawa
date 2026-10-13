@@ -168,7 +168,8 @@ func lightpandaMCPConfig() *kit.Config {
 	}
 }
 
-// Explicit coding settings. Local also inherits the server environment,
+// codingEnv returns explicit coding settings, including optional commit identity.
+// Local also inherits the server environment,
 // including NATS and model-provider credentials; this is not an allowlist.
 func codingEnv() map[string]string {
 	env := map[string]string{"GH_PROMPT_DISABLED": "1", "LIGHTPANDA_DISABLE_TELEMETRY": "true"}
