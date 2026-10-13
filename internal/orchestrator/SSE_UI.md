@@ -32,3 +32,16 @@ submitting a hidden Datastar form; unchanged drops request a finite snapshot.
 Rocket also wraps card popovers, keyboard shortcuts, copy controls and relative
 timestamps. Prebuilt shadcn-templ components retain their markup and styles. See
 CONTRACT.md for builds and integrated browser smoke instructions.
+
+Run details use `/runs/{attemptID}/events?tab=chat|trace`, with stable roots
+`run-detail-content` and `run-detail-controls`. Draft, tab links and filter are
+outside those roots. Session validity is rechecked each iteration (one-second
+poll), with 15-second heartbeats and bounded writes. One upstream BONNIE stream
+per agent/run is shared by viewers; each browser reads an immutable copied
+observation without blocking upstream. Initial replay starts at zero for bounded
+historical durable activity; subsequent reconnections use only the processed
+durable cursor. Live equal-sequence events are not deduplicated. Snapshot
+refreshes coalesce durable/StepFinish changes and replace covered live activity.
+Closure shows unreachable and retries reads only with 1–30 second backoff.
+Offline/capacity states do not authorize mutations. Notices/drafts are never
+cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.

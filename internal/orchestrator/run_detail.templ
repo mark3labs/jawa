@@ -1,0 +1,174 @@
+package orchestrator
+
+import "strconv"
+
+templ runDetailPage(d runDetail, csrf string) {
+	<div class="view run-detail-view">
+		<a class="chip" href="/runs">← Back to Runs</a>
+		<h1>
+			Run #{ strconv.Itoa(d.Attempt.Number) }
+		</h1>
+		<p class="meta">
+			{ d.Attempt.AgentID } · { d.Attempt.RunID } · { attemptBranch(d.Attempt) }
+		</p>
+		<nav class="tabs" aria-label="Run detail tabs">
+			<a class="tab" href={ templ.SafeURL(detailPath(d.Attempt, "chat")) } aria-current={ isCurrent(d.Tab == "chat") }>Chat</a>
+			<a class="tab" href={ templ.SafeURL(detailPath(d.Attempt, "trace")) } aria-current={ isCurrent(d.Tab == "trace") }>Trace</a>
+		</nav>
+		if d.Tab=="trace" {
+			<label for="trace-filter">Filter activity</label><input id="trace-filter" type="search" data-bind:trace-filter placeholder="Filter trace text"/>
+		}
+		@runDetailContent(d)
+		if d.Tab=="chat" {
+			<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-on:submit={ "@post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
+				<input type="hidden" name="_csrf" value={ csrf }/>
+				<label for="run-draft">Message / follow-up</label>
+				<textarea id="run-draft" name="text" data-bind:run-draft maxlength="65536" rows="4" placeholder="Message the agent" required></textarea>
+			</form>
+		}
+		@runDetailControls(d, csrf)
+	</div>
+}
+
+func detailAction(d runDetail, action string) string {
+	return "/runs/" + d.Attempt.ID + "/" + action + "?tab=" + d.Tab
+}
+
+templ runDetailControls(d runDetail, csrf string) {
+	<div id="run-detail-controls" class="run-controls">
+		<p class="meta">
+			{ d.Policy.Reason }
+		</p>
+		if d.Tab=="chat" {
+			<button type="submit" form="run-composer" class="chip" disabled?={ !d.Policy.Send }>
+				if d.Policy.Mode=="queue" {
+					Send follow-up
+				} else {
+					Send message
+				}
+			</button>
+		}
+		if d.Policy.Stop {
+			<form method="post" action={ detailAction(d, "stop") } data-on:submit={ "@post('" + detailAction(d, "stop") + "', {contentType:'form', retry:'never'})" }>
+				<input type="hidden" name="_csrf" value={ csrf }/>
+				<input type="hidden" name="turn_id" value={ d.Policy.Turn }/>
+				<button type="submit" class="chip">Stop current turn</button>
+			</form>
+		}
+		<a class="chip" href={ templ.SafeURL(planningPath(d.Attempt.CardID)) }>Open card for recovery / guidance</a>
+	</div>
+}
+
+templ runDetailContent(d runDetail) {
+	<div id="run-detail-content" class="run-history">
+		if d.Observation.Unreachable {
+			<p class="notice" role="status">Agent unreachable or API unsupported. Conversation, if shown, is stale; mutations are disabled. A cold offline view has no stored conversation.</p>
+		}
+		if d.Observation.Truncated {
+			<p class="meta">Activity truncated to bounded retained history.</p>
+		}
+		if d.Attempt.Error!="" {
+			<p class="card-note">
+				{ d.Attempt.Error }
+			</p>
+		}
+		if d.Attempt.Result!="" {
+			<details>
+				<summary>Stored workflow outcome</summary>
+				<pre class="result">
+					{ d.Attempt.Result }
+				</pre>
+			</details>
+		}
+		if d.Tab=="trace" {
+			<h2>Snapshot history — turn/timestamps unavailable</h2>
+			<p class="meta">Selected-branch conversation, not a complete journal. Step, sandbox and compaction history is unavailable.</p>
+		}
+		for i,m:=range d.Messages {
+			<article id={ "run-message-" + strconv.Itoa(i) } class="run-message" data-show={ "$traceFilter === '' || el.textContent.toLowerCase().includes($traceFilter.toLowerCase())" }>
+				<h3>
+					{ m.Role }
+				</h3>
+				for _,part:=range m.Parts {
+					if part.Tool!=nil {
+						<details data-preserve-attr="open" class="run-tool">
+							<summary>
+								{ part.Tool.Name } · { part.Tool.Kind } · { part.Tool.Summary }
+							</summary>
+							for _,section:=range part.Tool.Sections {
+								<h4>
+									{ section.Label }
+								</h4>
+								<pre class="result">
+									{ section.Text }
+								</pre>
+							}
+							<details>
+								<summary>Raw payload</summary>
+								<pre class="result">
+									{ part.Tool.Raw }
+								</pre>
+							</details>
+						</details>
+					} else if m.Role=="assistant" {
+						<div class="planning-markdown">@templ.Raw(part.HTML)</div>
+					} else {
+						<pre class="result">
+							{ part.Text }
+						</pre>
+					}
+				}
+				<details data-preserve-attr="open">
+					<summary>Raw message</summary>
+					<pre class="result">
+						{ m.Raw }
+					</pre>
+				</details>
+			</article>
+		}
+		if len(d.Messages)==0 {
+			<p class="meta">No conversation snapshot available.</p>
+		}
+		for _,group:=range d.Groups {
+			if d.Tab=="trace" || group.Live {
+				<section class="run-message" data-show="$traceFilter === '' || el.textContent.toLowerCase().includes($traceFilter.toLowerCase())">
+					<h2>
+						Turn { displayDash(group.Turn) }
+						if group.Live {
+							<span class="meta">Live only, not retained</span>
+						} else {
+							<span class="meta">BONNIE durable events</span>
+						}
+					</h2>
+					for _,ev:=range group.Events {
+						<details data-preserve-attr="open">
+							<summary>
+								{ ev.Type } · #{ strconv.Itoa(ev.Seq) } · { ev.Time.UTC().Format("2006-01-02 15:04:05 UTC") }
+							</summary>
+							<pre class="result">
+								{ ev.Text }{ string(ev.State) }
+							</pre>
+							<pre class="result">
+								{ string(ev.Data) }
+							</pre>
+						</details>
+					}
+				</section>
+			}
+		}
+		if d.Tab=="trace" || d.Observation.Unreachable {
+			<h2>Stored workflow deliveries (latest 256)</h2>
+			<p class="meta">Filtered to pinned ownership. Delivery time/order is separate from BONNIE journal sequence.</p>
+			for _,ev:=range d.Stored {
+				<details class="run-message" data-preserve-attr="open" data-show="$traceFilter === '' || el.textContent.toLowerCase().includes($traceFilter.toLowerCase())">
+					<summary>
+						{ ev.Kind } · { ev.Time.Format("2006-01-02 15:04:05 UTC") }
+					</summary>
+					<pre class="result">
+						{ ev.Raw }
+					</pre>
+				</details>
+			}
+		}
+	</div>
+}

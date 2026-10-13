@@ -108,7 +108,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.authed(r) {
-		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || r.URL.Path == "/projects/issues" || datastarRequest(r) {
+		if r.URL.Path == "/events" || r.URL.Path == "/snapshot" || r.URL.Path == "/projects/issues" || (strings.HasPrefix(r.URL.Path, "/runs/") && strings.HasSuffix(r.URL.Path, "/events")) || datastarRequest(r) {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
@@ -126,6 +126,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/" {
 		http.Redirect(w, r, "/board", http.StatusSeeOther)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/runs/") {
+		a.runDetailRoute(w, r)
 		return
 	}
 	if kind, ok := viewFromPath(r.URL.Path); ok && r.Method == http.MethodGet {
@@ -649,7 +653,7 @@ func natsOptions(s *Store, listen, dir string) (*server.Options, error) {
 		return nil, fmt.Errorf("invalid stored NATS password hash")
 	}
 	cfg := s.NATSConfig()
-	if strings.TrimSpace(cfg.Username) == "" {
+	if strings.TrimSpace(cfg.Username) == "" || cfg.Username == "jawa-internal" {
 		return nil, fmt.Errorf("NATS username required")
 	}
 	return &server.Options{Host: host, Port: port, Username: cfg.Username, Password: hash, JetStream: true, StoreDir: filepath.Join(dir, "nats"), NoSigs: true}, nil
@@ -685,7 +689,7 @@ func (a *app) rotateNATS(url, user, pass string) error {
 		if len(next.Users) > 0 {
 			for i, u := range next.Users {
 				if u.Username != "jawa-internal" {
-					next.Users[i] = &server.User{Username: user, Password: string(hash)}
+					next.Users[i] = &server.User{Username: user, Password: string(hash), Permissions: workerPermissions()}
 				}
 			}
 			next.Username, next.Password = "", ""
@@ -788,7 +792,7 @@ func Command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		opts.Users = []*server.User{{Username: opts.Username, Password: opts.Password}, {Username: "jawa-internal", Password: string(systemHash)}}
+		opts.Users = []*server.User{{Username: opts.Username, Password: opts.Password, Permissions: workerPermissions()}, {Username: "jawa-internal", Password: string(systemHash)}}
 		opts.Username, opts.Password = "", ""
 		ns, err := server.NewServer(opts.Clone())
 		if err != nil {

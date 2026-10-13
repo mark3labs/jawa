@@ -39,6 +39,7 @@ type uiSnapshot struct {
 
 // pageData is everything a view needs to render. Views never query storage.
 type pageData struct {
+	detail    *runDetail
 	csrf      string
 	v         viewParams
 	dashboard map[string]string

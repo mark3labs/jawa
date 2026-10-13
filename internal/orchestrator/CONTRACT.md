@@ -175,3 +175,26 @@ requires confirmation and Reset preserves attempt history. Time/cost bounds are 
 guidance rather than scheduler enforcement. Done is PR-ready, not merged, and later
 review changes do not automatically reopen the card. Remote HTTP/NATS require external
 TLS/network controls; do not share the orchestrator's data or credentials with agents.
+
+## Run detail
+
+`GET /runs/{attemptID}?tab=chat|trace` uses the shared authenticated layout,
+Runs navigation and its own stream `GET /runs/{attemptID}/events?tab=...` (never
+the generic Board/Runs SSE). Unknown/unpinned attempts are 404. Session checks,
+no-store, setup guards and CSRF apply; unauthenticated detail streams are 401.
+`POST /runs/{attemptID}/chat` accepts bounded `text`; `POST .../stop` requires
+the displayed `turn_id`. Browser fields never select agent subject/run identity.
+Enhanced actions disable retry and return finite notices; native actions redirect.
+
+`run-detail-content` morphs status and history, `run-detail-controls` morphs
+eligibility and exact-turn Stop. Tabs, Trace filter and composer/draft stay
+outside both roots. Only confirmed send success clears `runDraft`; uncertain
+mutations preserve it. Assistant Markdown uses the existing sanitizer; other
+content is escaped and no remote media is loaded. BONNIE display adaptation
+attribution is retained in BONNIE-LICENSE.
+
+Factory smoke includes two simultaneous viewers, follow-up, committed response,
+draft retention, Trace filter, 320/390/768/1024/1440 overflow checks and real
+Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
+See README Run detail for reduced trace fidelity, bounds and the explicitly
+accepted trusted-worker JetStream delivery-proxy limitation.

@@ -72,6 +72,7 @@ func TestServingPresenceEnabledByDefault(t *testing.T) {
 			for _, key := range []string{"NATS_USERNAME", "NATS_PASSWORD", "NATS_TOKEN", "NATS_NKEY_SEED", "JAWA_NATS_PRESENCE_BUCKET"} {
 				t.Setenv(key, "")
 			}
+			t.Setenv("JAWA_NATS_API", "false")
 			t.Setenv("JAWA_NATS_PRESENCE", enabled)
 			s, err := server.NewServer(&server.Options{Port: -1, JetStream: true, StoreDir: t.TempDir()})
 			if err != nil {

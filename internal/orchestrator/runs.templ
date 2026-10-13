@@ -94,6 +94,10 @@ templ runRow(d pageData, a Attempt) {
 			</span>
 		</summary>
 		<div class="run-body">
+ if a.AgentID != "" && a.RunID != "" {
+ <a class="chip" href={ templ.SafeURL(detailPath(a,"chat")) }>@icon("runs")<span>Open</span></a>
+ }
+
 			<dl class="facts">
 				<div>
 					<dt>Branch</dt>

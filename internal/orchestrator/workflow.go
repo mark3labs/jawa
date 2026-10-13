@@ -33,6 +33,7 @@ type Attempt struct {
 type Verifier func(context.Context, Attempt) (bool, error)
 
 type Workflow struct {
+	runAPI           *runAPI
 	logger           *log.Logger
 	s                *Store
 	client           *client.Client
@@ -81,8 +82,16 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	if err != nil {
 		return nil, err
 	}
+	key, err := s.apiSigningKey()
+	if err != nil {
+		return nil, err
+	}
+	if err = publishAPIKey(ctx, conn, key); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
+	w.runAPI = newRunAPI(ctx, conn, key)
 	w.resumeConn = conn
 	w.resumeStaleAfter, err = resumeStaleDuration()
 	if err != nil {
@@ -154,6 +163,9 @@ func (w *Workflow) consumerLoop(consumer string, f func() error) {
 }
 func (w *Workflow) Close() error {
 	w.cancel()
+	if w.runAPI != nil {
+		w.runAPI.Close()
+	}
 	if w.reports != nil {
 		_ = w.reports.Unsubscribe()
 	}
