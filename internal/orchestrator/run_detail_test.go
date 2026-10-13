@@ -118,16 +118,18 @@ func TestRunPolicyDoesNotResumeUnreportedCompletion(t *testing.T) {
 }
 func TestRunDisplayEscapesUntrustedContent(t *testing.T) {
 	messages := projectRunMessages([]kit.LLMMessage{{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "<script>alert(1)</script>\n\n**bold** ![](https://tracker.invalid/x)"}}}, {Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "<img src=x onerror=alert(1)>"}}}})
-	var out bytes.Buffer
-	if err := runDetailContent(runDetail{Messages: messages}).Render(t.Context(), &out); err != nil {
-		t.Fatal(err)
-	}
-	html := out.String()
-	if strings.Contains(html, "<script>") || strings.Contains(html, "<img") {
-		t.Fatal("unsafe HTML")
-	}
-	if !strings.Contains(html, "<strong>bold</strong>") || !strings.Contains(html, "&lt;img") {
-		t.Fatal("wrong projection")
+	for _, tab := range []string{"chat", "trace"} {
+		var out bytes.Buffer
+		if err := runDetailContent(runDetail{Tab: tab, Messages: messages}).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		html := out.String()
+		if strings.Contains(html, "<script>") || strings.Contains(html, "<img") {
+			t.Fatal("unsafe HTML")
+		}
+		if !strings.Contains(html, "<strong>bold</strong>") || !strings.Contains(html, "&lt;img") {
+			t.Fatal("wrong projection")
+		}
 	}
 }
 func TestWorkerDirectACLAfterReload(t *testing.T) {

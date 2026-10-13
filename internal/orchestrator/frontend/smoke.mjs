@@ -43,7 +43,7 @@ await page.addInitScript(() => {
  const fetch = window.fetch.bind(window);
  window.fetch = async (...args) => {
   const response = await fetch(...args);
-  if (new URL(response.url).pathname === '/events') {
+  if (new URL(response.url).pathname.endsWith('/events')) {
    window.smokeSSE.url = response.url;
    window.smokeSSE.contentType = response.headers.get('content-type');
    const reader = response.clone().body.getReader();
@@ -303,19 +303,23 @@ try {
  await run.getByRole('link', {name:'Open', exact:true}).click();
  await page.locator('#run-detail-content').waitFor();
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
- await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor();
+ await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
+ const toolActivity = page.locator('.run-chat-activity').first();
+ await toolActivity.locator(':scope > summary').click();
+ const activityID = await toolActivity.getAttribute('id');
  await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');
  await page.waitForTimeout(1500);
  assert.equal(await page.getByLabel('Message / follow-up').inputValue(),'draft survives unsolicited updates');
  const detailURL=page.url();
  const secondViewer=await page.context().newPage();
  await secondViewer.goto(detailURL);
- await secondViewer.locator('#run-detail-content .run-tool').first().waitFor();
+ await secondViewer.locator('#run-detail-content .run-tool').first().waitFor({state:'attached'});
  await page.getByLabel('Message / follow-up').fill('RUN_DETAIL_FOLLOWUP_FIXTURE');
  await page.getByRole('button', {name:'Send follow-up',exact:true}).click();
  await page.locator('.planning-markdown').filter({hasText:'Run detail follow-up response.'}).waitFor();
  await secondViewer.locator('.planning-markdown').filter({hasText:'Run detail follow-up response.'}).waitFor();
  await expect(page.getByLabel('Message / follow-up')).toHaveValue('');
+ assert.ok(await page.locator(`[id="${activityID}"]`).evaluate(el=>el.open),'Tool disclosure lost on follow-up patch');
  await secondViewer.close();
  for(const width of [320,390,768,1024,1440]) {
   await page.setViewportSize({width,height:1000});
@@ -331,6 +335,13 @@ try {
  }
  await page.getByRole('link',{name:'Trace',exact:true}).click();
  await page.getByText('Snapshot history — turn/timestamps unavailable',{exact:true}).waitFor();
+ await page.waitForFunction(()=>window.smokeSSE.url && new URL(window.smokeSSE.url).pathname.endsWith('/events') && new URL(window.smokeSSE.url).searchParams.get('tab') === 'trace');
+ assert.equal(await page.locator('#run-composer').count(),0);
+ const traceEntry=page.locator('[data-trace-entry] > details').first();
+ await traceEntry.locator(':scope > summary').click();
+ const traceID=await traceEntry.getAttribute('id');
+ await page.waitForTimeout(1500);
+ assert.ok(await page.locator(`[id="${traceID}"]`).evaluate(el=>el.open));
  await page.getByLabel('Filter activity').fill('does-not-match-fixture');
  await expect(page.locator('.run-message:visible')).toHaveCount(0);
  await page.getByLabel('Filter activity').fill('');
