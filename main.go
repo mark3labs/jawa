@@ -175,6 +175,14 @@ func codingEnv() map[string]string {
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		env["GITHUB_TOKEN"] = token
 	}
+	if name := os.Getenv("JAWA_GIT_USER_NAME"); name != "" {
+		env["GIT_AUTHOR_NAME"] = name
+		env["GIT_COMMITTER_NAME"] = name
+	}
+	if email := os.Getenv("JAWA_GIT_USER_EMAIL"); email != "" {
+		env["GIT_AUTHOR_EMAIL"] = email
+		env["GIT_COMMITTER_EMAIL"] = email
+	}
 	return env
 }
 
