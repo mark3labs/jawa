@@ -6,7 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
+	"html"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,7 +28,7 @@ type runTool struct {
 	Name, Kind, Summary, Raw, CallID string
 	Sections                         []runSection
 }
-type runSection struct{ Label, Text string }
+type runSection struct{ Label, Text, HTML string }
 
 func prettyRun(v any) string {
 	b, e := json.MarshalIndent(v, "", "  ")
@@ -44,14 +48,14 @@ func runPreview(s string) string {
 func toolSummary(input string) string {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal([]byte(input), &fields) == nil {
-		for _, key := range []string{"command", "path", "query", "url"} {
+		for _, key := range []string{"command", "path", "query", "action", "url"} {
 			var value string
 			if json.Unmarshal(fields[key], &value) == nil && value != "" {
 				return runPreview(value)
 			}
 		}
 	}
-	return runPreview(input)
+	return "Expand arguments"
 }
 func outputSections(text string) []runSection {
 	var fields map[string]json.RawMessage
@@ -60,18 +64,18 @@ func outputSections(text string) []runSection {
 		for _, key := range []string{"stdout", "stderr"} {
 			var value string
 			if json.Unmarshal(fields[key], &value) == nil && value != "" {
-				sections = append(sections, runSection{key, value})
+				sections = append(sections, newRunSection(key, value))
 				delete(fields, key)
 			}
 		}
 		if len(sections) > 0 {
 			if len(fields) > 0 {
-				sections = append(sections, runSection{"Output metadata", prettyRun(fields)})
+				sections = append(sections, newRunSection("Metadata", prettyRun(fields)))
 			}
 			return sections
 		}
 	}
-	return []runSection{{"Output", text}}
+	return []runSection{newRunSection("Output", text)}
 }
 func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 	names := make(map[string]string)
@@ -90,19 +94,19 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 				}
 			case kit.LLMToolCallPart:
 				names[p.ToolCallID] = p.ToolName
-				m.Parts = append(m.Parts, runPart{Tool: &runTool{CallID: p.ToolCallID, Name: p.ToolName, Kind: "call", Summary: toolSummary(p.Input), Raw: prettyRun(json.RawMessage(p.Input)), Sections: []runSection{{"Arguments", p.Input}}}})
+				m.Parts = append(m.Parts, runPart{Tool: &runTool{CallID: p.ToolCallID, Name: p.ToolName, Kind: "call", Summary: toolSummary(p.Input), Raw: newRunSection("", p.Input).Text, Sections: []runSection{newRunSection("Arguments", p.Input)}}})
 			case kit.LLMToolResultPart:
 				name := names[p.ToolCallID]
 				if name == "" {
 					name = "Tool result"
 				}
-				sections := []runSection{{"Output", prettyRun(p)}}
+				sections := []runSection{newRunSection("Output", prettyRun(p))}
 				switch output := p.Output.(type) {
 				case kit.LLMToolResultOutputContentText:
 					sections = outputSections(output.Text)
 				case kit.LLMToolResultOutputContentError:
 					if output.Error != nil {
-						sections = []runSection{{"Error", output.Error.Error()}}
+						sections = []runSection{newRunSection("Error", output.Error.Error())}
 					}
 				}
 				summary := ""
@@ -111,7 +115,7 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 				}
 				m.Parts = append(m.Parts, runPart{Tool: &runTool{CallID: p.ToolCallID, Name: name, Kind: "result", Summary: summary, Raw: prettyRun(p), Sections: sections}})
 			default:
-				m.Parts = append(m.Parts, runPart{Text: "Unsupported content; inspect raw message in Trace", Unsupported: true})
+				m.Parts = append(m.Parts, runPart{Unsupported: true})
 			}
 		}
 		for i := range m.Parts {
@@ -140,17 +144,6 @@ func displayKey(source, raw string, occurrences map[string]int) string {
 	occurrences[key]++
 	return fmt.Sprintf("%s-%d", key, n)
 }
-func (m runMessage) toolOnly() bool {
-	if len(m.Parts) == 0 {
-		return false
-	}
-	for _, p := range m.Parts {
-		if p.Tool == nil {
-			return false
-		}
-	}
-	return true
-}
 func (m runMessage) preview() string {
 	var texts []string
 	for _, p := range m.Parts {
@@ -164,13 +157,116 @@ func (m runMessage) preview() string {
 }
 func runTime(t time.Time) string {
 	if t.IsZero() {
-		return "Timestamp unavailable"
+		return ""
 	}
 	return t.UTC().Format("2006-01-02 15:04:05 UTC")
 }
 func runRole(role string) string {
 	if role == "" {
-		return "Unknown role"
+		return ""
 	}
 	return strings.ToUpper(string([]rune(role)[:1])) + string([]rune(role)[1:])
+}
+
+var jsonToken = regexp.MustCompile(`"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b`)
+
+// newRunSection formats valid JSON and colors its tokens. Plain output stays
+// literal, not Markdown or HTML. All source text is escaped before templ.Raw.
+func newRunSection(label, text string) runSection {
+	s := runSection{Label: label, Text: text}
+	if !json.Valid([]byte(text)) {
+		s.HTML = html.EscapeString(text)
+		return s
+	}
+	s.Text = prettyRun(json.RawMessage(text))
+	var b strings.Builder
+	end := 0
+	for _, match := range jsonToken.FindAllStringIndex(s.Text, -1) {
+		b.WriteString(html.EscapeString(s.Text[end:match[0]]))
+		token := s.Text[match[0]:match[1]]
+		class := "number"
+		if token[0] == '"' {
+			class = "string"
+			if strings.HasPrefix(strings.TrimSpace(s.Text[match[1]:]), ":") {
+				class = "key"
+			}
+		} else if token == "true" || token == "false" || token == "null" {
+			class = "literal"
+		}
+		b.WriteString(`<span class="syntax-` + class + `">`)
+		b.WriteString(html.EscapeString(token))
+		b.WriteString("</span>")
+		end = match[1]
+	}
+	b.WriteString(html.EscapeString(s.Text[end:]))
+	s.HTML = b.String()
+	return s
+}
+
+// Each source has its own optional columns and content identities. No journal
+// positions, roles or turns are inferred from event names or snapshot order.
+type runTraceRow struct {
+	Key, Turn, Summary, Raw string
+	Cells                   []string
+	Stripe                  bool
+}
+type runTraceTable struct {
+	Title   string
+	Columns []string
+	Rows    []runTraceRow
+}
+
+func snapshotTrace(messages []runMessage) runTraceTable {
+	t := runTraceTable{Title: "Snapshot messages", Columns: []string{"Role", "Summary"}}
+	for i, m := range messages {
+		t.Rows = append(t.Rows, runTraceRow{Key: m.Key + "-trace", Cells: []string{runRole(m.Role)}, Summary: m.preview(), Raw: m.Raw, Stripe: i%2 == 1})
+	}
+	return t
+}
+func eventTrace(title, source string, events []runtime.Event) runTraceTable {
+	t := runTraceTable{Title: title}
+	columns := []string{"Sequence", "Time (UTC)", "Kind", "Role", "State"}
+	present := make([]bool, len(columns))
+	cells := make([][]string, len(events))
+	for i, ev := range events {
+		seq := ""
+		if ev.Seq != 0 {
+			seq = strconv.Itoa(ev.Seq)
+		}
+		cells[i] = []string{seq, runTime(ev.Time), ev.Type, "", string(ev.State)}
+		for j, cell := range cells[i] {
+			present[j] = present[j] || cell != ""
+		}
+	}
+	for j, column := range columns {
+		if present[j] {
+			t.Columns = append(t.Columns, column)
+		}
+	}
+	t.Columns = append(t.Columns, "Summary")
+	occurrences := make(map[string]int)
+	for i, ev := range events {
+		raw := prettyRun(ev)
+		row := runTraceRow{Key: displayKey(source, raw, occurrences), Turn: ev.TurnID, Summary: runPreview(ev.Text), Raw: raw, Stripe: i%2 == 1}
+		if row.Summary == "" {
+			row.Summary = runPreview(string(ev.Data))
+		}
+		if source == "durable" {
+			row.Stripe = ev.Seq%2 == 1
+		}
+		for j, cell := range cells[i] {
+			if present[j] {
+				row.Cells = append(row.Cells, cell)
+			}
+		}
+		t.Rows = append(t.Rows, row)
+	}
+	return t
+}
+
+func traceStripe(stripe bool) string {
+	if stripe {
+		return "run-stripe"
+	}
+	return ""
 }

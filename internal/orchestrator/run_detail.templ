@@ -3,13 +3,12 @@ package orchestrator
 import (
 	"strconv"
 
-	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
-	"github.com/axadrn/shadcn-templ/v2/components/empty"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/table"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
 )
 
@@ -24,7 +23,6 @@ func detailVariant(active bool) button.Variant {
 }
 
 const traceMatch = "$traceFilter === '' || el.textContent.toLowerCase().includes($traceFilter.toLowerCase())"
-const traceNoMatches = "$traceFilter !== '' && !Array.from(document.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))"
 
 templ runDetailPage(d runDetail, csrf string) {
 	<div class={ "view run-detail-view run-detail-" + d.Tab }>
@@ -32,12 +30,33 @@ templ runDetailPage(d runDetail, csrf string) {
 			Back to Runs
 		}
 		<header class="run-detail-header">
-			<h1>{ d.Record.Mode } run #{ strconv.Itoa(d.Record.Number) }</h1>
+			<h1>
+				{ d.Record.Mode } run #{ strconv.Itoa(d.Record.Number) }
+			</h1>
 			<dl class="run-detail-metadata">
-				<div><dt>Agent</dt><dd>{ displayDash(d.Record.AgentID) }</dd></div>
-				<div><dt>Run</dt><dd>{ displayDash(d.Record.RunID) }</dd></div>
-				if d.Record.Mode != "Planning" {
-					<div><dt>Branch</dt><dd>{ attemptBranch(d.Record.Build) }</dd></div>
+				if d.Record.AgentID != "" {
+					<div>
+						<dt>Agent</dt>
+						<dd>
+							{ d.Record.AgentID }
+						</dd>
+					</div>
+				}
+				if d.Record.RunID != "" {
+					<div>
+						<dt>Run</dt>
+						<dd>
+							{ d.Record.RunID }
+						</dd>
+					</div>
+				}
+				if d.Record.Mode != "Planning" && d.Record.Build.Branch != "" {
+					<div>
+						<dt>Branch</dt>
+						<dd>
+							{ d.Record.Build.Branch }
+						</dd>
+					</div>
 				}
 			</dl>
 		</header>
@@ -62,24 +81,27 @@ templ runDetailPage(d runDetail, csrf string) {
 			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface"}) {
 				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-on:submit={ "@post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
 					<input type="hidden" name="_csrf" value={ csrf }/>
-					@label.Label(label.Props{For: "run-draft"}) {
+					@label.Label(label.Props{For: "run-draft", Class: "sr-only"}) {
 						Message / follow-up
 					}
-					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 4, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "65536", "required": true}})
+					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 1, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "65536", "required": true}})
 				</form>
 				@runDetailControls(d, csrf)
 			}
 		} else {
 			@runDetailControls(d, csrf)
 		}
+		<jawa-run-detail></jawa-run-detail>
 	</div>
 }
 
 templ runDetailControls(d runDetail, csrf string) {
 	<div id="run-detail-controls" class="run-controls">
-		<p class="meta">{ d.Policy.Reason }</p>
-		if d.Tab=="chat" && d.Record.Mode!="Planning" {
-			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send}) {
+		if d.Tab == "chat" && d.Record.Mode != "Planning" {
+			<span class="meta">Ctrl+Enter to send</span>
+		}
+		if d.Tab=="chat" && d.Record.Mode != "Planning" {
+			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!" + strconv.FormatBool(d.Policy.Send) + " || $runSending"}}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
 				} else {
@@ -102,48 +124,22 @@ templ runDetailControls(d runDetail, csrf string) {
 	</div>
 }
 
-templ runDetailEmpty(text string) {
-	@empty.Empty(empty.Props{Class: "run-empty"}) {
-		@empty.Header() {
-			@empty.Description() {
-				{ text }
-			}
-		}
-	}
-}
-
+// Adapted from BONNIE web/views.templ (MIT); see BONNIE-LICENSE.
 templ runDetailContent(d runDetail) {
 	<div id="run-detail-content" class="run-history">
-		<div class="run-observed-state">
-			if d.Record.Mode == "Planning" {
-				@badge.Badge() { { d.Record.label() } }
-			}
-			@badge.Badge() {
-				{ displayDash(d.Record.RunState) }
-			}
-			<span class="meta">Stored execution state · workflow outcome and live snapshot are separate</span>
-		</div>
-		if d.Observation.Unreachable {
-			@alert.Alert(alert.Props{ID: "run-unreachable", Class: "run-notice"}) {
-				Agent unreachable or API unsupported. Conversation, if shown, is stale; mutations are disabled. A cold offline view has no stored conversation.
-			}
+		if d.Record.Mode == "Planning" {
+ @badge.Badge() {
+ { d.Record.label() }
+ }
+ }
+ if d.Record.RunState != "" {
+			<div class="run-observed-state">
+				@badge.Badge() {
+					{ d.Record.RunState }
+				}
+			</div>
 		}
-		if d.Observation.Truncated {
-			@alert.Alert(alert.Props{ID: "run-truncated", Class: "run-notice"}) {
-				Activity truncated to bounded retained history.
-			}
-		}
-		if d.Record.Error!="" {
-			@alert.Alert(alert.Props{ID: "run-error", Class: "run-notice"}) {
-				{ d.Record.Error }
-			}
-		}
-		if d.Record.Result!="" {
-			@card.Card(card.Props{ID: "run-outcome-surface", Class: "run-outcome"}) {
-				<details id="run-outcome" data-preserve-attr="open"><summary>Stored workflow outcome</summary><pre class="result">{ d.Record.Result }</pre></details>
-			}
-		}
-		if d.Tab=="trace" {
+		if d.Tab == "trace" {
 			@runTrace(d)
 		} else {
 			@runChat(d)
@@ -151,131 +147,112 @@ templ runDetailContent(d runDetail) {
 	</div>
 }
 
-templ runParts(m runMessage, raw bool) {
-	for _,part:=range m.Parts {
-		if part.Tool!=nil {
+templ runPayload(text string) {
+	<pre class="result"><code>@templ.Raw(newRunSection("", text).HTML)</code></pre>
+}
+
+templ runParts(m runMessage) {
+	for _, part := range m.Parts {
+		if part.Tool != nil {
 			<details id={ part.Key } data-preserve-attr="open" class="run-tool">
-				<summary>{ part.Tool.Name } · { part.Tool.Kind } · { part.Tool.Summary }</summary>
-				for _,section:=range part.Tool.Sections {
-					<h4>{ section.Label }</h4>
-					<pre class="result">{ section.Text }</pre>
+				<summary>
+					<strong>
+						{ part.Tool.Name }
+					</strong>
+					<span class="meta">
+						{ part.Tool.Kind }
+					</span> { part.Tool.Summary }
+				</summary>
+				for i, section := range part.Tool.Sections {
+					<details id={ part.Key + "-section-" + strconv.Itoa(i) } data-preserve-attr="open" open class="run-tool-section">
+						<summary>
+							{ section.Label }
+						</summary>
+						<pre class="result"><code>@templ.Raw(section.HTML)</code></pre>
+					</details>
 				}
-				if raw {
-					<details id={ part.Key + "-raw" } data-preserve-attr="open"><summary>Raw payload</summary><pre class="result">{ part.Tool.Raw }</pre></details>
+				if part.Tool.Kind == "result" {
+					<details id={ part.Key + "-raw" } data-preserve-attr="open"><summary>Raw payload</summary>@runPayload(part.Tool.Raw)</details>
 				}
 			</details>
-		} else if m.Role=="assistant" {
-			<div class="planning-markdown">@templ.Raw(part.HTML)</div>
-		} else {
-			<div class="run-prose">{ part.Text }</div>
+		} else if !part.Unsupported && part.Text != "" {
+			if m.Role == "assistant" {
+				<div class="planning-markdown">@templ.Raw(part.HTML)</div>
+			} else {
+				<div class="run-prose">
+					{ part.Text }
+				</div>
+			}
 		}
 	}
 }
 
 templ runChat(d runDetail) {
-	<section class="run-chat-transcript" aria-label="Conversation">
-		for _,m:=range d.Messages {
-			if m.toolOnly() {
-				<details id={ m.Key + "-activity" } class="run-chat-activity" data-preserve-attr="open">
-					<summary>Tool activity · { strconv.Itoa(len(m.Parts)) } · { m.preview() }</summary>
-					@runParts(m, false)
-				</details>
-			} else {
-				<article id={ m.Key } class={ "run-chat-message run-role-" + m.Role }>
-					@badge.Badge() {
+	<section id="run-transcript" class="run-chat-transcript" role="region" aria-label="Conversation" tabindex="0">
+		for _, m := range d.Messages {
+			<article id={ m.Key } class={ "run-chat-message run-role-" + m.Role }>
+				if m.Role != "tool" && m.Role != "" {
+					<strong class="run-message-role">
 						{ runRole(m.Role) }
-					}
-					@runParts(m, false)
-				</article>
-			}
-		}
-		if len(d.Messages)==0 {
-			@runDetailEmpty("No conversation snapshot available.")
-		}
-		if len(d.Observation.Live)>0 {
-			<p class="meta">Live-only activity observed; not retained. Inspect Trace for details.</p>
-		}
-		if d.Observation.Unreachable {
-			<p class="meta">
-				Offline Chat cannot reconstruct a conversation from workflow deliveries. @button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("trace"), Variant: button.VariantLink, Attributes: templ.Attributes{"role": "link"}}) {
-	Inspect stored diagnostics in Trace
-}
-			</p>
+					</strong>
+				}
+				@runParts(m)
+				<details id={ m.Key + "-content" } class="run-message-payload" data-preserve-attr="open"><summary>Message content</summary>@runPayload(m.Raw)</details>
+			</article>
 		}
 	</section>
 }
 
-templ runTrace(d runDetail) {
-	<div class="run-trace-inspector">
-		<p class="meta">Diagnostic sources are separate, not a global timeline. Expand an entry to inspect its body and raw data.</p>
+templ runTraceTableView(t runTraceTable) {
+	if len(t.Rows) > 0 {
 		<section class="run-trace-source" data-show="$traceFilter === '' || Array.from(el.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))">
-			<h2>Snapshot history — turn/timestamps unavailable</h2>
-			<p class="meta">Selected-branch snapshot, not a complete journal. Step, sandbox and compaction history is unavailable.</p>
-			for _,m:=range d.Messages {
-				<article class="run-message" data-trace-entry data-show={ traceMatch }>
-					<details id={ m.Key + "-trace" } data-preserve-attr="open">
-						<summary>
-							@badge.Badge() {
-								{ runRole(m.Role) }
-							} { m.preview() }
-						</summary>
-						@runParts(m, true)
-						<details id={ m.Key + "-raw" } data-preserve-attr="open"><summary>Raw message</summary><pre class="result">{ m.Raw }</pre></details>
-					</details>
-				</article>
-			}
-			if len(d.Messages)==0 {
-				@runDetailEmpty("No conversation snapshot available.")
+			<h2>
+				{ t.Title }
+			</h2>
+			@table.Table(table.Props{Class: "run-trace-table"}) {
+				@table.Header() {
+					@table.Row() {
+						for _, column := range t.Columns {
+							@table.Head() {
+								{ column }
+							}
+						}
+					}
+				}
+				@table.Body() {
+					for i, row := range t.Rows {
+						if row.Turn != "" && (i == 0 || t.Rows[i-1].Turn != row.Turn) {
+							@table.Row(table.RowProps{Class: "run-turn", Attributes: templ.Attributes{"data-show": "$traceFilter === ''"}}) {
+								@table.Cell(table.CellProps{Attributes: templ.Attributes{"colspan": strconv.Itoa(len(t.Columns))}}) {
+									{ row.Turn }
+								}
+							}
+						}
+						@table.Row(table.RowProps{Class: traceStripe(row.Stripe), Attributes: templ.Attributes{"data-trace-entry": true, "data-show": traceMatch}}) {
+							for _, cell := range row.Cells {
+								@table.Cell() {
+									{ cell }
+								}
+							}
+							@table.Cell(table.CellProps{Class: "run-summary-cell"}) {
+								<details id={ row.Key } data-preserve-attr="open">
+									<summary>
+										{ row.Summary }
+									</summary>@runPayload(row.Raw)
+								</details>
+							}
+						}
+					}
+				}
 			}
 		</section>
-		<section class="run-trace-source" data-show="$traceFilter === '' || Array.from(el.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))">
-			<h2>Durable / live turn activity</h2>
-			<p class="meta">Live-only observations are not retained. Ordering is preserved within each source and turn.</p>
-			{{ occurrences := make(map[string]int) }}
-			for _,group:=range d.Groups {
-				<section class="run-trace-turn" data-show="$traceFilter === '' || Array.from(el.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))">
-					<h3>
-						<span>Turn { displayDash(group.Turn) }</span> @badge.Badge() {
-	if group.Live {
-		Live only, not retained
-	} else {
-		BONNIE durable events
 	}
 }
-					</h3>
-					for _,ev:=range group.Events {
-						{{ raw := prettyRun(ev) }}
-						<details id={ displayKey("event-"+strconv.FormatBool(group.Live), raw, occurrences) } class="run-message" data-trace-entry data-preserve-attr="open" data-show={ traceMatch }>
-							<summary>{ ev.Type } · #{ strconv.Itoa(ev.Seq) } · { runTime(ev.Time) }</summary>
-							<pre class="result">{ ev.Text }{ string(ev.State) }</pre>
-							<pre class="result">{ string(ev.Data) }</pre>
-							<details id={ displayKey("event-raw-"+strconv.FormatBool(group.Live), raw, occurrences) } data-preserve-attr="open"><summary>Raw event</summary><pre class="result">{ raw }</pre></details>
-						</details>
-					}
-				</section>
-			}
-			if len(d.Groups)==0 {
-				@runDetailEmpty("No durable or live turn activity available.")
-			}
-		</section>
-		<section class="run-trace-source" data-show="$traceFilter === '' || Array.from(el.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))">
-			<h2>Stored workflow deliveries (latest 256)</h2>
-			<p class="meta">Filtered to pinned ownership, newest received first. Delivery time/order is separate from BONNIE journal sequence.</p>
-			{{ storedOccurrences := make(map[string]int) }}
-			for _,ev:=range d.Stored {
-				<details id={ displayKey("delivery", prettyRun(ev), storedOccurrences) } class="run-message" data-trace-entry data-preserve-attr="open" data-show={ traceMatch }>
-					<summary>
-						@badge.Badge() {
-							Stored delivery
-						} { ev.Kind } · { runTime(ev.Time) }
-					</summary>
-					<pre class="result">{ ev.Raw }</pre>
-				</details>
-			}
-			if len(d.Stored)==0 {
-				@runDetailEmpty("No stored workflow deliveries available.")
-			}
-		</section>
-		<p id="trace-no-matches" class="run-notice" style="display:none" data-show={ traceNoMatches }>No matching activity. Clear the filter to show all available sources.</p>
+
+templ runTrace(d runDetail) {
+	<div class="run-trace-inspector">
+		@runTraceTableView(snapshotTrace(d.Messages))
+		@runTraceTableView(eventTrace("Durable events", "durable", d.Observation.Durable))
+		@runTraceTableView(eventTrace("Live events", "live", d.Observation.Live))
 	</div>
 }

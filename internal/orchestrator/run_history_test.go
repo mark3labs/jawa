@@ -174,12 +174,12 @@ func TestPlanningRunDetailRoutesAndDeliveries(t *testing.T) {
 		page := request(a, "GET", r.path(tab), nil, session, csrf)
 		status(t, page, 200)
 		html := page.Body.String()
-		for _, want := range []string{r.basePath() + "/events?tab=" + tab, "Planning is observation-only", "Agent unreachable"} {
+		for _, want := range []string{r.basePath() + "/events?tab=" + tab} {
 			if !strings.Contains(html, want) {
 				t.Fatal("missing", want)
 			}
 		}
-		for _, absent := range []string{`id="run-composer"`, "Send message", "Stop current turn", "Copy branch"} {
+		for _, absent := range []string{`id="run-composer"`, "Send message", "Stop current turn", "Copy branch", "Agent unreachable", "Planning is observation-only"} {
 			if strings.Contains(html, absent) {
 				t.Fatal("mutation visible", absent)
 			}
@@ -202,17 +202,13 @@ func TestPlanningRunDetailRoutesAndDeliveries(t *testing.T) {
 	if _, err := a.s.db.Exec(`INSERT INTO planning_deliveries(turn_id,kind,payload,received_at) VALUES(?,'event','malformed',1)`, r.ID); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := a.workflow.storedPlanningRunEvents(t.Context(), r)
-	if err != nil || len(stored) != 1 || stored[0].Kind != "Planning event" {
-		t.Fatal(stored, err)
-	}
 	var out bytes.Buffer
 	d := a.historyDetailModel(&http.Request{URL: &url.URL{}, Form: url.Values{"tab": {"trace"}}}, r, runObservation{Unreachable: true}, false)
 	if err := runDetailContent(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Planning event") {
-		t.Fatal("delivery provenance")
+	if strings.Contains(out.String(), "Planning event") {
+		t.Fatal("local delivery rendered as API trace")
 	}
 	if _, err := a.s.db.Exec(`UPDATE planning_turns SET remote_attempt_id='bad/destination' WHERE id=?`, r.ID); err != nil {
 		t.Fatal(err)
@@ -259,7 +255,7 @@ func TestPlanningDetailStreamIdentityFence(t *testing.T) {
 					break
 				}
 			}
-			if !strings.Contains(frame.String(), "run-detail-content") || !strings.Contains(frame.String(), "Planning is observation-only") {
+			if !strings.Contains(frame.String(), "run-detail-content") || !strings.Contains(frame.String(), "run-detail-controls") {
 				t.Fatal(frame.String())
 			}
 			switch end {
