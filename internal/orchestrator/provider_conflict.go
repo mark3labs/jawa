@@ -15,6 +15,7 @@ type PRCheck struct {
 	AttemptID, PRURL, State, HeadSHA, BaseSHA, Error string
 	CheckedAt                                        time.Time
 	Manual                                           bool
+	Open                                             bool
 	MarkedAt                                         time.Time
 }
 
@@ -34,6 +35,7 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		defer func() {
 			result.CheckedAt = time.Now().UTC()
 			if checkErr != nil {
+				result.Open = false
 				result.State, result.HeadSHA, result.BaseSHA, result.Error = "error", "", "", "provider check failed"
 			}
 		}()
@@ -55,6 +57,7 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if !pr.checkIdentityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
+		result.Open = pr.State == "open" && !pr.Merged
 		result.HeadSHA, result.BaseSHA = pr.Head.SHA, pr.Base.SHA
 		result.State = pr.conflictState(p.forgejo)
 		if result.State != "conflict" && result.State != "clear" && result.State != "merged" {
@@ -69,6 +72,7 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		if err = p.read(path, &latest); err != nil {
 			return result, err
 		}
+		result.Open = latest.State == "open" && !latest.Merged
 		if !latest.checkIdentityMatches(owner+"/"+name, base, branch, number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}

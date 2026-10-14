@@ -807,3 +807,25 @@ queued replies under **Active**, and failed turns under **Failed**. **Ready**
 continues to mean implementation/PR readiness, not plan approval. Stored workflow
 state is separate from the live BONNIE snapshot; offline agents show retained
 diagnostics and cannot supply a cold conversation archive.
+
+### Merge directly from Ready for review
+
+A non-archived Ready card with a positively conflict-free current PR check offers
+**Merge…** beside its PR status. Use **Refresh ready PRs** for missing/stale
+evidence. Confirm the repository/PR, target base and observed head, then choose
+**Merge commit** (default), **Squash**, or **Rebase**. Repository policy, checks,
+approvals or permissions can still reject a conflict-free PR. Jawa never forces
+merges, schedules auto-merges, changes strategy automatically or deletes branches.
+Confirmed success shows **Merged** without moving, reordering or archiving the
+card. **Mark as merged** remains a separate local display-only action.
+
+The orchestrator token needs merge rights (GitHub Contents write plus appropriate
+PR access; Forgejo repository write/merge permission). Verification-only tokens
+continue to work for reads; Jawa does not broaden credentials. Use least privilege,
+not administrative bypass tokens. Closing a submitted dialog stops waiting, not
+remote execution: a provider can complete a merge despite a lost response or
+cancellation. An uncertain outcome locks Fix, archive, delete/reset and local
+marking until **Refresh ready PRs** or polling reconciles read-only. No merge write
+is retried automatically, including after restart. Once positively not merged,
+open a fresh confirmation to try again. Exactly-once remote execution is not
+guaranteed. Back up the private database before additive migration 00020.

@@ -107,3 +107,11 @@ Version `00019_target_agents.sql` adds desired `target_agent_id` to workflow
 attempts and planning turns. Empty defaults keep historical work shared without
 changing observed execution identity or history. Targets persist across publish
 retries/restart and are copied to fresh Retry tasks; they are not run ownership.
+
+Version `00020_pr_merges.sql` adds the durable operator merge audit and partial
+unique unresolved-card index. Audit rows intentionally have no cascading foreign
+keys so deletion cannot erase replay evidence. They retain operation/card/attempt,
+PR/configuration snapshot, expected head, method, operator, timestamps and safe
+outcome only. Pending reservations become uncertain at startup; reconciliation
+never replays a write. Back up before upgrading. Snapshot and pinned sqlc output
+must accompany this migration.

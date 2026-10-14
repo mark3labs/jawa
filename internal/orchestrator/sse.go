@@ -143,6 +143,8 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 		for _, key := range []string{"guideCard", "guideToken", "guideMessage"} {
 			signals[key] = `""`
 		}
+	case "/cards/merge":
+	// Merge closes via its correlated success alert, never a stale global signal.
 	case "/cards/fix":
 		signals["fixOpen"] = "false"
 		signals["fixCard"] = `""`

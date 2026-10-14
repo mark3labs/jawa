@@ -39,6 +39,9 @@ func (w *Workflow) PollPRConflicts(ctx context.Context) error {
 	defer monitor.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	if err := w.ReconcileMerges(ctx, monitor.checker); err != nil {
+		return err
+	}
 	// Read IDs first and close rows before using the Store's single connection.
 	rows, err := w.s.db.QueryContext(ctx, `SELECT a.id FROM workflow_attempts a
  JOIN cards c ON c.id=a.card_id
@@ -89,6 +92,10 @@ func (w *Workflow) checkPRBatch(ctx context.Context, monitor *conflictMonitor, i
 		if e = w.s.db.QueryRowContext(ctx, `SELECT p.provider,p.repo,p.base_branch FROM projects p JOIN cards c ON c.project_id=p.id WHERE c.id=?`, a.CardID).Scan(&provider, &repo, &base); e != nil {
 			return completed, e
 		}
+		var generation int
+		if e = w.s.db.QueryRowContext(ctx, `SELECT count(*) FROM pr_merges WHERE card_id=?`, a.CardID).Scan(&generation); e != nil {
+			return completed, e
+		}
 		check, checkErr := monitor.checker(ctx, a)
 		if ctx.Err() != nil {
 			return completed, ctx.Err()
@@ -108,10 +115,13 @@ func (w *Workflow) checkPRBatch(ctx context.Context, monitor *conflictMonitor, i
  SELECT 1 FROM workflow_attempts a JOIN cards c ON c.id=a.card_id JOIN projects p ON p.id=c.project_id
  WHERE a.id=? AND a.pr_url=? AND a.ready=1 AND a.state='ready' AND c.status='Done' AND c.archived=0
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)
- AND p.provider=? AND p.repo=? AND p.base_branch=?)
+ AND p.provider=? AND p.repo=? AND p.base_branch=?
+ AND (SELECT count(*) FROM pr_merges WHERE card_id=c.id)=?
+ AND NOT EXISTS(SELECT 1 FROM pr_merges m WHERE m.card_id=c.id AND m.state IN ('pending','uncertain'))
+ AND NOT EXISTS(SELECT 1 FROM pr_merges m WHERE m.attempt_id=a.id AND m.state='merged' AND m.provider=p.provider AND m.repo=p.repo AND m.base_branch=p.base_branch))
  ON CONFLICT(attempt_id) DO UPDATE SET pr_url=excluded.pr_url,provider=excluded.provider,repo=excluded.repo,
  base_branch=excluded.base_branch,state=excluded.state,head_sha=excluded.head_sha,base_sha=excluded.base_sha,error=excluded.error,checked_at=excluded.checked_at`,
-			a.ID, a.PRURL, provider, repo, base, check.State, check.HeadSHA, check.BaseSHA, check.Error, time.Now().UTC().UnixMilli(), a.ID, a.PRURL, provider, repo, base)
+			a.ID, a.PRURL, provider, repo, base, check.State, check.HeadSHA, check.BaseSHA, check.Error, time.Now().UTC().UnixMilli(), a.ID, a.PRURL, provider, repo, base, generation)
 		if e != nil {
 			return completed, e
 		}
@@ -156,6 +166,9 @@ func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string
 		return result, ErrPRRefreshBusy
 	}
 	defer monitor.mu.Unlock()
+	if err = w.ReconcileMerges(ctx, monitor.checker); err != nil {
+		return result, err
+	}
 	// One statement validates scope and invalidates all old evidence atomically.
 	res, err := w.s.db.ExecContext(ctx, `INSERT INTO workflow_pr_checks(attempt_id,pr_url,provider,repo,base_branch,state,head_sha,base_sha,error,checked_at)
  SELECT a.id,a.pr_url,p.provider,p.repo,p.base_branch,'checking','','','',0
@@ -163,6 +176,7 @@ func (w *Workflow) RefreshPRChecks(ctx context.Context, projectID, cardID string
  WHERE c.project_id=? AND (?='' OR c.id=?) AND c.status='Done' AND c.archived=0
  AND a.ready=1 AND a.state='ready' AND a.pr_url<>''
  AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id)
+ AND NOT EXISTS(SELECT 1 FROM pr_merges m WHERE m.card_id=c.id AND (m.state IN ('pending','uncertain') OR (m.state='merged' AND m.attempt_id=a.id AND m.provider=p.provider AND m.repo=p.repo AND m.base_branch=p.base_branch)))
  ON CONFLICT(attempt_id) DO UPDATE SET pr_url=excluded.pr_url,provider=excluded.provider,repo=excluded.repo,
  base_branch=excluded.base_branch,state='checking',head_sha='',base_sha='',error='',checked_at=0`, projectID, cardID, cardID)
 	if err != nil {
@@ -222,6 +236,12 @@ func (w *Workflow) CardPRCheck(id string) (PRCheck, error) {
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return p, err
+	}
+	var unresolved string
+	if e := w.s.db.QueryRow(`SELECT m.state FROM pr_merges m JOIN workflow_attempts a ON a.id=m.attempt_id JOIN cards c ON c.id=a.card_id JOIN projects p ON p.id=c.project_id WHERE c.id=? AND m.state IN ('pending','uncertain') AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id) AND a.pr_url=m.pr_url AND p.provider=m.provider AND p.repo=m.repo AND p.base_branch=m.base_branch`, id).Scan(&unresolved); e == nil {
+		return PRCheck{State: unresolved}, nil
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return p, e
 	}
 	var checked int64
 	err = w.s.db.QueryRow(`SELECT p.attempt_id,p.pr_url,p.state,p.head_sha,p.base_sha,p.error,p.checked_at
