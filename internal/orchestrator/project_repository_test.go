@@ -66,7 +66,7 @@ func TestCreateProjectRepositoryNames(t *testing.T) {
 		t.Fatalf("invalid form persisted: %+v, %v", projects, err)
 	}
 	body := request(a, "GET", "/board", nil, session, csrf).Body.String()
-	for _, fragment := range []string{`name="repo_name"`, `placeholder="owner/repo"`, `name="forgejo_url"`, `value="https://codeberg.org"`, `data-bind:project-provider`, `data-attr:hidden`, `data-attr:disabled`} {
+	for _, fragment := range []string{`name="repo_name"`, `placeholder="owner/repo"`, `name="forgejo_url"`, `value="https://codeberg.org"`, `data-on:change="$projectProvider = evt.target.value"`, `data-attr:hidden`, `data-attr:disabled`} {
 		if !strings.Contains(body, fragment) {
 			t.Errorf("missing form fragment %s", fragment)
 		}
