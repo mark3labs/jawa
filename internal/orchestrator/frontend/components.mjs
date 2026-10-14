@@ -8,10 +8,11 @@ if (!fixture) throw new Error('Export TestComponentBrowserFixture and set JAWA_C
 const markup = await readFile(fixture);
 const planning = await readFile(`${fixture}.planning`);
 const server = createServer(async (req, res) => {
-  if (req.url.startsWith('/assets/')) {
+  const path = new URL(req.url, 'http://localhost').pathname;
+  if (path.startsWith('/assets/')) {
     try {
-      res.setHeader('Content-Type', req.url.endsWith('.js') ? 'text/javascript' : req.url.endsWith('.css') ? 'text/css' : 'application/octet-stream');
-      res.end(await readFile(new URL(`../${req.url.slice(1)}`, import.meta.url)));
+      res.setHeader('Content-Type', path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'application/octet-stream');
+      res.end(await readFile(new URL(`../${path.slice(1)}`, import.meta.url)));
     } catch { res.writeHead(404).end(); }
   } else if (req.url.startsWith('/events') || req.url.startsWith('/snapshot')) {
     res.setHeader('Content-Type', 'text/event-stream'); res.end();

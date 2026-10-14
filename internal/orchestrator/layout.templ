@@ -46,8 +46,8 @@ templ head(title string) {
 			.ic { width: 16px; height: 16px; flex: none; }
 			.lane-ic, .tone-ic { width: 15px; height: 15px; flex: none; }
 		</style>
-		<link rel="stylesheet" href="/assets/style.css"/>
-		<script type="module" src="/assets/app.js"></script>
+		<link rel="stylesheet" href={ templ.SafeURL(assetURL("style.css")) }/>
+		<script type="module" src={ templ.SafeURL(assetURL("app.js")) }></script>
 	</head>
 }
 

@@ -25,7 +25,8 @@ self.addEventListener('fetch', event => {
   // redirects, streams, API responses, or mutations (even after signing out).
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/assets/offline.html')));
-  } else if (!url.search && PUBLIC.includes(url.pathname)) {
-    event.respondWith(fetch(request).catch(() => caches.match(request)));
+  } else if (PUBLIC.includes(url.pathname)) {
+    // Versioned page URLs share the current build's public offline fallback.
+    event.respondWith(fetch(request).catch(() => caches.match(url.pathname)));
   }
 });

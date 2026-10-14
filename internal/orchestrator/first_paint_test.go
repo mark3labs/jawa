@@ -48,7 +48,7 @@ func TestSharedFirstPaintHead(t *testing.T) {
 				t.Fatal(err)
 			}
 			html := out.String()
-			start, end, stylesheet := strings.Index(html, "<style>"), strings.Index(html, "</style>"), strings.Index(html, `<link rel="stylesheet" href="/assets/style.css"`)
+			start, end, stylesheet := strings.Index(html, "<style>"), strings.Index(html, "</style>"), strings.Index(html, `<link rel="stylesheet" href="`+assetURL("style.css")+`"`)
 			if start < 0 || end < start || stylesheet < end {
 				t.Fatal("fallback must precede ordinary stylesheet")
 			}
@@ -63,7 +63,7 @@ func TestSharedFirstPaintHead(t *testing.T) {
 					t.Errorf("fallback uses reveal gate %q", hidden)
 				}
 			}
-			if !strings.Contains(html, `<script type="module" src="/assets/app.js">`) {
+			if !strings.Contains(html, `<script type="module" src="`+assetURL("app.js")+`">`) {
 				t.Fatal("ordinary module script missing")
 			}
 			if name == "board" || name == "archive" {

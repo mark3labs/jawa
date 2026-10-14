@@ -84,6 +84,9 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Embedded FS contains the assets directory, so preserve that prefix.
 	if strings.HasPrefix(r.URL.Path, "/assets/") {
+		// Fixed URLs remain public (including worker precaches), but must not
+		// reuse stale HTTP cache entries across embedded-asset deployments.
+		w.Header().Set("Cache-Control", "no-cache")
 		http.FileServer(http.FS(uiAssets)).ServeHTTP(w, r)
 		return
 	}
