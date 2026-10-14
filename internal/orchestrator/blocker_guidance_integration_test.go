@@ -92,6 +92,10 @@ func TestBuildBlockerGuidanceResumesSameRun(t *testing.T) {
 		t.Fatal(snap, err)
 	}
 
+	history, err := s.workflowDiscussion(c.ID)
+	if err != nil || len(history) != 1 || history[0].Reason != blocked.Error || history[0].Reply != "" {
+		t.Fatal(history, err)
+	}
 	// Both owners restart while parked; guidance still targets the same run.
 	stop()
 	if err = w.Close(); err != nil {
@@ -101,6 +105,10 @@ func TestBuildBlockerGuidanceResumesSameRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	start()
+	history, err = s.workflowDiscussion(c.ID)
+	if err != nil || len(history) != 1 || history[0].Reason != blocked.Error {
+		t.Fatal(history, err)
+	}
 	if snap, err = runner.Snapshot(t.Context(), blocked.RunID); err != nil || snap.State != runtime.RunWaiting {
 		t.Fatal(snap, err)
 	}
@@ -145,6 +153,14 @@ func TestBuildBlockerGuidanceResumesSameRun(t *testing.T) {
 	_ = s.db.QueryRow(`SELECT count(DISTINCT run_id || ':' || attempt_id),count(*) FROM typed_reports WHERE task_id=?`, a.TaskID).Scan(&distinct, &reports)
 	if distinct != 1 || reports != 2 {
 		t.Fatal("guidance changed execution identity", distinct, reports)
+	}
+	history, err = s.workflowDiscussion(c.ID)
+	if err != nil || len(history) != 1 || history[0].Reply != "Use the token in vault path ci/staging" || history[0].Status != "answered" {
+		t.Fatal(history, err)
+	}
+	attempts, err := w.Attempts()
+	if err != nil || len(attempts) != 1 || attempts[0].Branch != blocked.Branch {
+		t.Fatal(attempts, err)
 	}
 	// The resumed request carries the original task and the operator guidance.
 	requests := model.Requests()

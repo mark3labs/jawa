@@ -65,7 +65,7 @@ func TestPlanningDiscussionOnlyQuestionsAndReplies(t *testing.T) {
 	if err := planningContent(pageData{v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: d}}).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
-	discussion, _, _ := strings.Cut(strings.Split(out.String(), `aria-label="Planning discussion"`)[1], "</section>")
+	discussion, _, _ := strings.Cut(strings.Split(out.String(), `aria-label="Discussion"`)[1], "</section>")
 	if strings.Count(discussion, `class="plan-message"`) != len(want) || strings.Contains(discussion, c.Title+"\n"+c.Description) {
 		t.Fatalf("incorrect rendered discussion: %s", discussion)
 	}
