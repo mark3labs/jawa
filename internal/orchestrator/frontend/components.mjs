@@ -125,7 +125,7 @@ try {
     const approval = page.locator('#planning-acknowledge');
     const check = approval.locator('xpath=preceding-sibling::span[1]');
     assert.equal(await approval.evaluate(el=>el.required && !el.validity.valid),true);
-    assert.equal(await page.locator('[name="expected_revision"]').evaluate(el => el.validity.valid), false);
+    assert.equal(await page.locator('[name="expected_revision"]:not([type=hidden])').evaluate(el => el.validity.valid), false);
     await chooseSelect(page, '#plan-revision', '1', true);
     await check.focus(); await page.keyboard.press('Space');
     assert.equal(await approval.isChecked(),true);

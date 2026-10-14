@@ -125,8 +125,8 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if name == "issue_url" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<template data-issue-item>")
+		if name == "issue_url" || name == "target_agent_id" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<template data-select-item>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -142,7 +142,7 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Issue ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Option")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

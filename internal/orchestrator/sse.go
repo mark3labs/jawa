@@ -133,6 +133,11 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	case "/cards/force-stop":
 		signals["forceOpen"] = "false"
 		signals["forceCard"] = `""`
+	case "/cards/assign":
+		signals["assignOpen"] = "false"
+		for _, key := range []string{"assignCard", "assignMode", "assignMessage"} {
+			signals[key] = `""`
+		}
 	case "/cards/guide":
 		signals["guideOpen"] = "false"
 		for _, key := range []string{"guideCard", "guideToken", "guideMessage"} {

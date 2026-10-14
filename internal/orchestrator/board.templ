@@ -123,7 +123,7 @@ templ cardChips(d pageData, c Card) {
 	if c.Status == "Planning" {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Href: runsForCardPath(c.ID), Attributes: templ.Attributes{"title": "View runs"}, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}) {
 			@toneIcon(planningTone(planningState(d, c.ID)))
-			<span>{ planningLabel(planningState(d, c.ID)) }</span>
+			<span>{ planningAssignmentLabel(d, c.ID) }</span>
 		}
 	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
@@ -214,6 +214,7 @@ templ cardMenu(d pageData, c Card) {
 						{{ attempt := latestAttempt(c.ID, d.attempts)[0] }}
 						@menuPost(d, c, "/cards/mark-merged", "Mark as merged", "check", [][2]string{{"expected_attempt_id", attempt.ID}, {"expected_pr_url", attempt.PRURL}})
 					}
+					@assignmentMenu(c, "fix", "Fix with agent")
 					@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": fixDialogAction(c.ID, "")}}) {
 						@icon("retry")
 						<span>Send to Fix…</span>
@@ -223,6 +224,8 @@ templ cardMenu(d pageData, c Card) {
 				}
 			}
 			if c.Status == "Todo" {
+				@assignmentMenu(c, "plan", "Plan with agent")
+				@assignmentMenu(c, "build", "Build with agent")
 				@menuPost(d, c, "/cards/plan", "Plan first", "runs", nil)
 				@menuPost(d, c, "/cards/move", "Start work", "play", [][2]string{{"status", "Building"}, {"position", "0"}})
 			}
@@ -230,6 +233,7 @@ templ cardMenu(d pageData, c Card) {
 				@menuPost(d, c, "/cards/retry", "Start work", "play", nil)
 			}
 			if c.Status == "Planning" {
+				@assignmentMenu(c, "build", "Build with agent")
 				if detail, ok := d.planning[c.ID]; ok && detail.CanResume {
 					@menuPost(d, c, "/cards/planning/resume", "Resume failed run", "play", [][2]string{{"expected_resume", detail.ResumeToken}})
 				}
@@ -451,4 +455,10 @@ templ manualReadyBadge(d pageData, a Attempt) {
 			Manually readied
 		}
 	}
+}
+
+templ assignmentMenu(c Card, mode, title string) {
+ @button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": assignmentAction(c, mode)}}) {
+  @icon("agents")<span>{ title }</span>
+ }
 }

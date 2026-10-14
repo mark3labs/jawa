@@ -28,6 +28,7 @@ type mutationContext struct {
 }
 
 var mutations = map[string]mutation{
+	"/cards/assign":                {needsWorkflow: true, run: (*app).mutateAssignment},
 	"/prs/refresh":                 {run: (*app).mutatePRsRefresh},
 	"/logout":                      {allowBeforeNATS: true, run: (*app).mutateLogout},
 	"/projects":                    {run: (*app).mutateProjects},

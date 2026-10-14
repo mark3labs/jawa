@@ -234,7 +234,7 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 18 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 19 {
 		t.Fatal(version, err)
 	}
 }
@@ -263,7 +263,7 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16,17,18)`)
+ DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (11,12,13,14,15,16,17,18,19)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16,17,18);
+ DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (13,14,15,16,17,18,19);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -337,7 +337,7 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (15,16,17,18);
+ DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (15,16,17,18,19);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
@@ -370,7 +370,7 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id IN (16,17,18);
+	execTest(t, database, `DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (16,17,18,19);
  DROP TABLE workflow_ready_overrides;
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
@@ -395,7 +395,7 @@ func TestIssueSubmissionUpgradeAndTombstone(t *testing.T) {
 	if err := Migrate(context.Background(), database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DROP TABLE issue_submissions; DELETE FROM goose_db_version WHERE version_id=18;
+	execTest(t, database, `DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (18,19);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Todo',0,1);`)
 	if err := Migrate(context.Background(), database); err != nil {
@@ -419,7 +419,7 @@ func TestReadyOverrideMigrationFrom16(t *testing.T) {
 		t.Fatal(err)
 	}
 	execTest(t, database, `DROP TABLE workflow_ready_overrides; DROP TABLE issue_submissions;
- DELETE FROM goose_db_version WHERE version_id IN (17,18);
+ ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DELETE FROM goose_db_version WHERE version_id IN (17,18,19);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,outcome_json,created_at,updated_at) VALUES('a','c',1,'task','{}','original',1,1);
@@ -430,7 +430,7 @@ func TestReadyOverrideMigrationFrom16(t *testing.T) {
 		}
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 18 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 19 {
 		t.Fatal(version, err)
 	}
 	var original string
@@ -452,5 +452,48 @@ func TestReadyOverrideMigrationFrom16(t *testing.T) {
 	execTest(t, database, `DELETE FROM workflow_attempts WHERE id='a'`)
 	if err := database.QueryRow(`SELECT count(*) FROM workflow_ready_overrides`).Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
+	}
+}
+
+func TestTargetMigrationPreservesExecutionHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "assignment.db")
+	database := openTestDB(t, path)
+	for _, name := range []string{"00001_baseline.sql", "00003_workflow.sql", "00005_planning.sql"} {
+		raw, err := fs.ReadFile(migrations, "migrations/"+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execTest(t, database, strings.Split(string(raw), "-- +goose Down")[0])
+	}
+	execTest(t, database, `INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
+ INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Todo',0,1);
+ INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,outcome_json,created_at,updated_at) VALUES('task','c',1,'task','immutable','observed','run','remote','history',1,1);
+ INSERT INTO planning_sessions(id,card_id,repo,base_branch,provider,title,description,issue_url,created_at,updated_at) VALUES('session','c','repo','main','github','title','','',1,1);
+ INSERT INTO planning_turns(id,session_id,number,task_json,agent_id,run_id,remote_attempt_id,created_at,updated_at) VALUES('turn','session',1,'planning payload','planner','planning run','planning remote',1,1);`)
+	raw, err := fs.ReadFile(migrations, "migrations/00019_target_agents.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, database, string(raw))
+	var target, agent, run, remote, payload, history string
+	if err = database.QueryRow(`SELECT target_agent_id,agent_id,run_id,remote_attempt_id,task_json,outcome_json FROM workflow_attempts`).Scan(&target, &agent, &run, &remote, &payload, &history); err != nil {
+		t.Fatal(err)
+	}
+	if target != "" || agent != "observed" || run != "run" || remote != "remote" || payload != "immutable" || history != "history" {
+		t.Fatal("migration changed execution history")
+	}
+	if err = database.QueryRow(`SELECT target_agent_id,agent_id FROM planning_turns`).Scan(&target, &agent); err != nil || target != "" || agent != "planner" {
+		t.Fatalf("planning history %q %q %v", target, agent, err)
+	}
+	execTest(t, database, `UPDATE workflow_attempts SET target_agent_id='builder'; UPDATE planning_turns SET target_agent_id='planner-target'`)
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openTestDB(t, path)
+	if err = reopened.QueryRow(`SELECT target_agent_id,agent_id FROM workflow_attempts`).Scan(&target, &agent); err != nil || target != "builder" || agent != "observed" {
+		t.Fatalf("reopen %q %q %v", target, agent, err)
+	}
+	if err = reopened.QueryRow(`SELECT target_agent_id FROM planning_turns`).Scan(&target); err != nil || target != "planner-target" {
+		t.Fatalf("reopen turn %q %v", target, err)
 	}
 }

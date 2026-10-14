@@ -33,6 +33,7 @@ type PlanningRevision struct {
 }
 type PlanningTurn struct {
 	ID, SessionID, State, Error, Result, AgentID string
+	TargetAgentID                                string
 	Number                                       int
 	Published                                    bool
 	CreatedAt, UpdatedAt                         time.Time
@@ -162,7 +163,7 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 			d.ResumeToken = resumeToken(a)
 			d.CanResume = executionFailure(Attempt{TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error})
 		}
-		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, AgentID: t.AgentID, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
+		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, AgentID: t.AgentID, TargetAgentID: t.TargetAgentID, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
 		active = active || planningTurnActive(t.State)
 	}
 	interactions, err := q.ListPlanningInteractions(ctx, p.ID)
@@ -183,7 +184,9 @@ func planningMessage(tx *sql.Tx, session, role, text string) error {
 	return err
 }
 
-func (w *Workflow) startPlanning(id string, pos int) error {
+func (w *Workflow) startPlanning(id string, pos int) error { return w.startPlanningTo(id, pos, "") }
+
+func (w *Workflow) startPlanningTo(id string, pos int, target string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -201,6 +204,9 @@ func (w *Workflow) startPlanning(id string, pos int) error {
 		return workflowCardError(err)
 	}
 	if c.Status == "Planning" {
+		if target != "" {
+			return errors.New("planning already started; cancel before choosing a new planning agent")
+		}
 		if err = moveWorkflowCard(tx, id, c.ProjectID, c.Status, c.Status, pos); err != nil {
 			return err
 		}
@@ -228,7 +234,7 @@ func (w *Workflow) startPlanning(id string, pos int) error {
 	if err = planningMessage(tx, session, "user", c.Title+"\n"+c.Description); err != nil {
 		return err
 	}
-	if err = queuePlanningTurn(tx, w.ctx, session); err != nil {
+	if err = queuePlanningTurn(tx, w.ctx, session, target); err != nil {
 		return err
 	}
 	if err = moveWorkflowCard(tx, id, c.ProjectID, c.Status, "Planning", pos); err != nil {
@@ -238,7 +244,16 @@ func (w *Workflow) startPlanning(id string, pos int) error {
 }
 
 // One durable BONNIE task retains the entire planning conversation across answers.
-func queuePlanningTurn(tx *sql.Tx, ctx context.Context, id string) error {
+func queuePlanningTurn(tx *sql.Tx, ctx context.Context, id string, targets ...string) error {
+	target := ""
+	if len(targets) > 0 {
+		target = targets[0]
+	} else {
+		err := tx.QueryRow(`SELECT target_agent_id FROM planning_turns WHERE session_id=? ORDER BY number DESC LIMIT 1`, id).Scan(&target)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
 	q := sqlc.New(tx)
 	p, err := q.GetPlanningSessionByID(ctx, id)
 	if err != nil {
@@ -275,7 +290,7 @@ Conversation JSON: %s`, p.Repo, p.BaseBranch, p.Provider, p.RepoCommit, p.Title,
 		return errors.New("planning conversation exceeds the agent message limit; cancel and start a new investigation")
 	}
 	now := time.Now().UnixMilli()
-	if _, err = tx.Exec(`INSERT INTO planning_turns(id,session_id,number,task_json,created_at,updated_at) VALUES(?,?,?,?,?,?)`, taskID, id, n, string(payload), now, now); err != nil {
+	if _, err = tx.Exec(`INSERT INTO planning_turns(id,session_id,number,task_json,created_at,updated_at,target_agent_id) VALUES(?,?,?,?,?,?,?)`, taskID, id, n, string(payload), now, now, target); err != nil {
 		return err
 	}
 	_, err = tx.Exec(`UPDATE planning_sessions SET state='queued',error='',updated_at=? WHERE id=?`, now, id)
@@ -384,6 +399,10 @@ func noActivePlanningTurns(tx *sql.Tx, id string) error {
 }
 
 func (w *Workflow) ApprovePlanning(id string, expectedRevision int) error {
+	return w.approvePlanningTo(id, expectedRevision, "")
+}
+
+func (w *Workflow) approvePlanningTo(id string, expectedRevision int, target string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -459,7 +478,7 @@ Issue: %s`, p.Title, p.ID, p.Revision, p.RepoCommit, string(specJSON), p.Repo, p
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, taskID, id, n, taskID, string(payload), now, now); err != nil {
+	if _, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at,target_agent_id) VALUES(?,?,?,?,?,?,?,?)`, taskID, id, n, taskID, string(payload), now, now, target); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`UPDATE planning_sessions SET state='approved',approved_revision=revision,approved_spec=spec,updated_at=? WHERE id=?`, now, p.ID); err != nil {

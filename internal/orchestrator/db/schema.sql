@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY CHECK(id=1), username T
 CREATE TABLE IF NOT EXISTS workflow_attempts (
  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
  number INTEGER NOT NULL, task_id TEXT NOT NULL UNIQUE, task_json TEXT NOT NULL,
- agent_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '', remote_attempt_id TEXT NOT NULL DEFAULT '',
+ target_agent_id TEXT NOT NULL DEFAULT '', agent_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '', remote_attempt_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL DEFAULT 'queued', run_state TEXT NOT NULL DEFAULT '', result TEXT NOT NULL DEFAULT '',
  outcome_json TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', pr_url TEXT NOT NULL DEFAULT '',
  published INTEGER NOT NULL DEFAULT 0, ready INTEGER NOT NULL DEFAULT 0, event_seq INTEGER NOT NULL DEFAULT -1,
@@ -49,7 +49,7 @@ CREATE TABLE planning_revisions (
 CREATE TABLE planning_turns (
  id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES planning_sessions(id) ON DELETE CASCADE,
  number INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'queued', task_json TEXT NOT NULL,
- published INTEGER NOT NULL DEFAULT 0, cancel_sent INTEGER NOT NULL DEFAULT 0, agent_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '',
+ target_agent_id TEXT NOT NULL DEFAULT '', published INTEGER NOT NULL DEFAULT 0, cancel_sent INTEGER NOT NULL DEFAULT 0, agent_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '',
  remote_attempt_id TEXT NOT NULL DEFAULT '', event_seq INTEGER NOT NULL DEFAULT -1,
  result TEXT NOT NULL DEFAULT '', outcome_json TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(session_id,number));

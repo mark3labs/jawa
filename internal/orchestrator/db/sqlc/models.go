@@ -127,6 +127,7 @@ type PlanningTurn struct {
 	Number          int64  `json:"number"`
 	State           string `json:"state"`
 	TaskJson        string `json:"task_json"`
+	TargetAgentID   string `json:"target_agent_id"`
 	Published       int64  `json:"published"`
 	CancelSent      int64  `json:"cancel_sent"`
 	AgentID         string `json:"agent_id"`
@@ -178,6 +179,7 @@ type WorkflowAttempt struct {
 	Number             int64  `json:"number"`
 	TaskID             string `json:"task_id"`
 	TaskJson           string `json:"task_json"`
+	TargetAgentID      string `json:"target_agent_id"`
 	AgentID            string `json:"agent_id"`
 	RunID              string `json:"run_id"`
 	RemoteAttemptID    string `json:"remote_attempt_id"`

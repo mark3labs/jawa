@@ -14,7 +14,9 @@ import (
 
 // FixCard starts a new durable repair of the verified PR on a Done card.
 // The previous attempt and its readiness evidence remain untouched.
-func (w *Workflow) FixCard(id, message string) error {
+func (w *Workflow) FixCard(id, message string) error { return w.fixCardTo(id, message, "") }
+
+func (w *Workflow) fixCardTo(id, message, target string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -44,6 +46,7 @@ func (w *Workflow) FixCard(id, message string) error {
 	if !latest.Ready || latest.State != "ready" || latest.PRURL == "" {
 		return errors.New("repair requires a verified pull request")
 	}
+	latest.TargetAgentID = target
 	if err = queueRepair(tx, latest, message); err != nil {
 		return err
 	}
@@ -100,6 +103,6 @@ func queueRepair(tx *sql.Tx, source Attempt, message string) error {
 		return err
 	}
 	now := time.Now().UTC().UnixMilli()
-	_, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,branch,repair_message,repair_pr_url,repair_source_number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, taskID, source.CardID, number, taskID, string(payload), branch, message, pr, sourceNumber, now, now)
+	_, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,branch,repair_message,repair_pr_url,repair_source_number,created_at,updated_at,target_agent_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, taskID, source.CardID, number, taskID, string(payload), branch, message, pr, sourceNumber, now, now, source.TargetAgentID)
 	return err
 }

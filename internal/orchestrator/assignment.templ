@@ -1,0 +1,58 @@
+package orchestrator
+
+import (
+ "strconv"
+ "github.com/axadrn/shadcn-templ/v2/components/button"
+ "github.com/axadrn/shadcn-templ/v2/components/dialog"
+ "github.com/axadrn/shadcn-templ/v2/components/label"
+ selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
+ "github.com/axadrn/shadcn-templ/v2/components/textarea"
+ "github.com/axadrn/shadcn-templ/v2/components/checkbox"
+)
+
+// Outside patch roots: opening a plan pins the rendered revision until refresh.
+templ assignmentDialog(d pageData) {
+ <dialog id="assignment-dialog" aria-labelledby="assignment-title" data-effect="if ($assignOpen && !el.open) el.showModal(); else if (!$assignOpen && el.open) el.close()" data-on:close="$assignOpen = false" data-on:cancel="$assignOpen = false">
+  @dialog.Title(dialog.TitleProps{ID:"assignment-title"}) { Choose an agent }
+  @dialog.Description() { Targeted work may wait when an agent is busy or goes offline. There is no fallback to another agent. Planning and build agents are chosen independently. }
+   <form method="post" action="/cards/assign" data-on:submit__prevent="@post('/cards/assign', {contentType:'form', retry:'never', retryMaxCount:0})">
+    <jawa-agent-selector></jawa-agent-selector>
+    <input type="hidden" name="_csrf" value={ d.csrf }/>
+    @viewFields(d.v)
+    <input type="hidden" name="card_id" data-bind:assign-card/>
+    <input type="hidden" name="mode" data-bind:assign-mode/>
+    <div class="field">
+     @label.Label(label.Props{For:"assignment-agent"}) { Connected agent }
+     @selectField("assignment-agent", "target_agent_id", "", true, []selectcomp.ItemData{{Value: "", Label: "Select an agent"}}, nil)
+     <p data-agent-status class="meta" role="status" aria-live="polite"></p>
+     @button.Button(button.Props{Type:button.TypeButton, Variant:button.VariantOutline, Attributes:templ.Attributes{"data-agent-refresh":true}}) { Refresh agents }
+    </div>
+    <div data-show="$assignMode === 'fix'" class="field">
+     @label.Label(label.Props{For:"assignment-message"}) { Fix message (required) }
+     @textarea.Textarea(textarea.Props{ID:"assignment-message", Name:"message", Rows:5, Attributes:templ.Attributes{"data-bind:assign-message":true,"data-attr:required":"$assignMode === 'fix'"}})
+    </div>
+    for _, c := range d.cards {
+     if c.Status == "Planning" {
+      {{ detail := d.planning[c.ID] }}
+      <section data-assignment-plan={ c.ID } data-show={ "$assignCard === " + strconv.Quote(c.ID) + " && $assignMode === 'build'" }>
+       if detail.CanApprove {
+        <h3>{ "Revision " + strconv.Itoa(detail.Session.Revision) }</h3>
+        @planningMarkdownText(detail.Session.Spec)
+        <input type="hidden" name="expected_revision" value={ strconv.Itoa(detail.Session.Revision) } disabled/>
+        @label.Label(label.Props{For:"assign-review-"+c.ID}) {
+         @checkbox.Checkbox(checkbox.Props{ID:"assign-review-"+c.ID, Name:"acknowledge", Value:"yes", Required:true, Disabled:true}) I reviewed this revision and want to start building.
+        }
+       } else {
+        <p class="meta">Wait for a ready plan with all questions answered before building.</p>
+       }
+       <a href={ templ.SafeURL(planningPath(c.ID)) }>Open planning view</a>
+      </section>
+     }
+    }
+    @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
+     @button.Button(button.Props{Type:button.TypeButton, Variant:button.VariantOutline, Attributes:templ.Attributes{"data-on:click":"$assignOpen = false"}}) { Cancel }
+     @button.Button(button.Props{Type:button.TypeSubmit, Attributes:templ.Attributes{"data-agent-submit":true,"disabled":true}}) { <span data-agent-submit-label>Assign work</span> }
+    }
+   </form>
+ </dialog>
+}

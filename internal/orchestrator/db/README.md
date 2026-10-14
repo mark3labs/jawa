@@ -102,3 +102,8 @@ repository/provider, minimal outcome and completion evidence survive card/projec
 deletion intentionally, so a replay cannot recreate a deleted resource. Reserved
 writes become uncertain on application startup; this is not a background outbox
 and never triggers remote retries. Use one orchestrator per database.
+
+Version `00019_target_agents.sql` adds desired `target_agent_id` to workflow
+attempts and planning turns. Empty defaults keep historical work shared without
+changing observed execution identity or history. Targets persist across publish
+retries/restart and are copied to fresh Retry tasks; they are not run ownership.
