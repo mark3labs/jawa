@@ -14,7 +14,7 @@ import (
 )
 
 func planningIdentityMatches(t sqlc.PlanningTurn, agent, run, attempt string) bool {
-	return (t.AgentID == "" && t.RunID == "" && t.RemoteAttemptID == "") || (t.AgentID == agent && t.RunID == run && t.RemoteAttemptID == attempt)
+	return (t.TargetAgentID == "" || t.TargetAgentID == agent) && ((t.AgentID == "" && t.RunID == "" && t.RemoteAttemptID == "") || (t.AgentID == agent && t.RunID == run && t.RemoteAttemptID == attempt))
 }
 func planningTurnCurrent(tx *sql.Tx, t sqlc.PlanningTurn) (bool, error) {
 	var current bool
@@ -62,7 +62,7 @@ func (w *Workflow) planningEvent(tx *sql.Tx, ctx context.Context, ev client.Stat
 	} // Waiting/running events must not erase a typed interaction or approval.
 	// Capture an admission arriving after local cancellation only to cancel its
 	// exact remote identity. It must never revive the session or turn.
-	if t.State == "cancelled" && t.AgentID == "" {
+	if t.State == "cancelled" && t.AgentID == "" && planningIdentityMatches(t, ev.AgentID, ev.RunID, ev.AttemptID) {
 		_, err = tx.Exec(`UPDATE planning_turns SET agent_id=?,run_id=?,remote_attempt_id=? WHERE id=? AND state='cancelled' AND agent_id=''`, ev.AgentID, ev.RunID, ev.AttemptID, t.ID)
 		return true, err
 	}
@@ -208,7 +208,7 @@ func (w *Workflow) dispatchPlanning() {
 		err = json.Unmarshal([]byte(latest.TaskJson), &task)
 		if err == nil {
 			ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
-			_, err = w.client.Submit(ctx, task)
+			err = w.submitTask(ctx, latest.TargetAgentID, task)
 			cancel()
 		}
 		now := time.Now().UnixMilli()

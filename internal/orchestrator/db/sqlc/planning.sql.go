@@ -69,7 +69,7 @@ func (q *Queries) GetPlanningSessionByID(ctx context.Context, id string) (Planni
 }
 
 const getPlanningTurn = `-- name: GetPlanningTurn :one
-SELECT id, session_id, number, state, task_json, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE id=?
+SELECT id, session_id, number, state, task_json, target_agent_id, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE id=?
 `
 
 func (q *Queries) GetPlanningTurn(ctx context.Context, id string) (PlanningTurn, error) {
@@ -81,6 +81,7 @@ func (q *Queries) GetPlanningTurn(ctx context.Context, id string) (PlanningTurn,
 		&i.Number,
 		&i.State,
 		&i.TaskJson,
+		&i.TargetAgentID,
 		&i.Published,
 		&i.CancelSent,
 		&i.AgentID,
@@ -97,7 +98,7 @@ func (q *Queries) GetPlanningTurn(ctx context.Context, id string) (PlanningTurn,
 }
 
 const listPlanningCancellations = `-- name: ListPlanningCancellations :many
-SELECT id, session_id, number, state, task_json, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE state='cancelled' AND published=1 AND cancel_sent=0 AND agent_id<>'' AND run_id<>'' AND remote_attempt_id<>'' ORDER BY updated_at
+SELECT id, session_id, number, state, task_json, target_agent_id, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE state='cancelled' AND published=1 AND cancel_sent=0 AND agent_id<>'' AND run_id<>'' AND remote_attempt_id<>'' ORDER BY updated_at
 `
 
 func (q *Queries) ListPlanningCancellations(ctx context.Context) ([]PlanningTurn, error) {
@@ -115,6 +116,7 @@ func (q *Queries) ListPlanningCancellations(ctx context.Context) ([]PlanningTurn
 			&i.Number,
 			&i.State,
 			&i.TaskJson,
+			&i.TargetAgentID,
 			&i.Published,
 			&i.CancelSent,
 			&i.AgentID,
@@ -262,7 +264,7 @@ func (q *Queries) ListPlanningRevisions(ctx context.Context, sessionID string) (
 }
 
 const listPlanningTurns = `-- name: ListPlanningTurns :many
-SELECT id, session_id, number, state, task_json, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE session_id=? ORDER BY number
+SELECT id, session_id, number, state, task_json, target_agent_id, published, cancel_sent, agent_id, run_id, remote_attempt_id, event_seq, result, outcome_json, error, created_at, updated_at FROM planning_turns WHERE session_id=? ORDER BY number
 `
 
 func (q *Queries) ListPlanningTurns(ctx context.Context, sessionID string) ([]PlanningTurn, error) {
@@ -280,6 +282,7 @@ func (q *Queries) ListPlanningTurns(ctx context.Context, sessionID string) ([]Pl
 			&i.Number,
 			&i.State,
 			&i.TaskJson,
+			&i.TargetAgentID,
 			&i.Published,
 			&i.CancelSent,
 			&i.AgentID,
@@ -333,7 +336,7 @@ func (q *Queries) ListQueuedPlanningReplies(ctx context.Context) ([]string, erro
 }
 
 const listQueuedPlanningTurns = `-- name: ListQueuedPlanningTurns :many
-SELECT t.id, t.session_id, t.number, t.state, t.task_json, t.published, t.cancel_sent, t.agent_id, t.run_id, t.remote_attempt_id, t.event_seq, t.result, t.outcome_json, t.error, t.created_at, t.updated_at FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id JOIN cards c ON c.id=s.card_id
+SELECT t.id, t.session_id, t.number, t.state, t.task_json, t.target_agent_id, t.published, t.cancel_sent, t.agent_id, t.run_id, t.remote_attempt_id, t.event_seq, t.result, t.outcome_json, t.error, t.created_at, t.updated_at FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id JOIN cards c ON c.id=s.card_id
 WHERE t.state='queued' AND t.published=0 AND s.state='queued' AND c.status='Planning' ORDER BY t.created_at,t.id
 `
 
@@ -352,6 +355,7 @@ func (q *Queries) ListQueuedPlanningTurns(ctx context.Context) ([]PlanningTurn, 
 			&i.Number,
 			&i.State,
 			&i.TaskJson,
+			&i.TargetAgentID,
 			&i.Published,
 			&i.CancelSent,
 			&i.AgentID,

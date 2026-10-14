@@ -7,7 +7,10 @@
 import './acknowledgement.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
+import {setupAgentSelector} from './agent-selector.js';
 import {setupIssueSelector} from './issue-selector.js';
+
+rocket('jawa-agent-selector', {mode: 'light', setup: ({host, cleanup}) => setupAgentSelector(host, cleanup)});
 
 // Installation is progressive enhancement; HTTP deployments remain usable.
 if ('serviceWorker' in navigator && window.isSecureContext) {

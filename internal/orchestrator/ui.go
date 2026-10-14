@@ -545,3 +545,17 @@ func (d pageData) runLabel(a Attempt) string {
 	}
 	return runLabel(a)
 }
+
+func assignmentAction(c Card, mode string) string {
+	return "$assignCard = " + strconv.Quote(c.ID) + "; $assignMode = " + strconv.Quote(mode) + "; $assignMessage = ''; $assignOpen = true"
+}
+
+func planningAssignmentLabel(d pageData, id string) string {
+	if detail, ok := d.planning[id]; ok && len(detail.Turns) > 0 {
+		turn := detail.Turns[len(detail.Turns)-1]
+		if turn.AgentID == "" && turn.TargetAgentID != "" && (turn.State == "queued" || turn.State == "submitted") {
+			return "Queued for " + turn.TargetAgentID
+		}
+	}
+	return planningLabel(planningState(d, id))
+}

@@ -12,6 +12,8 @@
     "test:run-detail": "node run-detail.mjs",
     "test:cards": "node card-fixture.mjs",
     "test:smoke": "node smoke.mjs",
+    "test:assignment-ui": "node assignment-ui.mjs",
+    "test:agents": "node agents.mjs",
     "test:issues": "node issues.mjs",
     "test:issue-recovery": "node issue-recovery.mjs",
     "test:fix": "node fix.mjs",
