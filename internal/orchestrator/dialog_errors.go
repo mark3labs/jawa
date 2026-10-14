@@ -18,6 +18,12 @@ func mutationDialog(r *http.Request) string {
 	case "/cards/fix":
 		return "fix"
 	case "/cards/guide":
+		// The inline planning-page reply form shares this route; only the
+		// guide dialog submits dialog_operation, so inline failures stay on
+		// the visible page notice instead of a closed dialog.
+		if err := r.ParseForm(); err != nil || !r.PostForm.Has("dialog_operation") {
+			return ""
+		}
 		return "guide"
 	case "/cards/cancel":
 		return "cancel"

@@ -19,7 +19,7 @@ const server = createServer(async (req, res) => {
     return;
   }
   const asset = /^\/assets\/([a-zA-Z0-9_.-]+)$/.exec(url.pathname);
-  const variant = `${url.searchParams.get('offline') ? 'offline-' : ''}${url.searchParams.get('tab') === 'trace' ? 'trace' : 'chat'}`;
+  const variant = `${url.pathname.startsWith('/runs/planning/') ? 'planning-' : url.searchParams.get('offline') ? 'offline-' : ''}${url.searchParams.get('tab') === 'trace' ? 'trace' : 'chat'}`;
   const file = asset ? fileURLToPath(new URL(asset[1], assets)) : url.pathname.startsWith('/runs/') ? `${fixture}.${variant}` : null;
   if (!file) { res.writeHead(404).end(); return; }
   try {
@@ -95,6 +95,26 @@ try {
     }
     console.log(`Run detail ${width}: both tabs/offline, filtering, targets, overflow, keyboard disclosures and morph preservation passed`);
   }
+  const planningURL=url.replace('/runs/','/runs/planning/');
+  for (const width of [320,390,768,1024,1440]) {
+    await page.setViewportSize({width,height:1000});
+    for (const tab of ['chat','trace']) {
+      await page.goto(`${planningURL}?tab=${tab}`);
+      await page.locator('#run-detail-content').waitFor();
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1), `planning ${tab} overflow ${width}`);
+      await expect(page.locator('#run-composer')).toHaveCount(0);
+      await expect(page.getByRole('button',{name:/Send|Stop current turn/})).toHaveCount(0);
+      await expect(page.getByText('Awaiting review',{exact:true})).toBeVisible();
+      const link=page.getByRole('link',{name:tab==='chat' ? 'Trace':'Chat',exact:true});
+      await link.focus(); await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(new RegExp(`/runs/planning/.*tab=${tab==='chat' ? 'trace':'chat'}`));
+      if (process.env.JAWA_RUN_DETAIL_SCREENSHOTS && [390,1440].includes(width)) {
+        await mkdir(process.env.JAWA_RUN_DETAIL_SCREENSHOTS,{recursive:true});
+        await page.goto(`${planningURL}?tab=${tab}`);
+        await page.screenshot({path:`${process.env.JAWA_RUN_DETAIL_SCREENSHOTS}/planning-${tab}-${width}.png`,fullPage:true});
+      }
+    }
+  }
   await context.close();
   const native = await browser.newContext({javaScriptEnabled:false});
   const page2 = await native.newPage();
@@ -103,6 +123,10 @@ try {
   await expect(page2).toHaveURL(/tab=trace/);
   await page2.locator('[data-trace-entry] > details > summary').first().press('Enter');
   assert.equal(await page2.locator('details[open]').count(),1);
+  await page2.goto(`${planningURL}?tab=chat`);
+  await page2.getByRole('link',{name:'Trace',exact:true}).click();
+  await expect(page2).toHaveURL(/\/runs\/planning\/.*tab=trace/);
+  await expect(page2.locator('#run-composer')).toHaveCount(0);
   await native.close();
 } finally {
   for (const stream of streams) stream.end();

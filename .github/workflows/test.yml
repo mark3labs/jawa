@@ -56,6 +56,7 @@ jobs:
       - name: Browser fixtures with bundled Chromium
         run: |
           npm run test:fix
+          npm run test:guidance
           npm run test:pr-refresh
           npm run test:issues
           JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" go test ../../../internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1

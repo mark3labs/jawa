@@ -333,7 +333,7 @@ templ sidebarNav(d pageData) {
 			<a class="nav-item" href="/runs" aria-current={ isCurrent(d.v.View == viewRuns) }>
 				@icon("runs")
 				<span>Runs</span>
-				if n := countRunStates(d.attempts, "active"); n > 0 {
+				if n := countHistory(d.runs, "active"); n > 0 {
 					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "nav-count live"}) {
 						{ strconv.Itoa(n) }
 					}
@@ -809,7 +809,7 @@ templ auth(csrf, kind, msg string) {
 
 func pageEventsURL(d pageData) string {
 	if d.detail != nil {
-		return "/runs/" + d.detail.Attempt.ID + "/events?tab=" + d.detail.Tab
+		return detailAction(*d.detail, "events")
 	}
 	return d.v.EventsURL()
 }

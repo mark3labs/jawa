@@ -12,6 +12,7 @@ snapshot polling, not browser polling. Streams terminate on disconnect, revocati
 or shutdown. Write deadlines are refreshed to bound slow consumers.
 
 Stable element patch roots:
+- Full card: `planning-content` (`/planning?card=<id>`), including direct builds.
 - Board: `board-content` (only the selected project's lanes/cards).
 - Runs: `runs-content` (card/state filters, newest-first rows).
 - Agents: `agents-content` (presence summaries and endpoints).
@@ -78,3 +79,20 @@ fetch loop or page reload is used for card actions.
 - `run_display.go`: ordered safe message/tool projection; BONNIE MIT attribution.
 
 See CONTRACT.md for run-detail routes and build instructions.
+
+Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
+read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
+and resume keep the key, retries create another. Generic `/snapshot?view=runs`
+and `/events?view=runs` include queued/unpinned and retained planning history.
+Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with the
+same bounded writes, authentication rechecks and identity-change fencing as build
+details. Its controls root explains observation-only policy; no planning composer
+or Stop is rendered. Build authority collections and `/activity` are unchanged.
+Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
+and `guideMessage`; error notices and live snapshots do not clear them. The
+inline `/cards/guide` composer lives inside `planning-content`, with form and
+textarea IDs keyed by report identity and `data-ignore-morph` draft preservation.
+A new report replaces the old composer; queued replies render immediately with
+no further composer. History is loaded only for the selected full card through
+shared full-page/SSE loading. Run `npm run test:guidance` for production Go-markup
+and embedded Datastar bundle regression checks.

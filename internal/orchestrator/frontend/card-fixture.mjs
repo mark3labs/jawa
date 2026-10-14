@@ -130,7 +130,14 @@ try {
         }
         assert.ok(Math.max(...metrics.map(b => b.height)) - Math.min(...metrics.map(b => b.height)) <= 1,
           'Linked and span badges must have equal single-line heights');
-        assert.ok(await page.locator('.task-card span.chip:not(.plain)').count() > 0);
+        // Planning status badges are now native run-history links in both views.
+        const planningBadges = page.locator('.task-card a.planning-badge');
+        assert.ok(await planningBadges.count() > 0);
+        for (const link of await planningBadges.all()) {
+          const id = await link.evaluate(el => el.closest('.task-card').dataset.cardId);
+          assert.equal(await link.getAttribute('href'), `/runs?card=${encodeURIComponent(id)}`);
+          assert.equal(await link.evaluate(el => el.tabIndex), 0);
+        }
         for (const [title, expected] of [
           ['View runs', null],
           ['Open linked issue', 'https://github.com/example/visual-fixtures/issues/52'],
