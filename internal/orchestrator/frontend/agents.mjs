@@ -59,6 +59,15 @@ try {
  await page.click('[data-agent-refresh]');await waitRequests(6);await reply(5,[],503);
  await page.waitForFunction(()=>document.querySelector('[data-agent-status]').textContent.includes('Unable'));
  assert.equal(await submit.isDisabled(),true);assert.equal(await page.locator('textarea').inputValue(),'draft repair');assert.equal(await page.locator('[name="acknowledge"]').isChecked(),true);
+ // A finished transport request is not mutation success and must not reset
+ // drafts or accidentally enable a selector with no valid target.
+ await page.evaluate(() => {
+   const el = document.querySelector('form');
+   document.dispatchEvent(new CustomEvent('datastar-fetch',{detail:{el,type:'started'}}));
+   document.dispatchEvent(new CustomEvent('datastar-fetch',{detail:{el,type:'finished'}}));
+ });
+ assert.equal(await submit.isDisabled(),true);
+ assert.equal(await page.locator('textarea').inputValue(),'draft repair');
  await page.evaluate(()=>window.dispose());
  console.log('Agent selector lifecycle, busy/empty/error, draft and revision tests passed');
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}

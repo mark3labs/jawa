@@ -276,7 +276,7 @@ document.addEventListener('datastar-fetch', event => {
 // and clears a form once the server reports success (no error notice showing).
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
-  if (!el?.matches?.('form') || el.matches('.pr-refresh-form')) return;
+  if (!el?.matches?.('form') || el.matches('.pr-refresh-form') || el.closest('#assignment-dialog')) return;
   const buttons = el.querySelectorAll('button[type="submit"]');
   if (type === 'started') {
     el.dataset.pending = '';

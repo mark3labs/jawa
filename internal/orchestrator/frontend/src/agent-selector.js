@@ -74,6 +74,11 @@ export function setupAgentSelector(host, cleanup) {
     }
     update();
     if (dialog.open) load();
+    else {
+      // Only a confirmed server success clears assignCard. Cancel keeps the
+      // user draft until the next card/mode opening explicitly initializes it.
+      queueMicrotask(() => { if (!dialog.open && !card()) form.reset(); });
+    }
   }
   function fetchState(event) {
     if (event.detail.el !== form) return;
