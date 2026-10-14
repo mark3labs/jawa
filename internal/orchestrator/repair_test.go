@@ -62,15 +62,14 @@ func TestRepairLifecycle(t *testing.T) {
 		if err := json.Unmarshal([]byte(a.TaskJSON), &task); err != nil || task.TaskID != a.TaskID {
 			t.Fatalf("outbox %v", err)
 		}
-		// Repair agents must never block on review bots.
-		if !strings.Contains(task.Text, repairReviewPolicy) {
-			t.Fatalf("repair prompt lacks review policy: %s", task.Text)
-		}
+		// Repairs use observed work and all-author feedback, including on retries.
+		assertReviewPolicy(t, task.Text, repairReviewPolicy)
 	}
 	var originalTask client.Task
 	if err := json.Unmarshal([]byte(original.TaskJSON), &originalTask); err != nil || !strings.Contains(originalTask.Text, buildReviewPolicy) || !strings.Contains(originalTask.Text, `"WIP: "`) {
 		t.Fatalf("build prompt lacks review policy: %v %s", err, originalTask.Text)
 	}
+	assertReviewPolicy(t, originalTask.Text, buildReviewPolicy)
 	check(repair)
 	if repair.Ready || repair.Published || repair.State != "queued" || repair.TaskID == original.TaskID {
 		t.Fatalf("new repair %+v", repair)
@@ -166,5 +165,21 @@ func TestRepairGuardsAndConcurrentRequests(t *testing.T) {
 	attempts, err := w.Attempts()
 	if err != nil || successes != 1 || len(attempts) != 2 {
 		t.Fatalf("successes %d attempts %d err %v", successes, len(attempts), err)
+	}
+}
+
+// Check semantics as well as inclusion so changing a policy constant cannot
+// silently restore assumed schedules in newly dispatched tasks.
+func assertReviewPolicy(t *testing.T, text, policy string) {
+	t.Helper()
+	for _, phrase := range []string{policy, "inspect current-head checks", "all-author feedback", "Wait for observed pending work", "Do not wait for or request a nonexistent review", "repository/provider no-CI policy"} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("task lacks review policy contract %q", phrase)
+		}
+	}
+	for _, obsolete := range []string{"so review bots skip it", "within about 10 minutes", "DO NOT WAIT for additional reviews", "never sleep or poll for new"} {
+		if strings.Contains(policy, obsolete) {
+			t.Errorf("policy contains obsolete scheduling directive %q", obsolete)
+		}
 	}
 }

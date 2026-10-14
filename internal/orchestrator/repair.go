@@ -12,13 +12,13 @@ import (
 	client "github.com/mark3labs/bonnie/client/nats"
 )
 
-// buildReviewPolicy keeps build agents from triggering premature bot reviews
-// (CodeRabbit skips WIP titles and reviews once per PR) and from waiting on re-reviews.
-const buildReviewPolicy = `If you open the PR before the implementation is complete, prefix its title with "WIP: " so review bots skip it, and remove the prefix once the work is complete and pushed (if no review then starts within about 10 minutes, request exactly one, e.g. comment "@coderabbitai review"). Wait for the initial review of the completed PR and address its actionable findings, but after pushing those fixes DO NOT WAIT for additional reviews or re-reviews; finish once CI for the head SHA is green.`
+// buildReviewPolicy makes delivery depend on observed checks and feedback,
+// not a particular bot or review schedule.
+const buildReviewPolicy = `If you open the PR before implementation is complete, prefix its title with "WIP: " and remove the prefix once the work is complete and pushed. After PR creation and every push, inspect current-head checks and all-author feedback with pagination, including required contexts, review summaries, inline threads and discussion comments. Wait for observed pending work, including review jobs, within the task's applicable time budget. Fix actionable findings, validate and push, then repeat for the new head. Immediately before completion re-read head/checks/comments; discard stale evidence if the head changes. Finish only with applicable checks successful or accepted by existing host policy, no observed jobs pending, and no actionable or provider-blocking review feedback. Follow existing repository/provider no-CI policy for empty evidence; never enable a bypass. Do not wait for or request a nonexistent review; informational cooldowns alone are not pending work.`
 
-// repairReviewPolicy stops repair agents from blocking on review bots; it overrides
-// any review-waiting text carried over in the original task context.
-const repairReviewPolicy = `DO NOT WAIT for reviews: address actionable review comments already posted, but never sleep or poll for new, initial or additional reviews, never request a re-review, and finish once CI for the head SHA is green. This overrides any review-waiting instructions in the original task context or skills.`
+// repairReviewPolicy applies the same evidence-driven loop to repairs while
+// superseding obsolete scheduling rules preserved in immutable task history.
+const repairReviewPolicy = `Use the same delivery loop for builds and repairs. After PR creation and every push, inspect current-head checks and all-author feedback with pagination, including required contexts, review summaries, inline threads and discussion comments. Wait for observed pending work, including review jobs, within the task's applicable time budget. Fix actionable findings, validate and push, then repeat for the new head. Immediately before completion re-read head/checks/comments; discard stale evidence if the head changes. Finish only with applicable checks successful or accepted by existing host policy, no observed jobs pending, and no actionable or provider-blocking review feedback. Follow existing repository/provider no-CI policy for empty evidence; never enable a bypass. Do not wait for or request a nonexistent review; informational cooldowns alone are not pending work. This supersedes obsolete review-scheduling instructions in the original task context or skills, including initial-review-only waits, prohibitions on waiting for real pending review jobs, and mandatory cooldown/manual-review-request procedures.`
 
 // FixCard starts a new durable repair of the verified PR on a Done card.
 // The previous attempt and its readiness evidence remain untouched.
