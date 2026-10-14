@@ -8,7 +8,6 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/checkbox"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
-	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
 )
 
@@ -119,16 +118,7 @@ templ planningContent(d pageData) {
 										@label.Label(label.Props{For: "plan-revision"}) {
 											Plan revision to approve
 										}
-										@nativeselect.NativeSelect(nativeselect.Props{ID: "plan-revision", Name: "expected_revision", Required: true}) {
-											@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
-												Select the revision you reviewed
-											}
-											for _, revision := range detail.Revisions {
-												@nativeselect.Option(nativeselect.OptionProps{Value: strconv.Itoa(revision.Number)}) {
-													{ "Revision " + strconv.Itoa(revision.Number) }
-												}
-											}
-										}
+										@selectField("plan-revision", "expected_revision", "", true, revisionSelectItems(detail.Revisions), nil)
 									</div>
 									@label.Label(label.Props{Class: "meta"}) {
 										@checkbox.Checkbox(checkbox.Props{ID: "planning-acknowledge", Required: true}) I reviewed this revision and want to start building.

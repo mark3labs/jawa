@@ -42,7 +42,7 @@ with CI; `-path internal/orchestrator` writes different diagnostic filenames.
 Then `cd internal/orchestrator/frontend && npm ci && npm run build`.
 Generated templ output and frontend assets are intentionally checked in and embedded;
 production requires neither Node nor CDN access. The build locates shadcn components
-using `go list -m`, bundles the pinned checkbox/switch runtimes and lifecycle with the
+using `go list -m`, bundles the pinned Select, Base UI/Floating UI, checkbox/switch runtimes and lifecycle with the
 application (no CDN), and copies the self-hosted Inter Latin variable font.
 
 Datastar/Rocket is vendored from the official v1.0.4 bundle:
@@ -273,7 +273,7 @@ keyboard/touch interaction, mutually exclusive controls and overflow at
 ## Application component vocabulary
 
 Visible controls use the pinned shadcn-templ Button (including action links),
-Input, Textarea, Label, NativeSelect/Option, Checkbox and Switch. Status/count
+Input, Textarea, Label, Select/Trigger/Value/Content/Item, Checkbox and Switch. Status/count
 pills use Badge, warnings use Alert, menu dividers use Separator and card
 surfaces use Card. Native forms, dialogs, popovers, disclosures, ordinary text
 links and structural layout remain native. Hidden transport fields (including
@@ -292,6 +292,15 @@ Export real Settings/dialog markup with `JAWA_COMPONENT_FIXTURE=/path/components
 go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1`,
 then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
 in frontend. Native recovery is exported alongside the issue fixture as `.native`.
+
+Select fields require JavaScript; there is no native-select or noscript select
+fallback. The standalone recovery page still submits an ordinary HTTP POST.
+The shared `selectField` keeps trigger/content/input siblings for beta.14's
+input lookup. The adapter uses the pinned `templ.select.setValue` for resets
+and programmatic updates; named inputs carry committed form values. Select
+portals target the trigger's native dialog when present, preserving upstream
+portal ownership and cleanup. Provider changes bridge the committed input to
+Datastar; reset must restore both the displayed selection and provider signal.
 
 ## Compact UI regression fixture
 

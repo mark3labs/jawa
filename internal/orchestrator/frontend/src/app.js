@@ -239,7 +239,7 @@ rocket('jawa-shortcuts', {
   setup: ({$, cleanup}) => {
     const destinations = {b: '/board', r: '/runs', a: '/agents', s: '/settings'};
     let armed = 0;
-    const typing = el => el?.closest?.('input,textarea,select,[contenteditable="true"]');
+    const typing = el => el?.closest?.('input,textarea,select,[role="combobox"],[role="listbox"],[role="option"],[contenteditable="true"]');
     const onKey = event => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (typing(event.target) || document.querySelector('dialog[open]')) return;

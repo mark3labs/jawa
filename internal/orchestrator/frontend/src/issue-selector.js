@@ -1,9 +1,11 @@
+import {selectInput, selectTrigger, selectContent, setSelectValue, setSelectDisabled, closeSelect} from './select.js';
+
 // Standalone behavior; the caller supplies the custom-element cleanup registrar.
 export function setupIssueSelector(host, cleanup) {
   const form = host.closest('form');
   const dialog = host.closest('dialog');
-  const project = form?.querySelector('#card-project');
-  const select = host.querySelector('#card-issue');
+  const project = selectInput(form?.querySelector('#card-project'));
+  const select = selectInput(host.querySelector('#card-issue'));
   const status = host.querySelector('#card-issue-status');
   const refresh = host.querySelector('[data-issue-refresh]');
   const autofill = host.querySelector('[data-issue-autofill]');
@@ -61,7 +63,7 @@ export function setupIssueSelector(host, cleanup) {
     if (pending) {
       // Datastar emits started before constructing FormData. Preserve successful
       // control values in hidden mirrors before locking the visible controls.
-      for (const control of [project, select, create]) {
+      for (const control of [project, select, create, recovery()?.querySelector('[name="issue_recovery"]')]) {
         if (!control?.name || control.disabled || (control.type === 'checkbox' && !control.checked)) continue;
         const mirror = document.createElement('input');
         mirror.type = 'hidden'; mirror.name = control.name; mirror.value = control.value;
@@ -70,10 +72,12 @@ export function setupIssueSelector(host, cleanup) {
     } else {
       pendingFields.forEach(field => field.remove()); pendingFields = [];
     }
-    project.disabled = pending;
+    setSelectDisabled(project, pending);
+    const recoveryInput = recovery()?.querySelector('[name="issue_recovery"]');
+    if (recoveryInput) setSelectDisabled(recoveryInput, pending);
     refresh.disabled = pending;
-    if (pending) { cancel(); select.disabled = true; }
-    else select.disabled = sources.size === 0;
+    if (pending) { cancel(); setSelectDisabled(select, true); }
+    else setSelectDisabled(select, sources.size === 0);
     updateAutofill();
     updateIntent();
   }
@@ -114,8 +118,13 @@ export function setupIssueSelector(host, cleanup) {
     sources.clear();
     loadedProject = undefined;
     autofill.disabled = true;
-    select.replaceChildren(new Option('No linked issue', '', true, true));
-    select.disabled = true;
+    closeSelect(selectTrigger(select));
+    setSelectValue(select, '');
+    const content = selectContent(selectTrigger(select));
+    content?.querySelectorAll('[data-slot="select-item"]').forEach(item => { if (item.dataset.templValue) item.remove(); });
+    const labels = selectTrigger(select).querySelector('template[data-templ-items]');
+    [...(labels?.content.children || [])].forEach(item => { if (item.dataset.templValue) item.remove(); });
+    setSelectDisabled(select, true);
   }
 
   async function load() {
@@ -156,10 +165,22 @@ export function setupIssueSelector(host, cleanup) {
       )) throw new Error('Invalid issue response');
       for (const issue of data.issues) {
         sources.set(issue.url, {title: issue.title, body: issue.body});
-        select.add(new Option(`#${issue.number} ${issue.title}`, issue.url));
+        const label = `#${issue.number} ${issue.title}`;
+        const item = host.querySelector('template[data-issue-item]').content.firstElementChild.cloneNode(true);
+        item.dataset.templValue = issue.url;
+        item.dataset.templLabel = label;
+        item.querySelector('.cn-select-item-text').textContent = label;
+        item.removeAttribute('data-selected');
+        item.setAttribute('aria-selected', 'false');
+        item.querySelector('[data-selected]').hidden = true;
+        selectContent(selectTrigger(select)).querySelector('[role="listbox"]').append(item);
+        const entry = document.createElement('span');
+        entry.dataset.templValue = issue.url;
+        entry.textContent = label;
+        selectTrigger(select).querySelector('template[data-templ-items]').content.append(entry);
       }
       loadedProject = projectID;
-      select.disabled = data.issues.length === 0;
+      setSelectDisabled(select, data.issues.length === 0);
       updateAutofill();
       status.textContent = data.issues.length
         ? 'Choose an issue, or leave No linked issue selected.'

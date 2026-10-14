@@ -443,7 +443,7 @@ details pre { margin-top: 10px; }
 /* Forms, dialogs, alerts --------------------------------------------------- */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .field label, [data-slot="label"] { color: var(--text-2); font-size: 12.5px; font-weight: 500; }
-[data-slot="input"], [data-slot="textarea"], [data-slot="native-select"] {
+[data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"] {
   min-height: 34px; font-size: 13px; background-color: #0f0c09;
 }
 .field textarea, [data-slot="textarea"] { min-height: 96px; resize: vertical; line-height: 1.5; }
@@ -548,7 +548,7 @@ dialog > .dialog-error:not([hidden]) { margin-bottom: 14px; }
 .plan-message { border-top: 1px solid var(--line); padding-block: 12px; }
 .plan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
 .planning-section textarea { width: 100%; min-height: 110px; }
-.planning-section select { max-width: 100%; }
+.planning-section [data-slot="select-trigger"] { max-width: 100%; }
 .card-title a { color: inherit; text-decoration: none; }
 .card-title a:hover { text-decoration: underline; }
 
@@ -621,11 +621,11 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
   .search { min-height: 44px; height: auto; max-width: 100%; }
   .search .filter { min-height: 44px; height: 44px !important; font-size: 16px; min-width: 0; }
   .search kbd { display: none; }
-  .field input:not([type="checkbox"]):not([type="hidden"]), .field textarea, .field select, .input-row input:not([type="checkbox"]),
+  .field [data-slot="input"], .field textarea, .field [data-slot="select-trigger"], .input-row input:not([type="checkbox"]),
   input[data-slot="input"], textarea[data-slot="textarea"],
-  .planning-section select, .planning-section textarea { font-size: 16px; min-height: 44px; }
+  .planning-section [data-slot="select-trigger"], .planning-section textarea { font-size: 16px; min-height: 44px; }
   /* Checkbox labels provide a generous target without turning a checkbox into
-     a full-width text field (the base .field input:not([type="checkbox"]):not([type="hidden"]) rule covers both). */
+     a full-width text field (the base .field [data-slot="input"] rule covers both). */
   input[type="checkbox"]:not([aria-hidden="true"]) { width: 24px; height: 24px; min-height: 24px; flex: none; }
   label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
   .tabs { flex-wrap: wrap; }
@@ -724,7 +724,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 
 /* Keep the issue action adjacent without overflowing narrow dialogs. */
 .issue-autofill-row { display: flex; flex-wrap: wrap; gap: .5rem; }
-.issue-autofill-row [data-slot="native-select-wrapper"] { flex: 1 1 12rem; min-width: 0; }
+.issue-autofill-row [data-select-field] { flex: 1 1 12rem; min-width: 0; }
 .issue-autofill-row .btn { flex: 0 0 auto; }
 
 /* Run detail: Jawa tokens, Bonnie's quiet message/tool hierarchy. */
@@ -789,7 +789,7 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 [data-create-issue] [data-disabled] { cursor: not-allowed; opacity: .5; }
 #card-issue-recovery { overflow-wrap: anywhere; }
 #card-issue-recovery label { display: block; margin-block: .5rem; }
-#card-issue-recovery input, #card-issue-recovery select { width: 100%; min-height: 44px; }
+#card-issue-recovery [data-slot="input"], #card-issue-recovery [data-slot="select-trigger"] { width: 100%; min-height: 44px; }
 #card-dialog form[data-pending]::after { content: 'Creating card… Please wait.'; display: block; }
 
 /* Preserve an operable native control when component enhancement is unavailable. */
@@ -799,8 +799,8 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 }
 
 /* NativeSelect owns its arrow; the wrapper participates in field/flex sizing. */
-.field [data-slot="native-select-wrapper"] { width: 100%; min-width: 0; }
-[data-slot="native-select"] { width: 100%; min-width: 0; }
+.field [data-select-field] { width: 100%; min-width: 0; }
+[data-slot="select-trigger"] { width: 100%; min-width: 0; }
 .acknowledgement { display: inline-flex; position: relative; flex: none; }
 .check, label:has(.acknowledgement) { gap: 8px; min-height: 44px; cursor: pointer; white-space: normal; }
 .recovery-card { width: 100%; max-width: 640px; }
@@ -808,9 +808,18 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 
 /* Stacked field labels must not inherit the inline-control label layout. */
 label:has(> [data-slot="input"]), label:has(> [data-slot="textarea"]),
-label:has(> [data-slot="native-select-wrapper"]) { flex-direction: column; align-items: stretch; gap: 6px; }
+label:has(> [data-select-field]) { flex-direction: column; align-items: stretch; gap: 6px; }
 label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; }
 
 /* Shared badge geometry, including counts, linked metadata and run roles.
    Keep vertical spacing, tone colors and compact/touch sizing independent. */
 [data-slot="badge"] { border-radius: 4px; margin-inline: 3px; }
+
+/* Select labels remain bounded in both dialogs and standalone forms. */
+[data-select-field] { min-width: 0; width: 100%; }
+[data-slot="select-value"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; }
+[data-slot="select-content"] { max-width: calc(100vw - 24px); max-height: min(var(--available-height), 320px); }
+[data-slot="select-item"] .cn-select-item-text { min-width: 0; flex-shrink: 1; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  [data-slot="select-trigger"], [data-slot="select-item"] { min-height: 44px; font-size: 16px; }
+}
