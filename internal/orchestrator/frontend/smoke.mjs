@@ -442,13 +442,13 @@ try {
  await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
  assert.equal(await page.getByRole('heading', {name: /Proposed plan/}).count(), 0, 'clarify must not fabricate a plan');
  assert.equal(await page.locator('#planning-approve-form').count(), 0);
- const questionToken = await page.getByRole('region', {name: 'Planning discussion'}).locator('input[name="expected_interaction"]').inputValue();
+ const questionToken = await page.getByRole('region', {name: 'Discussion'}).locator('input[name="expected_interaction"]').inputValue();
  assert.ok(questionToken);
  await page.getByLabel('Reply or request a revision').fill('API v2');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Draft plan', exact: true}).first().waitFor();
  await page.locator('#planning-approve-form').waitFor();
- assert.notEqual(await page.getByRole('region', {name: 'Planning discussion'}).locator('input[name="expected_interaction"]').inputValue(), questionToken);
+ assert.notEqual(await page.getByRole('region', {name: 'Discussion'}).locator('input[name="expected_interaction"]').inputValue(), questionToken);
  await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();

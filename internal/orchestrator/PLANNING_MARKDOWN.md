@@ -11,9 +11,9 @@ added. Code is escaped and displayed without executing or interpreting HTML.
 
 `planningDiscussionMessage` renders persisted readable Markdown directly. Typed
 `proposeSpec` acceptance stores a structured immutable revision (spec and commit; no questions) and a readable history message in the same transaction.
-The Discussion section displays only typed `clarify` questions and subsequent
+The Discussion section displays typed `clarify` questions, accepted typed planning blockers and subsequent
 user replies, including plan-review feedback. The initial user description,
-proposals, blockers, and arbitrary assistant output are excluded; original
+proposals and arbitrary assistant output are excluded; original
 messages remain persisted unchanged. Accepted typed reports identify question
 messages, including in existing sessions, without parsing discussion prose as
 reports. Clarify stores questions as a typed interaction without creating a
@@ -42,3 +42,6 @@ included; unrelated generator-version churn is excluded. Renderer tests cover
 Markdown elements, escaped code, safe links, dangerous schemes, raw HTML and
 tracking images. Template tests cover planning surfaces, structured persisted
 revisions, readable discussions, literal natural/user messages and approval controls.
+
+Build/Fix discussion uses the same sanitizer for typed blocker reasons and durable
+operator replies; report identity, not Markdown content, distinguishes exchanges.

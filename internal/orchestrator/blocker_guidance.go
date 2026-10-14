@@ -27,6 +27,7 @@ const maxGuidanceBytes = 64000
 type BlockerGuidance struct {
 	CardID, TaskID, Token, Reason string
 	Queued                        bool
+	Cancelling                    bool
 }
 
 // pendingBlocker returns the open blocker interaction of a build task, if any.
@@ -253,7 +254,7 @@ func (w *Workflow) deliverBlockerGuidance(id string) {
 
 // blockerGuidance lists open build blockers by card for presentation.
 func (s *Store) blockerGuidance() (map[string]BlockerGuidance, error) {
-	rows, err := s.db.Query(`SELECT a.card_id,i.task_id,i.report_id,i.status,r.request_json FROM workflow_interactions i JOIN typed_reports r ON r.report_id=i.report_id JOIN workflow_attempts a ON a.task_id=i.task_id WHERE i.status IN ('pending','queued') AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
+	rows, err := s.db.Query(`SELECT a.card_id,i.task_id,i.report_id,i.status,r.request_json,EXISTS(SELECT 1 FROM workflow_cancel_requests cr WHERE cr.task_id=i.task_id AND cr.status IN ('pending','requested')) FROM workflow_interactions i JOIN typed_reports r ON r.report_id=i.report_id JOIN workflow_attempts a ON a.task_id=i.task_id WHERE i.status IN ('pending','queued') AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=a.card_id)`)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +263,7 @@ func (s *Store) blockerGuidance() (map[string]BlockerGuidance, error) {
 	for rows.Next() {
 		var b BlockerGuidance
 		var status, raw string
-		if err = rows.Scan(&b.CardID, &b.TaskID, &b.Token, &status, &raw); err != nil {
+		if err = rows.Scan(&b.CardID, &b.TaskID, &b.Token, &status, &raw, &b.Cancelling); err != nil {
 			return nil, err
 		}
 		var r reportprotocol.Request

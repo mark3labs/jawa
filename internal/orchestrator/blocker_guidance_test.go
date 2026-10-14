@@ -248,16 +248,59 @@ func TestBlockerGuidanceHTTP(t *testing.T) {
 	if ack, err := w.acceptReport(t.Context(), r); err != nil || !ack.AwaitGuidance {
 		t.Fatal(ack, err)
 	}
-	form := url.Values{"_csrf": {csrf.Value}, "view": {"board"}, "card_id": {card.ID}, "message": {"Use the vault"}}
+	form := url.Values{"_csrf": {csrf.Value}, "view": {"planning"}, "card": {card.ID}, "card_id": {card.ID}, "message": {"Use the vault"}}
 	for _, bad := range []string{"", "stale"} {
 		form.Set("expected_interaction", bad)
 		status(t, request(app, "POST", "/cards/guide", form, session, csrf), http.StatusBadRequest)
+		body := assertSSE(t, sseRequest(app, "POST", "/cards/guide", form, session, csrf))
+		if !strings.Contains(body, `id="notice"`) || strings.Contains(body, `"guideOpen"`) || strings.Contains(body, `"guideMessage"`) || strings.Contains(body, `"guideCard"`) || strings.Contains(body, `"guideToken"`) {
+			t.Fatal(body)
+		}
 	}
 	form.Set("expected_interaction", r.ReportID)
-	status(t, request(app, "POST", "/cards/guide", form, session, csrf), http.StatusSeeOther)
+	body := assertSSE(t, sseRequest(app, "POST", "/cards/guide", form, session, csrf))
+	for _, want := range []string{`"guideOpen":false`, `"guideCard":""`, `"guideToken":""`, `"guideMessage":""`, `id="planning-content"`, "Use the vault"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %s: %s", want, body)
+		}
+	}
+	body = assertSSE(t, sseRequest(app, "POST", "/cards/guide", form, session, csrf))
+	if strings.Contains(body, `"guideOpen"`) {
+		t.Fatal(body)
+	}
 	status(t, request(app, "POST", "/cards/guide", form, session, csrf), http.StatusBadRequest)
 	var state, reply string
 	if err := w.s.db.QueryRow(`SELECT status,reply FROM workflow_interactions WHERE report_id=?`, r.ReportID).Scan(&state, &reply); err != nil || state != "queued" || reply != "Use the vault" {
 		t.Fatal(state, reply, err)
+	}
+}
+
+func TestBlockerGuidanceNativeReturn(t *testing.T) {
+	t.Parallel()
+	for _, view := range []string{"board", "planning"} {
+		t.Run(view, func(t *testing.T) {
+			app := testApp(t)
+			session, csrf := setupTest(t, app)
+			c := workflowCard(t, app.s)
+			if err := app.workflow.MoveCard(c.ID, "Building", 0); err != nil {
+				t.Fatal(err)
+			}
+			a, _ := app.workflow.CardResult(c.ID)
+			app.workflow.observeReport = fakeReportObserver
+			r := reportRequest(t, a.TaskID, reportprotocol.ReportBlocker, reportprotocol.Payload{Reason: "Need help"})
+			if _, err := app.workflow.acceptReport(t.Context(), r); err != nil {
+				t.Fatal(err)
+			}
+			form := url.Values{"_csrf": {csrf.Value}, "view": {view}, "card": {c.ID}, "project": {c.ProjectID}, "card_id": {c.ID}, "message": {"Guidance"}, "expected_interaction": {r.ReportID}}
+			response := request(app, "POST", "/cards/guide", form, session, csrf)
+			status(t, response, http.StatusSeeOther)
+			want := boardPath(c.ProjectID)
+			if view == "planning" {
+				want = planningPath(c.ID)
+			}
+			if response.Header().Get("Location") != want {
+				t.Fatal(response.Header())
+			}
+		})
 	}
 }
