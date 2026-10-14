@@ -39,6 +39,7 @@ try {
   const box=await page.locator('#assignment-dialog').boundingBox();assert.ok(box.x>=0 && box.x+box.width<=width+1,`dialog overflow ${width}`);
   await page.keyboard.press('Escape');
   await page.waitForFunction(()=>!document.querySelector('#assignment-dialog').open);
+  assert.equal(await page.locator('[data-card-id="todo"] button[aria-haspopup="menu"]').evaluate(el=>document.activeElement===el),true);
  }
  await open('planning','Build with agent');
  assert.match(await page.locator('#assignment-dialog').textContent(),/Reviewed specification/);

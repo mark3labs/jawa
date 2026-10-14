@@ -63,6 +63,7 @@ export function setupAgentSelector(host, cleanup) {
       if (current === generation) { clearTimeout(timer); update(); }
     }
   }
+  let originCard;
   function opened() {
     cancel(); loaded = false; select.value = '';
     for (const section of plans) {
@@ -73,11 +74,16 @@ export function setupAgentSelector(host, cleanup) {
       }
     }
     update();
-    if (dialog.open) load();
+    if (dialog.open) { originCard = card(); load(); }
     else {
       // Only a confirmed server success clears assignCard. Cancel keeps the
       // user draft until the next card/mode opening explicitly initializes it.
-      queueMicrotask(() => { if (!dialog.open && !card()) form.reset(); });
+      queueMicrotask(() => {
+        if (dialog.open) return;
+        if (!card()) form.reset();
+        const trigger = document.querySelector(`[data-card-id="${CSS.escape(originCard || '')}"] button[aria-haspopup="menu"]`);
+        trigger?.focus({preventScroll: true});
+      });
     }
   }
   function fetchState(event) {
