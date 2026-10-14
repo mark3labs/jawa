@@ -3517,7 +3517,7 @@ func dialogs(d pageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</form></dialog><form id=\"move-form\" hidden data-on:submit__prevent=\"if (!el.hasAttribute('data-pending')) @post('/cards/move', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</form></dialog><form id=\"move-form\" hidden data-on:submit__prevent=\"@post('/cards/move', {contentType:'form'})\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

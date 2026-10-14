@@ -11,6 +11,7 @@ let succeed=false;
 const server = createServer(async (req,res) => {
   const path = new URL(req.url,'http://localhost').pathname;
   if (req.method === 'POST') {
+    if(path==='/cards/move'){for await(const chunk of req){} res.setHeader('Content-Type','text/event-stream');res.end();return;}
     let body=''; for await (const chunk of req) body+=chunk;
     const form=new URLSearchParams(body);
     res.setHeader('Content-Type','text/event-stream');
@@ -47,6 +48,9 @@ try {
    await page.waitForFunction(()=>[...document.querySelectorAll('.task-card')].every(c=>getComputedStyle(c).display==='none'));
    await page.locator('#card-filter').fill('');
    if(view==='board') {
+    const posted=page.waitForRequest(req=>new URL(req.url()).pathname==='/cards/move'&&req.method()==='POST');
+    await page.locator('#move-form').evaluate(el=>{el.elements.card_id.value='todo';el.elements.status.value='Planning';el.elements.position.value='0';el.requestSubmit();});
+    await posted;
     const branch=page.locator('.meta-unit');const b=await branch.boundingBox();
     assert.ok(b.height<30,'Branch icon/text stay in one unit');
     if(width===1440) {const mark=await page.locator('.view-title .proj-mark').boundingBox();const title=await page.locator('.view-title h1').boundingBox();assert.ok(mark.x+mark.width<=title.x);}

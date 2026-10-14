@@ -749,7 +749,7 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<form id="move-form" hidden data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/move', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+	<form id="move-form" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
 		<input name="card_id"/>
