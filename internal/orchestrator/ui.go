@@ -32,6 +32,7 @@ type uiSnapshot struct {
 	agents         []presence.Record
 	planning       map[string]PlanningDetail
 	prChecks       map[string]PRCheck
+	runs           []RunRecord
 	attempts       []Attempt
 	nats           NATSConfig
 	natsConfigured bool
@@ -121,6 +122,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 		if snap.attempts, err = wf.Attempts(); err != nil {
 			return snap, fmt.Errorf("load attempt history: %w", err)
 		}
+	}
+	if snap.runs, err = s.runHistory(ctx, snap.attempts); err != nil {
+		return snap, err
 	}
 	return snap, nil
 }
@@ -214,6 +218,16 @@ func attemptBranch(a Attempt) string {
 	}
 	return branch
 }
+
+// cardPRURL displays repair assignment without treating it as completion evidence.
+func cardPRURL(c Card, a Attempt) string {
+	pr := a.PRURL
+	if pr == "" && c.Status == "Fix" {
+		pr = a.RepairPRURL
+	}
+	return safeActivityURL(pr)
+}
+
 func safeActivityURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {

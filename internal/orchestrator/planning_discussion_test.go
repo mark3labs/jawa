@@ -61,9 +61,21 @@ func TestPlanningDiscussionOnlyQuestionsAndReplies(t *testing.T) {
 			t.Fatalf("message %d: %+v", i, d.Discussion[i])
 		}
 	}
+	// Run navigation and the authoritative reply composer must coexist after
+	// combining mixed run history with the shared full-card discussion.
+	runs, err := s.runHistory(t.Context(), nil)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("planning history: %v %v", runs, err)
+	}
+	c.Status = "Planning"
 	var out bytes.Buffer
-	if err := planningContent(pageData{v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: d}}).Render(t.Context(), &out); err != nil {
+	if err := planningContent(pageData{v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: d}, runs: runs}).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `aria-label="Execution history"`) ||
+		!strings.Contains(out.String(), `href="`+runs[0].path("chat")+`"`) ||
+		strings.Count(out.String(), `action="/cards/planning/reply"`) != 1 {
+		t.Fatal("planning history link and single discussion reply form must coexist")
 	}
 	discussion, _, _ := strings.Cut(strings.Split(out.String(), `aria-label="Discussion"`)[1], "</section>")
 	if strings.Count(discussion, `class="plan-message"`) != len(want) || strings.Contains(discussion, c.Title+"\n"+c.Description) {

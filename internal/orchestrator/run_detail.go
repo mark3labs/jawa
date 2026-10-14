@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	bonnieclient "github.com/mark3labs/bonnie/client"
@@ -14,22 +15,11 @@ import (
 )
 
 type runDetail struct {
-	Attempt     Attempt
+	Record      RunRecord
 	Tab         string
 	Observation runObservation
 	Messages    []runMessage
-	Stored      []storedRunEvent
-	Groups      []runEventGroup
 	Policy      runPolicy
-}
-type storedRunEvent struct {
-	Kind, Raw string
-	Time      time.Time
-}
-type runEventGroup struct {
-	Turn   string
-	Events []runtime.Event
-	Live   bool
 }
 type runPolicy struct {
 	Send, Stop         bool
@@ -42,11 +32,12 @@ func detailTab(r *http.Request) string {
 	}
 	return "chat"
 }
-func detailPath(a Attempt, tab string) string { return "/runs/" + a.ID + "?tab=" + tab }
+func detailPath(a Attempt, tab string) string { return buildRun(a).path(tab) }
 func (w *Workflow) attemptByID(id string) (Attempt, error) {
 	return scanAttempt(w.s.db.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE id=?`, id))
 }
-func (w *Workflow) apiAvailable(ctx context.Context, a Attempt) bool {
+func (w *Workflow) apiAvailable(ctx context.Context, source runObserver) bool {
+	a := source.observationIdentity()
 	if w.runAPI == nil {
 		return false
 	}
@@ -117,46 +108,24 @@ func (w *Workflow) runPolicy(a Attempt, snap *bonnieclient.Snapshot, online bool
 	}
 	return p
 }
-func (w *Workflow) storedRunEvents(a Attempt) ([]storedRunEvent, error) {
-	rows, err := w.s.db.Query(`SELECT event_type,event_json,received_at FROM workflow_execution_events WHERE task_id=? AND agent_id=? AND run_id=? AND remote_attempt_id=? ORDER BY received_at DESC LIMIT 256`, a.TaskID, a.AgentID, a.RunID, a.RemoteAttemptID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []storedRunEvent
-	for rows.Next() {
-		var ev storedRunEvent
-		var ms int64
-		if err = rows.Scan(&ev.Kind, &ev.Raw, &ms); err != nil {
-			return nil, err
-		}
-		ev.Time = time.UnixMilli(ms).UTC()
-		out = append(out, ev)
-	}
-	return out, rows.Err()
-}
-func groupRunEvents(events []runtime.Event, live bool) []runEventGroup {
-	var out []runEventGroup
-	indices := make(map[string]int)
-	for _, ev := range events {
-		i, ok := indices[ev.TurnID]
-		if !ok {
-			i = len(out)
-			indices[ev.TurnID] = i
-			out = append(out, runEventGroup{Turn: ev.TurnID, Live: live})
-		}
-		out[i].Events = append(out[i].Events, ev)
-	}
-	return out
-}
 func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, online bool) runDetail {
-	d := runDetail{Attempt: attempt, Tab: detailTab(r), Observation: obs}
+	d := runDetail{Record: buildRun(attempt), Tab: detailTab(r), Observation: obs}
 	d.Policy = a.workflow.runPolicy(attempt, obs.Snapshot, online && !obs.Unreachable)
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
-	d.Stored, _ = a.workflow.storedRunEvents(attempt)
-	d.Groups = append(groupRunEvents(obs.Durable, false), groupRunEvents(obs.Live, true)...)
+	return d
+}
+
+func (a *app) historyDetailModel(r *http.Request, record RunRecord, obs runObservation, online bool) runDetail {
+	if record.Mode != "Planning" {
+		return a.detailModel(r, record.Build, obs, online)
+	}
+	d := runDetail{Record: record, Tab: detailTab(r), Observation: obs,
+		Policy: runPolicy{Reason: "Planning is observation-only. Replies, review, guidance, recovery and cancellation live on the card."}}
+	if obs.Snapshot != nil {
+		d.Messages = projectRunMessages(obs.Snapshot.Messages)
+	}
 	return d
 }
 
@@ -164,6 +133,11 @@ func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, 
 // the fixed screens. Browser input can select an attempt, never a run/subject.
 func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/runs/"), "/")
+	mode := "Build"
+	if len(parts) > 0 && parts[0] == "planning" {
+		mode = "Planning"
+		parts = parts[1:]
+	}
 	if len(parts) > 2 || len(parts) == 0 || !validAttemptID(parts[0]) || a.workflow == nil {
 		http.NotFound(w, r)
 		return
@@ -185,16 +159,16 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 		a.responseError(w, r, "Method not allowed.", http.StatusMethodNotAllowed)
 		return
 	}
-	attempt, err := a.workflow.attemptByID(parts[0])
-	if err != nil || attempt.AgentID == "" || attempt.RunID == "" || attempt.RemoteAttemptID == "" {
-		http.NotFound(w, r)
-		return
-	}
-	if _, err = runapitoken.Subject("bonnie", attempt.AgentID); err != nil || !validRunDestination(attempt.RunID) {
+	attempt, err := a.workflow.historyByID(r.Context(), mode, parts[0])
+	if err != nil || !attempt.pinned() {
 		http.NotFound(w, r)
 		return
 	}
 	if method == http.MethodPost {
+		if mode == "Planning" {
+			a.responseError(w, r, "Planning runs are observation-only. Use the card.", http.StatusForbidden)
+			return
+		}
 		if !a.csrf(w, r) {
 			return
 		}
@@ -203,7 +177,7 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 			a.responseError(w, r, "NATS setup required.", http.StatusConflict)
 			return
 		}
-		a.runDetailAction(w, r, attempt, action)
+		a.runDetailAction(w, r, attempt.Build, action)
 		return
 	}
 	a.ensureCSRF(w, r)
@@ -223,12 +197,12 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 		a.responseError(w, r, "Unable to load run.", http.StatusServiceUnavailable)
 		return
 	}
-	detail := a.detailModel(r, attempt, obs, online)
+	detail := a.historyDetailModel(r, attempt, obs, online)
 	data.detail = &detail
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = appPage(data).Render(r.Context(), w)
 }
-func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Attempt, online bool) {
+func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt RunRecord, online bool) {
 	var hub *runHub
 	var stale runObservation
 	release := func() {}
@@ -251,7 +225,7 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt At
 		if !a.authed(r) {
 			return
 		}
-		fresh, e := a.workflow.attemptByID(attempt.ID)
+		fresh, e := a.workflow.historyByID(r.Context(), attempt.Mode, attempt.ID)
 		if e != nil {
 			return
 		}
@@ -277,7 +251,7 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt At
 				release = newRelease
 			}
 		}
-		detail := a.detailModel(r, fresh, obs, available)
+		detail := a.historyDetailModel(r, fresh, obs, available)
 		var out bytes.Buffer
 		if runDetailContent(detail).Render(r.Context(), &out) != nil || runDetailControls(detail, CSRFToken(r)).Render(r.Context(), &out) != nil {
 			return
@@ -385,7 +359,8 @@ func (a *app) runDetailAction(w http.ResponseWriter, r *http.Request, attempt At
 		return
 	}
 	if action == "chat" {
-		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"runDraft\":\"\"}\n\n")
+		payload, _ := json.Marshal(map[string]string{"runConfirmedDraft": r.FormValue("text")})
+		_ = stream.write("event: datastar-patch-signals\ndata: signals " + string(payload) + "\n\n")
 	}
 }
 

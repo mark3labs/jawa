@@ -197,8 +197,9 @@ Enhanced actions disable retry and return finite notices; native actions redirec
 
 `run-detail-content` morphs status and history, `run-detail-controls` morphs
 eligibility and exact-turn Stop. Tabs, Trace filter and composer/draft stay
-outside both roots. Only confirmed send success clears `runDraft`; uncertain
-mutations preserve it. Assistant Markdown uses the existing sanitizer; other
+outside both roots. Only confirmed send success clears `runDraft` when it still equals the submitted
+text; newer drafts and uncertain mutations survive. Externally associated Send
+controls stay disabled while pending without overriding server policy. Assistant Markdown uses the existing sanitizer; other
 content is escaped and no remote media is loaded. BONNIE display adaptation
 attribution is retained in BONNIE-LICENSE.
 
@@ -208,15 +209,24 @@ Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
 See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
 
-Chat uses a centered conversation transcript, distinct explicit roles and native
-collapsed tool activity. Trace uses separate snapshot, durable/live turn activity
-and received-order delivery inspectors; it does not imply a global timeline.
-Raw diagnostics are Trace-only. Missing timestamps are explicitly unavailable.
-Every disclosure has a deterministic display ID and preserves `open` during
-morphs. Content/occurrence snapshot fallback IDs are not durable journal IDs;
-changed or truncated snapshot content may change them. Search matches each full
-entry (including collapsed raw content), hides nonmatching entries/groups, and
-shows a separate no-matches state. Status remains inside the content patch root.
+Chat adapts Bonnie’s ordered messages, individual tool disclosures and compact
+role markers within Jawa’s theme. Chat includes closed Message content and result
+Raw payload disclosures; nested tool sections start open within closed tool rows.
+All payloads are escaped (JSON syntax spans use fixed classes), and Markdown keeps
+the stricter no-remote-media sanitizer. The growing composer uses Ctrl+Enter and
+native validation, ignores IME submission and leaves plain Enter as a newline.
+The focusable transcript follows only at bottom and preserves scrolled-up readers.
+Rocket cleanup disconnects all observers/listeners.
+
+Trace uses separate snapshot (Role/Summary), durable and live event tables. Event
+columns are Sequence, Time (UTC), Kind, Role, State and Summary, omitting columns
+with no values in that source. No roles are inferred. Only supplied nonempty turn
+IDs get separator rows; source order and equal-sequence live events are preserved.
+No local workflow deliveries or outcomes are rendered. Empty sources, missing
+metadata and no-match filters have no explanatory placeholders or banners.
+Every disclosure has a deterministic content/occurrence display ID and preserves
+`open` during morphs. Snapshot keys are not journal IDs. Filtering includes full
+collapsed raw content. Draft/filter/tab elements stay outside both patch roots.
 
 Export real deterministic Chat/Trace and stale offline fixtures, then check them:
 
@@ -279,7 +289,7 @@ The bundled lifecycle, checkbox and switch runtimes handle SSE additions; native
 no-script forms expose the adjacent input as a usable fallback.
 
 Export real Settings/dialog markup with `JAWA_COMPONENT_FIXTURE=/path/components.html
-go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture)$' -count=1`,
+go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1`,
 then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
 in frontend. Native recovery is exported alongside the issue fixture as `.native`.
 
@@ -291,6 +301,44 @@ and programmatic updates; named inputs carry committed form values. Select
 portals target the trigger's native dialog when present, preserving upstream
 portal ownership and cleanup. Provider changes bridge the committed input to
 Datastar; reset must restore both the displayed selection and provider signal.
+
+## Compact UI regression fixture
+
+Export the Board fixture and component fixtures above (including
+`TestAgentsComponentFixture`), then run `JAWA_CARD_VISUAL_HTML=/path/cards.html
+JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:ui` in frontend.
+This serves only real sanitized renderer fixtures/assets and simulated finite
+SSE responses on a disposable loopback port. Chromium checks search geometry,
+filter shortcuts, short project headings, Latest run metadata, primary contrast,
+agent timestamps and record-provided labels after keyed replacement at
+320/390/768/1024/1440px. Shared dialog failures retain drafts, clear on reopening,
+and isolate late responses. Set `JAWA_UI_SCREENSHOTS=/path/images` for untracked
+390/1440px screenshots covering Board/Archive search and project headings,
+Planning Latest run and enabled primary controls, Agents before/after label
+replacement, and every shared mutation dialog error. Geometry checks require
+the project mark/title to share a row above Git metadata and a visible gap
+between each dialog alert and title. Existing component/issue-recovery tests
+remain independent.
+
+### Planning run observation
+
+`GET /runs/planning/{turnID}?tab=chat|trace` and
+`GET /runs/planning/{turnID}/events?tab=chat|trace` reuse the authenticated,
+no-store Chat/Trace viewer and shared BONNIE observation hubs. Unknown, unpinned
+or malformed identities return 404; browser fields never choose a remote target.
+The stream re-fetches planning storage and terminates if the pinned tuple changes
+or the task disappears. Trace uses the same separate snapshot/durable/live API
+source tables, not local planning receipts. Offline observations remain read-only;
+missing fields/history are silently omitted rather than reconstructed.
+
+
+Planning viewers are observation-only: no composer or Stop, and crafted chat/stop
+POSTs return 403 without sending agent commands. Replies, specification review,
+guidance, recovery and cancellation remain on the authoritative card page.
+Existing implementation URLs and Send/Stop policies are unchanged. Board and
+Archive planning status badges and View runs menus are native filtered-history
+links; the card key/eye still opens the card. Planning execution history provides
+Open run for each valid pinned task, including older sessions.
 ## Blocked full-card discussion checks
 
 `/planning?card=<id>` is the full card view even without a planning session.

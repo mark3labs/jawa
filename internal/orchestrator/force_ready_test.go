@@ -363,7 +363,7 @@ func TestForceReadyHTTPAndProvenance(t *testing.T) {
 	a.workflow.SetProviderIdentity(func(context.Context, Attempt, string) (string, error) { return strings.Repeat("a", 40), nil })
 	form := url.Values{"_csrf": {csrf.Value}, "card_id": {c.ID}, "expected": {token}, "pr_number": {"55"}, "reason": {"<script>alert(1)</script>"}, "operator": {"attacker"}}
 	body := assertSSE(t, sseRequest(a, "POST", "/cards/force-ready", form, session, csrf))
-	if !strings.Contains(body, "confirm that CI") || !strings.Contains(body, `"readyOpen":false`) {
+	if !strings.Contains(body, "confirm that CI") || !strings.Contains(body, `id="ready-error"`) || strings.Contains(body, "datastar-patch-signals") {
 		t.Fatal(body)
 	}
 	form.Set("acknowledge", "yes")
@@ -703,6 +703,9 @@ func readyTestPage(t *testing.T, w *Workflow, v viewParams) (pageData, error) {
 		return d, err
 	}
 	d.attempts, err = w.Attempts()
+	if err == nil {
+		d.runs, err = w.s.runHistory(t.Context(), d.attempts)
+	}
 	if err != nil {
 		return d, err
 	}

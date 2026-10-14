@@ -116,9 +116,9 @@ func TestComponentBrowserFixture(t *testing.T) {
 
 func TestPlanningComponentFixture(t *testing.T) {
 	p := Project{ID: "fixture", Name: "Planning fixture", Repo: "example/fixture", BaseBranch: "master"}
-	c := Card{ID: "plan", ProjectID: p.ID, Title: "Review reusable controls", Description: "Original request", Status: "Planning"}
-	detail := PlanningDetail{Session: PlanningSession{State: "ready", Spec: "## Plan\nKeep the compact Jawa identity.", Revision: 1}, CanApprove: true, Revisions: []PlanningRevision{{Number: 1, Spec: "Reviewed specification"}}}
-	d := pageData{v: viewParams{View: viewPlanning, Card: c.ID}, projects: []Project{p}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, now: time.Now()}
+	c := Card{ID: "plan", ProjectID: p.ID, Title: "Review reusable controls", Description: "Original request", Status: "Planning", IssueURL: "https://github.com/example/fixture/issues/79"}
+	detail := PlanningDetail{Session: PlanningSession{State: "ready", Spec: "## Plan\nKeep the compact Jawa identity.", Revision: 1, UpdatedAt: time.Now()}, Turns: []PlanningTurn{{Number: 1, State: "waiting", AgentID: "fixture-agent", UpdatedAt: time.Now()}}, CanApprove: true, Revisions: []PlanningRevision{{Number: 1, Spec: "Reviewed specification"}}}
+	d := pageData{v: viewParams{View: viewPlanning, Card: c.ID}, projects: []Project{p}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, attempts: []Attempt{{ID: "latest", CardID: c.ID, State: "running", AgentID: "fixture-agent", Number: 1}}, now: time.Now()}
 	var out bytes.Buffer
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)

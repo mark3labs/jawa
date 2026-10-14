@@ -303,7 +303,7 @@ try {
  await page.locator('#run-detail-content').waitFor();
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
  await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
- const toolActivity = page.locator('.run-chat-activity').first();
+ const toolActivity = page.locator('.run-tool').first();
  await toolActivity.locator(':scope > summary').click();
  const activityID = await toolActivity.getAttribute('id');
  await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');
@@ -333,10 +333,10 @@ try {
   await page.setViewportSize({width:1440,height:1000});
  }
  await page.getByRole('link',{name:'Trace',exact:true}).click();
- await page.getByText('Snapshot history — turn/timestamps unavailable',{exact:true}).waitFor();
+ await page.getByText('Snapshot messages',{exact:true}).waitFor();
  await page.waitForFunction(()=>window.smokeSSE.url && new URL(window.smokeSSE.url).pathname.endsWith('/events') && new URL(window.smokeSSE.url).searchParams.get('tab') === 'trace');
  assert.equal(await page.locator('#run-composer').count(),0);
- const traceEntry=page.locator('[data-trace-entry] > details').first();
+ const traceEntry=page.locator('[data-trace-entry] details').first();
  await traceEntry.locator(':scope > summary').click();
  const traceID=await traceEntry.getAttribute('id');
  await page.waitForTimeout(1500);
@@ -443,6 +443,22 @@ try {
  await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
  assert.equal(await page.getByRole('heading', {name: /Proposed plan/}).count(), 0, 'clarify must not fabricate a plan');
  assert.equal(await page.locator('#planning-approve-form').count(), 0);
+ // Native planning badge -> filtered history -> pinned observation, no build actions.
+ await screen(`/board?project=${otherID}`, 'board');
+ await card('Resumable planning smoke').locator('.planning-badge').click();
+ await page.locator('#runs-content').waitFor();
+ const planningEntry = page.locator('#runs-content details[id^="run-planning-"]');
+ await expect(planningEntry).toHaveCount(1);
+ const planningEntryID = await planningEntry.getAttribute('id');
+ await planningEntry.locator('summary').click();
+ await planningEntry.getByRole('link', {name: 'Open', exact: true}).click();
+ await page.locator('#run-detail-content').waitFor();
+ assert.match(page.url(), /\/runs\/planning\//);
+ await expect(page.locator('#run-composer')).toHaveCount(0);
+ await page.getByRole('link', {name: 'Trace', exact: true}).click();
+ await page.locator('#run-detail-content').waitFor();
+ await page.getByRole('link', {name: 'Open card for recovery / guidance', exact: true}).click();
+ await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
  const questionToken = await page.getByRole('region', {name: 'Discussion'}).locator('input[name="expected_interaction"]').inputValue();
  assert.ok(questionToken);
  await page.getByLabel('Reply or request a revision').fill('API v2');
@@ -453,11 +469,19 @@ try {
  await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
+ await screen(`/runs?card=${resumableID}`, 'runs');
+ await expect(page.locator('#runs-content details[id^="run-planning-"]')).toHaveCount(1);
+ assert.equal(await page.locator('#runs-content details[id^="run-planning-"]').getAttribute('id'), planningEntryID);
+ await screen(`/planning?card=${resumableID}`, 'planning');
  await chooseSelect(page, '#plan-revision', '2', true);
  await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
  await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL && a.OutcomeJSON), 'approved plan distinct build');
+ await screen(`/runs?card=${resumableID}`, 'runs');
+ await expect(page.locator('#runs-content details[id^="run-planning-"]')).toHaveCount(1);
+ await expect(page.locator('#runs-content details[id^="run-build-"]')).toHaveCount(1);
+ assert.equal(await page.locator('#runs-content details[id^="run-planning-"]').getAttribute('id'), planningEntryID);
  await bridge('/stop'); started = false;
  await screen(`/board?project=${otherID}`, 'board');
  await action('Resumable planning smoke', 'Delete…');

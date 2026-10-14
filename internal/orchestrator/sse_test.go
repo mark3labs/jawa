@@ -78,7 +78,7 @@ func TestSSESnapshotAndAuthentication(t *testing.T) {
 				t.Fatalf("missing %q: %s", text, body)
 			}
 		}
-		for _, text := range []string{`id="notice"`, `id="project-dialog"`, "datastar-patch-signals", "<html"} {
+		for _, text := range []string{`id="notice"`, `id="project-dialog"`, `class="notice dialog-error"`, "datastar-patch-signals", "<html"} {
 			if strings.Contains(body, text) {
 				t.Fatalf("unsolicited patch contains %q", text)
 			}
@@ -142,15 +142,18 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	}
 	for _, path := range []string{"/cards/move", "/cards/retry", "/cards/reset", "/cards/delete"} {
 		body := assertSSE(t, sseRequest(a, "POST", path, form, session, csrf))
-		if !strings.Contains(body, `id="notice"`) || strings.Contains(body, "datastar-patch-signals") {
+		target := `id="notice"`
+		if path == "/cards/delete" {
+			target = `id="delete-error"`
+		}
+		if !strings.Contains(body, target) || strings.Contains(body, "datastar-patch-signals") {
 			t.Fatal(body)
 		}
 		status(t, request(a, "POST", path, form, session, csrf), http.StatusBadRequest)
 	}
-	// Cancellation errors must dismiss the confirmation dialog so the notice
-	// is visible, while not claiming the remote run was stopped.
+	// Cancellation errors preserve the confirmation and show its own alert.
 	body = assertSSE(t, sseRequest(a, "POST", "/cards/cancel", form, session, csrf))
-	if !strings.Contains(body, `id="notice"`) || !strings.Contains(body, `"cancelOpen":false`) || !strings.Contains(body, `"cancelCard":""`) {
+	if !strings.Contains(body, `id="cancel-error"`) || strings.Contains(body, "datastar-patch-signals") {
 		t.Fatal(body)
 	}
 	// Successful mutation snapshots must dismiss it as well.

@@ -24,9 +24,9 @@ func runDetailFixture() runDetail {
 		{Role: "system", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "This is a deterministic visual fixture, not a live run."}}},
 	}
 	projected := projectRunMessages(messages)
-	projected = append(projected, runMessage{Role: "unknown", Key: "unsupported-fixture", Raw: `{"unsupported":"preserved diagnostic payload"}`, Parts: []runPart{{Key: "unsupported-part", Text: "Unsupported content; inspect raw message in Trace"}}})
+	projected = append(projected, runMessage{Role: "unknown", Key: "unsupported-fixture", Raw: `{"unsupported":"preserved diagnostic payload"}`, Parts: []runPart{{Key: "unsupported-part", Unsupported: true}}})
 	live := []runtime.Event{{TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "First equal-sequence observation"}, {TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "Second equal-sequence observation"}}
-	return runDetail{Attempt: Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}, Messages: projected, Groups: append(groupRunEvents([]runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, false), groupRunEvents(live, true)...), Stored: []storedRunEvent{{Kind: "run_state", Raw: `{"delivery":"stored-needle"}`, Time: now}}, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Live: live, Truncated: true}}
+	return runDetail{Record: buildRun(Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}), Messages: projected, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Durable: []runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, Live: live, Truncated: true}}
 }
 
 func TestRunDetailVisualFixture(t *testing.T) {
@@ -51,6 +51,27 @@ func TestRunDetailVisualFixture(t *testing.T) {
 			}
 		}
 	}
+	// Export the same transcript through the planning-only observation surface.
+	d = runDetailFixture()
+	d.Record.Mode = "Planning"
+	d.Record.State = "waiting"
+	d.Record.InteractionStatus = "pending"
+	d.Record.InteractionKind = "propose_spec"
+	d.Policy = runPolicy{Reason: "Planning is observation-only. Replies, review, guidance, recovery and cancellation live on the card."}
+	for _, tab := range []string{"chat", "trace"} {
+		d.Tab = tab
+		p := pageData{v: viewParams{View: viewRuns}, detail: &d}
+		var out bytes.Buffer
+		if err := appPage(p).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if path := os.Getenv("JAWA_RUN_DETAIL_HTML"); path != "" {
+			if err := os.WriteFile(path+".planning-"+tab, out.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
 }
 
 func TestRunDetailPresentationAndIdentity(t *testing.T) {
@@ -71,18 +92,18 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 			seen[m[1]] = true
 		}
 		if tab == "chat" {
-			for _, absent := range []string{"Raw message", "Raw payload", "Stored workflow deliveries", "First equal-sequence"} {
+			for _, absent := range []string{"Stored workflow deliveries", "First equal-sequence", "Tool activity"} {
 				if strings.Contains(html, absent) {
 					t.Errorf("Chat contains %s", absent)
 				}
 			}
-			for _, present := range []string{"run-prose", "run-chat-activity", "fixture error", "<strong>drafts</strong>", "Unsupported content"} {
+			for _, present := range []string{"run-prose", "run-tool", "fixture error", "<strong>drafts</strong>", "Message content", "Raw payload"} {
 				if !strings.Contains(html, present) {
 					t.Errorf("Chat missing %s", present)
 				}
 			}
 		} else {
-			for _, present := range []string{"Raw message", "Raw payload", "Timestamp unavailable", "First equal-sequence", "Second equal-sequence", "Live only, not retained", "stored-needle", "collapsed-needle"} {
+			for _, present := range []string{"Snapshot messages", "Durable events", "Live events", "First equal-sequence", "Second equal-sequence", "collapsed-needle"} {
 				if !strings.Contains(html, present) {
 					t.Errorf("Trace missing %s", present)
 				}
@@ -110,29 +131,26 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 
 func TestRunDetailEmptyOfflineAndErrors(t *testing.T) {
 	for _, tab := range []string{"chat", "trace"} {
-		d := runDetail{Tab: tab, Observation: runObservation{Unreachable: true, Truncated: true}, Attempt: Attempt{Error: "<script>failure</script>"}}
+		d := runDetail{Tab: tab, Observation: runObservation{Unreachable: true, Truncated: true}, Record: buildRun(Attempt{Error: "<script>failure</script>"})}
 		var out bytes.Buffer
 		if err := runDetailContent(d).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)
 		}
 		html := out.String()
-		for _, present := range []string{"Agent unreachable", "No conversation snapshot available", "Activity truncated", "&lt;script&gt;"} {
-			if !strings.Contains(html, present) {
-				t.Errorf("%s missing %s", tab, present)
+		for _, absent := range []string{"Agent unreachable", "No conversation snapshot available", "Activity truncated", "&lt;script&gt;", "Timestamp unavailable", "run-trace-source", "Stored workflow", "not retained"} {
+			if strings.Contains(html, absent) {
+				t.Errorf("%s unexpectedly contains %s", tab, absent)
 			}
 		}
 		if strings.Contains(html, "<script>") {
 			t.Fatal("unescaped failure")
-		}
-		if tab == "chat" && !strings.Contains(html, "Inspect stored diagnostics in Trace") {
-			t.Fatal("offline diagnostic link missing")
 		}
 	}
 }
 
 func TestRunDisplayUnsupportedAndFullOutput(t *testing.T) {
 	messages := projectRunMessages([]kit.LLMMessage{{Role: "other", Content: []kit.LLMMessagePart{nil, kit.LLMTextPart{Text: "Following unsupported content"}}}})
-	if len(messages[0].Parts) != 2 || messages[0].Parts[0].Text != "Unsupported content; inspect raw message in Trace" || messages[0].Parts[1].Text != "Following unsupported content" {
+	if len(messages[0].Parts) != 2 || !messages[0].Parts[0].Unsupported || messages[0].Parts[1].Text != "Following unsupported content" {
 		t.Fatal("unknown part or following text lost")
 	}
 	sections := outputSections(`{"stdout":"ok","stderr":"warning","exit_code":1,"extra":"retained"}`)

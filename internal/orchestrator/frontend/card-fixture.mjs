@@ -63,6 +63,10 @@ try {
         }
         assert.equal(await page.locator('[data-project-id="zero"] .nav-count.live').count(), 0);
         if (view === 'board') {
+          const fixPR = page.locator('[data-card-id="fixer"] a[title="Open pull request"]');
+          assert.equal(await fixPR.count(), 1);
+          assert.ok(await fixPR.isVisible(), `Fix PR badge hidden at ${width}px`);
+          assert.equal(await fixPR.getAttribute('href'), 'https://github.com/example/visual-fixtures/pull/1');
           assert.match(await page.locator('.view-stats').textContent(), /4 active/);
           assert.equal(await page.getByRole('group', { name: '4 active work items: 2 planning, 1 building, 1 fixing (includes queued and archived work)', exact: true }).count(), 1);
         }
@@ -130,7 +134,14 @@ try {
         }
         assert.ok(Math.max(...metrics.map(b => b.height)) - Math.min(...metrics.map(b => b.height)) <= 1,
           'Linked and span badges must have equal single-line heights');
-        assert.ok(await page.locator('.task-card span.chip:not(.plain)').count() > 0);
+        // Planning status badges are now native run-history links in both views.
+        const planningBadges = page.locator('.task-card a.planning-badge');
+        assert.ok(await planningBadges.count() > 0);
+        for (const link of await planningBadges.all()) {
+          const id = await link.evaluate(el => el.closest('.task-card').dataset.cardId);
+          assert.equal(await link.getAttribute('href'), `/runs?card=${encodeURIComponent(id)}`);
+          assert.equal(await link.evaluate(el => el.tabIndex), 0);
+        }
         for (const [title, expected] of [
           ['View runs', null],
           ['Open linked issue', 'https://github.com/example/visual-fixtures/issues/52'],

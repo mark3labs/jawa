@@ -680,13 +680,20 @@ allow 30 seconds of future clock skew. Rotation invalidates new requests; it
 need not revoke existing streams. The agent watches changes and rechecks the key
 with bounded reads, failing closed on deletion, malformed keys or outages.
 
-Chat is a conversation-first view: wrapping user prose, sanitized assistant
-Markdown, and collapsed tool activity with accessible arguments and outputs.
-Raw messages, event payloads, and stored deliveries belong in Trace, not Chat.
-Offline Chat explains stale/missing snapshots and links to diagnostic sources.
-Trace searches individual entries, including collapsed bodies and raw payloads,
-without requesting the server on each keystroke. Clear the filter to recover
-from no matches. Native tab links and disclosures work without JavaScript.
+Chat uses Bonnie’s ordered message/tool hierarchy in Jawa’s theme: wrapping user
+prose, sanitized assistant Markdown, individually collapsed tool rows, and closed
+**Message content** / result **Raw payload** disclosures. JSON is formatted and
+escaped; stdout, stderr and metadata stay separate. The focusable transcript
+scrolls independently and follows new messages only while at the bottom. The
+compact composer grows with input; plain Enter inserts a newline and Ctrl+Enter
+submits through native validation. Drafts remain editable while sending; only a
+confirmed success clears an unchanged submitted draft.
+
+Trace contains separate API-backed tables for snapshot messages, durable events
+and live events, omitting empty sources and columns. Search includes collapsed
+payloads without server requests. Missing fields and empty results stay silent;
+there are no missing-history or offline banners. Native links and disclosures
+work without JavaScript. Local workflow deliveries/outcomes are not shown here.
 
 Chat steers a current running build or queues a follow-up after accepted typed
 completion/readiness. A completed run without accepted completion, failed run,
@@ -697,14 +704,14 @@ NATS mutations are **never retried**: a lost reply or the 25-second synchronous
 send deadline has an unknown outcome and may interrupt execution. Check the
 conversation before sending again.
 
-Trace is deliberately lower fidelity: selected-branch snapshot messages have
-no reliable turn/timestamps; durable BONNIE activity is grouped by turn, stored
-workflow deliveries use their own received times/order, and attached-viewer Kit
-activity is labeled live-only and is not retained. Missed live activity cannot
-be replayed. In-memory event histories are bounded to 256 entries per source;
-truncation is labeled. Cold offline pages have stored outcome/events, not a
-persisted conversation. Shared observations cap at 16 runs per agent and 64
-viewers per run (256 hubs total); closing the last viewer cancels upstream.
+The API is not a full journal: selected-branch snapshot messages have no reliable
+turn/timestamp mapping. Events retain source order and supplied turn IDs, sequence,
+UTC time, kind and state only; no journal positions or roles are inferred.
+Live activity is not persisted or replayed. Histories remain bounded to 256 entries
+per source. Cold offline pages have no persisted conversation; stale observations
+remain read-only. These transport limits are documented here, not as UI notices.
+Shared observations cap at 16 runs per agent and 64 viewers per run (256 hubs
+total); closing the last viewer cancels upstream.
 
 **Broker trust boundary (accepted deployment limitation):** agents share trusted
 worker credentials. Direct worker publication to `bonnie.api.>` and subscription
@@ -749,3 +756,19 @@ card deletion; successful remote creation followed by a local save failure
 retries only card saving. Exact-once remote creation cannot be guaranteed across
 a lost response. Back up the private database before migration; the ledger
 retains submitted drafts and outcome evidence, never provider credentials.
+
+### Planning run history
+
+Planning status badges and **View runs** open card-filtered Runs on Board and
+Archive. Runs lists Planning, Build and Fix separately, including queued tasks
+and all retained sessions. **Open** appears once the remote identity is pinned;
+planning Chat/Trace is read-only. Return to the card to reply, revise, approve,
+recover or cancel. Replies/resumes keep one history entry, retries add another,
+and approval shows both the planner and its distinct build. Archived/cancelled
+history remains discoverable until card/project deletion.
+
+Planning input/specification review appears under **Blocked**, unfinished work or
+queued replies under **Active**, and failed turns under **Failed**. **Ready**
+continues to mean implementation/PR readiness, not plan approval. Stored workflow
+state is separate from the live BONNIE snapshot; offline agents show retained
+diagnostics and cannot supply a cold conversation archive.

@@ -24,7 +24,7 @@ templ planningContent(d pageData) {
 				<section class="planning-section" aria-label="Latest run">
 					@card.Card(card.Props{Class: "planning-surface"}) {
 						<h2>Latest run</h2>
-						@cardChips(d, c)
+						<div class="card-meta">@cardChips(d, c)</div>
 						if r,ok := d.readyOverrides[la[0].ID]; ok {
 							<dl class="facts"><div><dt>Operator</dt><dd>{ r.Operator }</dd></div><div><dt>Reason</dt><dd>{ r.Reason }</dd></div></dl>
 						}
@@ -159,6 +159,25 @@ templ planningContent(d pageData) {
 						<p class="meta">This card has no planning session.</p>@button.Button(button.Props{Class: "btn", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
 	View runs
 }
+					}
+				</section>
+			}
+			if d.hasRuns(c.ID) {
+				<section class="planning-section" aria-label="Execution history">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Execution history</h2>
+						for _, run := range filterHistory(d.runs, viewParams{Card: c.ID, State: "all"}) {
+							if run.Mode == "Planning" {
+								<div class="plan-actions">
+									<span>Planning #{ strconv.Itoa(run.Number) } · { run.label() }</span>
+									if run.pinned() {
+										@button.Button(button.Props{Href: run.path("chat"), Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"role": "link"}}) {
+											Open run
+										}
+									}
+								</div>
+							}
+						}
 					}
 				</section>
 			}

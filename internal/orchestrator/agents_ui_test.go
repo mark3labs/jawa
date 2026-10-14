@@ -3,8 +3,10 @@ package orchestrator
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/bonnie/presence"
 )
@@ -66,4 +68,37 @@ func TestActivityPresenceLabels(t *testing.T) {
 		}
 	}
 	status(t, request(a, "GET", "/activity", nil), 303)
+}
+
+// Shared component fixture exports a real Agents page and a keyed replacement.
+func TestAgentsComponentFixture(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	rec := presence.Record{Identity: presence.Identity{Agent: "fixture", Instance: "one"}, State: presence.Ready, UpdatedAt: now, Labels: map[string]string{"jawa.provider": "custom", "jawa.model": "org/model"}, Endpoints: []presence.Endpoint{{Channel: "nats", Address: "bonnie.tasks", Input: true, Ready: true}}}
+	d := pageData{v: viewParams{View: viewAgents}, now: now, presence: true, agents: []presence.Record{rec}, projects: []Project{{ID: "p", Name: "Jawa"}}, cards: []Card{{ID: "long", ProjectID: "p", Title: strings.Repeat("Long run title ", 30), Status: "Building"}}, attempts: []Attempt{{ID: "run", CardID: "long", AgentID: "fixture", State: "running", RunState: "running"}}}
+	var out bytes.Buffer
+	if err := appPage(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "org/model") || !strings.Contains(out.String(), "Long run title") {
+		t.Fatal("missing agent fixture fields")
+	}
+	path := os.Getenv("JAWA_COMPONENT_FIXTURE")
+	if path != "" {
+		if err := os.WriteFile(path+".agents", out.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.agents[0].Labels = map[string]string{"jawa.provider": "replacement", "jawa.model": "new/slashed/model"}
+	out.Reset()
+	if err := agentsContent(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "new/slashed/model") || strings.Contains(out.String(), "org/model") {
+		t.Fatal("presence labels did not replace")
+	}
+	if path != "" {
+		if err := os.WriteFile(path+".agents-patch", out.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
