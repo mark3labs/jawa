@@ -475,3 +475,20 @@ func TestTargetedOutboxRestartRetainsRouteAndPayload(t *testing.T) {
 		t.Fatalf("restart identity %+v %v", after, err)
 	}
 }
+
+func TestTargetedPlanningCannotReplaceExistingTurn(t *testing.T) {
+	_, w, c := planningLocal(t)
+	if err := w.startPlanningTo(c.ID, 0, "planner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.startPlanningTo(c.ID, 0, "other"); err == nil || !strings.Contains(err.Error(), "planning already started") {
+		t.Fatalf("expected explicit rejection: %v", err)
+	}
+	if err := w.startPlanning(c.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	d := planningDetails(t, w, c.ID)
+	if len(d.Turns) != 1 || d.Turns[0].TargetAgentID != "planner" {
+		t.Fatalf("replaced planning %+v", d.Turns)
+	}
+}

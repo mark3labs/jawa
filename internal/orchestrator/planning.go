@@ -203,7 +203,10 @@ func (w *Workflow) startPlanningTo(id string, pos int, target string) error {
 	if err != nil {
 		return workflowCardError(err)
 	}
-	if c.Status == "Planning" && target == "" {
+	if c.Status == "Planning" {
+		if target != "" {
+			return errors.New("planning already started; cancel before choosing a new planning agent")
+		}
 		if err = moveWorkflowCard(tx, id, c.ProjectID, c.Status, c.Status, pos); err != nil {
 			return err
 		}
