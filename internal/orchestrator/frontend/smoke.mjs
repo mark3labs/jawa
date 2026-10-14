@@ -1,3 +1,4 @@
+import {chooseSelect} from './select.mjs';
 import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 // playwright (without @playwright/test) supplies locators, not expect.
@@ -302,7 +303,7 @@ try {
  await page.locator('#run-detail-content').waitFor();
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
  await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
- const toolActivity = page.locator('.run-chat-activity').first();
+ const toolActivity = page.locator('.run-tool').first();
  await toolActivity.locator(':scope > summary').click();
  const activityID = await toolActivity.getAttribute('id');
  await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');
@@ -332,10 +333,10 @@ try {
   await page.setViewportSize({width:1440,height:1000});
  }
  await page.getByRole('link',{name:'Trace',exact:true}).click();
- await page.getByText('Snapshot history — turn/timestamps unavailable',{exact:true}).waitFor();
+ await page.getByText('Snapshot messages',{exact:true}).waitFor();
  await page.waitForFunction(()=>window.smokeSSE.url && new URL(window.smokeSSE.url).pathname.endsWith('/events') && new URL(window.smokeSSE.url).searchParams.get('tab') === 'trace');
  assert.equal(await page.locator('#run-composer').count(),0);
- const traceEntry=page.locator('[data-trace-entry] > details').first();
+ const traceEntry=page.locator('[data-trace-entry] details').first();
  await traceEntry.locator(':scope > summary').click();
  const traceID=await traceEntry.getAttribute('id');
  await page.waitForTimeout(1500);
@@ -472,7 +473,7 @@ try {
  await expect(page.locator('#runs-content details[id^="run-planning-"]')).toHaveCount(1);
  assert.equal(await page.locator('#runs-content details[id^="run-planning-"]').getAttribute('id'), planningEntryID);
  await screen(`/planning?card=${resumableID}`, 'planning');
- await page.getByLabel('Plan revision to approve').selectOption('2');
+ await chooseSelect(page, '#plan-revision', '2', true);
  await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();

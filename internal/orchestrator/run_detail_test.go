@@ -72,7 +72,7 @@ func TestRunDetailRoutesAndReadOnly(t *testing.T) {
 	status(t, request(a, "GET", "/runs/"+attempt.ID+"/events", nil), http.StatusUnauthorized)
 	page := request(a, "GET", path, nil, session, csrf)
 	status(t, page, 200)
-	for _, text := range []string{"run-detail-content", "run-detail-controls", "Agent unreachable", "/runs/" + attempt.ID + "/events?tab=chat"} {
+	for _, text := range []string{"run-detail-content", "run-detail-controls", "/runs/" + attempt.ID + "/events?tab=chat"} {
 		if !strings.Contains(page.Body.String(), text) {
 			t.Fatal("missing", text)
 		}
@@ -127,7 +127,7 @@ func TestRunDisplayEscapesUntrustedContent(t *testing.T) {
 		if strings.Contains(html, "<script>") || strings.Contains(html, "<img") {
 			t.Fatal("unsafe HTML")
 		}
-		if !strings.Contains(html, "<strong>bold</strong>") || !strings.Contains(html, "&lt;img") {
+		if tab == "chat" && (!strings.Contains(html, "<strong>bold</strong>") || !strings.Contains(html, "&lt;img")) {
 			t.Fatal("wrong projection")
 		}
 	}

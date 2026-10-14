@@ -5,7 +5,7 @@ import (
  "github.com/axadrn/shadcn-templ/v2/components/button"
  "github.com/axadrn/shadcn-templ/v2/components/dialog"
  "github.com/axadrn/shadcn-templ/v2/components/label"
- "github.com/axadrn/shadcn-templ/v2/components/nativeselect"
+ selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
  "github.com/axadrn/shadcn-templ/v2/components/textarea"
  "github.com/axadrn/shadcn-templ/v2/components/checkbox"
 )
@@ -23,9 +23,7 @@ templ assignmentDialog(d pageData) {
     <input type="hidden" name="mode" data-bind:assign-mode/>
     <div class="field">
      @label.Label(label.Props{For:"assignment-agent"}) { Connected agent }
-     @nativeselect.NativeSelect(nativeselect.Props{ID:"assignment-agent", Name:"target_agent_id", Required:true}) {
-      @nativeselect.Option(nativeselect.OptionProps{Value:""}) { Select an agent }
-     }
+     @selectField("assignment-agent", "target_agent_id", "", true, []selectcomp.ItemData{{Value: "", Label: "Select an agent"}}, nil)
      <p data-agent-status class="meta" role="status" aria-live="polite"></p>
      @button.Button(button.Props{Type:button.TypeButton, Variant:button.VariantOutline, Attributes:templ.Attributes{"data-agent-refresh":true}}) { Refresh agents }
     </div>

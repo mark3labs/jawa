@@ -28,6 +28,9 @@ func TestComponentSourceConformance(t *testing.T) {
 			t.Errorf("%s contains a raw visible control", file)
 		}
 		text := string(source)
+		if strings.Contains(text, "nativeselect") {
+			t.Errorf("%s uses NativeSelect", file)
+		}
 		// Hidden move-form controls are the only typeless native transport inputs.
 		for _, field := range rawInput.FindAllString(text, -1) {
 			if strings.Contains(field, `type="hidden"`) {
@@ -113,14 +116,14 @@ func TestComponentBrowserFixture(t *testing.T) {
 
 func TestPlanningComponentFixture(t *testing.T) {
 	p := Project{ID: "fixture", Name: "Planning fixture", Repo: "example/fixture", BaseBranch: "master"}
-	c := Card{ID: "plan", ProjectID: p.ID, Title: "Review reusable controls", Description: "Original request", Status: "Planning"}
-	detail := PlanningDetail{Session: PlanningSession{State: "ready", Spec: "## Plan\nKeep the compact Jawa identity.", Revision: 1}, CanApprove: true, Revisions: []PlanningRevision{{Number: 1, Spec: "Reviewed specification"}}}
-	d := pageData{v: viewParams{View: viewPlanning, Card: c.ID}, projects: []Project{p}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, now: time.Now()}
+	c := Card{ID: "plan", ProjectID: p.ID, Title: "Review reusable controls", Description: "Original request", Status: "Planning", IssueURL: "https://github.com/example/fixture/issues/79"}
+	detail := PlanningDetail{Session: PlanningSession{State: "ready", Spec: "## Plan\nKeep the compact Jawa identity.", Revision: 1, UpdatedAt: time.Now()}, Turns: []PlanningTurn{{Number: 1, State: "waiting", AgentID: "fixture-agent", UpdatedAt: time.Now()}}, CanApprove: true, Revisions: []PlanningRevision{{Number: 1, Spec: "Reviewed specification"}}}
+	d := pageData{v: viewParams{View: viewPlanning, Card: c.ID}, projects: []Project{p}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, attempts: []Attempt{{ID: "latest", CardID: c.ID, State: "running", AgentID: "fixture-agent", Number: 1}}, now: time.Now()}
 	var out bytes.Buffer
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, slot := range []string{"card", "checkbox", "native-select", "native-select-option", "badge", "button"} {
+	for _, slot := range []string{"card", "checkbox", "select-trigger", "select-item", "badge", "button"} {
 		if !strings.Contains(out.String(), `data-slot="`+slot+`"`) {
 			t.Errorf("missing %s", slot)
 		}
@@ -155,6 +158,42 @@ func TestComponentSwitchPersistence(t *testing.T) {
 			if strings.Contains(native, " checked") != (value == "true") {
 				t.Fatalf("switch persistence: %s", native)
 			}
+		}
+	}
+}
+
+func TestSelectDefaults(t *testing.T) {
+	projects := []Project{{ID: "first", Name: "First project"}, {ID: "second", Name: "Second <project>"}}
+	for _, tc := range []struct {
+		projects []Project
+		selected string
+		want     string
+	}{{projects, "", "first"}, {projects, "missing", "first"}, {projects, "second", "second"}, {nil, "second", ""}} {
+		if got := projectSelectDefault(tc.projects, tc.selected); got != tc.want {
+			t.Errorf("default = %q, want %q", got, tc.want)
+		}
+	}
+	for _, state := range []string{"uncertain", "rejected"} {
+		var out bytes.Buffer
+		if err := selectField("recovery", "issue_recovery", "", false, recoverySelectItems(state), nil).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{`role="combobox"`, `id="recovery"`, `data-templ-controls="recovery-content"`, `id="recovery-content-list" role="listbox"`, `name="issue_recovery" value=""`, `No recovery selected`, `data-templ-value="unlinked"`} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("missing %s", want)
+			}
+		}
+		if strings.Contains(out.String(), `data-templ-value="retry"`) != (state == "rejected") {
+			t.Fatal("retry eligibility")
+		}
+	}
+	var out bytes.Buffer
+	if err := selectField("project", "project_id", "second", true, projectSelectItems(projects), nil).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`name="project_id" value="second" required`, `aria-required`, `Second &lt;project&gt;`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %s", want)
 		}
 	}
 }

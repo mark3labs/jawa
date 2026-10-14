@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func issueForm(p Project, token string) url.Values {
@@ -276,6 +278,15 @@ func TestIssueRecoveryFixture(t *testing.T) {
 	if err = os.WriteFile(path, page.Body.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
+	var selector bytes.Buffer
+	d := pageData{v: viewParams{View: viewBoard, Project: "alpha"}, projects: []Project{{ID: "alpha", Name: "Alpha"}, {ID: "beta & other", Name: "Beta"}, {ID: "", Name: "Choose a project"}}, now: time.Now()}
+	if err := appPage(d).Render(t.Context(), &selector); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".selector", selector.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	r := httptest.NewRequest("POST", "/cards", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Datastar-Request", "true")

@@ -5,10 +5,14 @@ set -eu
 cd "$(dirname "$0")"
 SHADCN="$(go list -m -f '{{.Dir}}' github.com/axadrn/shadcn-templ/v2)"
 # Bundle only the pinned shadcn behavior we use, before the Rocket owners.
-# Keep the entry temporary: component sources remain owned by the Go module.
-trap 'rm -f src/.build.js src/.build.css' EXIT
-printf 'import "%s/components/baseui/lifecycle.js";\nimport "%s/components/checkbox/checkbox.js";\nimport "%s/components/switch/switch.js";\nimport "./app.js";\n' "$SHADCN" "$SHADCN" "$SHADCN" > src/.build.js
+# Keep entries temporary: component sources remain owned by the Go module.
+# The runtime list lives in runtime.sh, shared with the dev watch (dev.mjs).
+trap 'rm -f src/.build.js src/.build.css src/.runtime.js' EXIT
+sh ./runtime.sh > src/.runtime.js
+printf 'import "./select.js";\nimport "./app.js";\n' > src/.build.js
 esbuild src/.build.js --bundle --minify --outfile=../assets/app.js
+cat src/.runtime.js ../assets/app.js > src/.build.js
+esbuild src/.build.js --minify --outfile=../assets/app.js
 cp node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2 ../assets/inter.woff2
 # Embed redistribution notices alongside the assets in the standalone binary.
 cp DATASTAR-LICENSE.md ../assets/DATASTAR-LICENSE.txt

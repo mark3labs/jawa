@@ -5,12 +5,18 @@
 // Datastar evaluates existing effects during module initialization, so their
 // global helpers must be registered by an earlier dependency.
 import './acknowledgement.js';
+import './dialog-errors.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
 import {setupAgentSelector} from './agent-selector.js';
+import {setupRunDetail} from './run-detail.js';
 import {setupIssueSelector} from './issue-selector.js';
 
 rocket('jawa-agent-selector', {mode: 'light', setup: ({host, cleanup}) => setupAgentSelector(host, cleanup)});
+rocket('jawa-run-detail', {
+  mode: 'light',
+  setup: ({host, cleanup}) => setupRunDetail(host.parentElement, mergePaths, cleanup),
+});
 
 // Installation is progressive enhancement; HTTP deployments remain usable.
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -235,7 +241,7 @@ rocket('jawa-shortcuts', {
   setup: ({$, cleanup}) => {
     const destinations = {b: '/board', r: '/runs', a: '/agents', s: '/settings'};
     let armed = 0;
-    const typing = el => el?.closest?.('input,textarea,select,[contenteditable="true"]');
+    const typing = el => el?.closest?.('input,textarea,select,[role="combobox"],[role="listbox"],[role="option"],[contenteditable="true"]');
     const onKey = event => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (typing(event.target) || document.querySelector('dialog[open]')) return;
@@ -261,7 +267,7 @@ rocket('jawa-shortcuts', {
 
 // Refresh state outlives board/form replacements; only finite refresh POSTs own it.
 const pendingRefreshes = new Set();
-mergePaths([['prRefreshing', false]]);
+mergePaths([['prRefreshing', false], ['runSending', false], ['runConfirmedDraft', '']]);
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
   if (!el?.matches?.('form.pr-refresh-form')) return;
@@ -276,7 +282,7 @@ document.addEventListener('datastar-fetch', event => {
 // and clears a form once the server reports success (no error notice showing).
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
-  if (!el?.matches?.('form') || el.matches('.pr-refresh-form') || el.closest('#assignment-dialog')) return;
+  if (!el?.matches?.('form') || el.matches('.pr-refresh-form, #run-composer') || el.closest('#assignment-dialog')) return;
   const buttons = el.querySelectorAll('button[type="submit"]');
   if (type === 'started') {
     el.dataset.pending = '';
@@ -286,6 +292,8 @@ document.addEventListener('datastar-fetch', event => {
     buttons.forEach(button => { button.disabled = false; });
     const notice = document.getElementById('notice');
     const failed = notice && !notice.hidden && !notice.classList.contains('info');
-    if (!failed && (el.closest('dialog') || el.hasAttribute('data-reset-on-success')) && (el.action !== new URL('/cards', location.href).href || !el.closest('dialog')?.open)) el.reset();
+    // A dialog resets only on its correlated server success patch. Finishing
+    // a 200 error SSE or an aborted request is not proof of success.
+    if (!el.closest('dialog') && !failed && el.hasAttribute('data-reset-on-success')) el.reset();
   }
 });

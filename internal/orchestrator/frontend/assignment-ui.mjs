@@ -1,4 +1,5 @@
 import {launchBrowser} from './browser.mjs';
+import {chooseSelect} from './select.mjs';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -33,7 +34,7 @@ try {
  for(const width of [320,390,768,1440]) {
   await page.setViewportSize({width,height:900});await page.goto(origin);
   await open('todo','Build with agent');
-  await page.locator('#assignment-agent').selectOption('busy-agent');
+  await chooseSelect(page,'#assignment-agent','busy-agent');
   assert.equal(await page.locator('#assignment-dialog [data-agent-submit]').isEnabled(),true);
   assert.equal(await page.locator('#assignment-dialog [name="acknowledge"]:enabled').count(),0);
   const box=await page.locator('#assignment-dialog').boundingBox();assert.ok(box.x>=0 && box.x+box.width<=width+1,`dialog overflow ${width}`);
@@ -43,7 +44,7 @@ try {
  }
  await open('planning','Build with agent');
  assert.match(await page.locator('#assignment-dialog').textContent(),/Reviewed specification/);
- await page.locator('#assignment-agent').selectOption('busy-agent');
+ await chooseSelect(page,'#assignment-agent','busy-agent');
  const submit=page.locator('#assignment-dialog [data-agent-submit]');
  assert.equal(await submit.isDisabled(),true);
  // Real shadcn control must become keyboard-operable when its plan is selected.
@@ -51,13 +52,13 @@ try {
  assert.equal(await submit.isEnabled(),true);
  await submit.click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Fixture rejection'));
  assert.equal(await page.locator('#assignment-dialog').isVisible(),true);
- assert.equal(await page.locator('#assignment-agent').inputValue(),'busy-agent');
+ assert.equal(await page.locator('#assignment-dialog [name="target_agent_id"]').inputValue(),'busy-agent');
  assert.equal(await page.locator('#assignment-dialog [name="acknowledge"]').isChecked(),true);
  assert.equal(requests[0].expected_revision,'2');assert.equal(requests[0].acknowledge,'yes');
  reject=false;await submit.click();await page.waitForFunction(()=>!document.querySelector('#assignment-dialog').open);
  await open('ready','Fix with agent');
- assert.equal(await page.locator('#assignment-agent').inputValue(),'');
- await page.locator('#assignment-agent').selectOption('busy-agent');
+ assert.equal(await page.locator('#assignment-dialog [name="target_agent_id"]').inputValue(),'');
+ await chooseSelect(page,'#assignment-agent','busy-agent');
  await page.locator('#assignment-message').fill('Address review feedback');
  if(process.env.JAWA_ASSIGNMENT_SCREENSHOTS) {
   await mkdir(process.env.JAWA_ASSIGNMENT_SCREENSHOTS,{recursive:true});

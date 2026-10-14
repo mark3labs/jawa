@@ -13,7 +13,7 @@ import (
 func TestCardVisualFixture(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
-	p := Project{ID: "abc", Name: "Card status fixtures", Provider: "github", Repo: "example/visual-fixtures", BaseBranch: "main"}
+	p := Project{ID: "abc", Name: "Jawa", Provider: "github", Repo: "example/visual-fixtures", BaseBranch: "master"}
 	d := pageData{v: viewParams{View: viewBoard, Project: p.ID}, now: now, projects: []Project{p}, prChecks: map[string]PRCheck{}}
 	for i, state := range []string{"conflict", "merged", "error"} {
 		id := []string{"a1", "a2", "a3"}[i]
@@ -44,7 +44,7 @@ func TestCardVisualFixture(t *testing.T) {
 		case "Done":
 			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/visual-fixtures/pull/1", UpdatedAt: now})
 		case "Fix":
-			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", AgentID: "fix-agent", UpdatedAt: now})
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", RepairPRURL: "https://github.com/example/visual-fixtures/pull/1", AgentID: "fix-agent", UpdatedAt: now})
 		}
 	}
 	d.attempts = append(d.attempts, Attempt{CardID: "b1", Number: 1, State: "running", AgentID: "builder-agent", UpdatedAt: now})

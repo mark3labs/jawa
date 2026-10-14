@@ -13,7 +13,7 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/kbd"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
-	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
+	selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
 	"net/http"
 )
@@ -412,13 +412,13 @@ templ topbar(d pageData) {
 		}
 		<div class="topbar-actions">
 			if d.v.View == viewBoard || d.v.View == viewArchive {
-				@label.Label(label.Props{Class: "search"}) {
+				<div class="search">
 					@icon("search")
 					@input.Input(input.Props{ID: "card-filter", Class: "filter", Placeholder: "Filter cards", Attributes: templ.Attributes{"aria-label": "Filter cards", "data-bind:filter": "", "autocomplete": "off"}})
 					@kbd.Kbd() {
 						/
 					}
-				}
+				</div>
 			}
 			@agentStatus(d)
 			if len(d.projects) > 0 {
@@ -433,16 +433,18 @@ templ topbar(d pageData) {
 
 // agentStatus is a live patch root present on every screen.
 templ agentStatus(d pageData) {
-	@badge.Badge(badge.Props{Variant: badge.VariantOutline, ID: "agent-status", Class: templ.Classes("agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence)).String(), Href: "/agents", Attributes: templ.Attributes{"title": "Open agents"}}) {
-		<span class="pulse-dot"></span>
-		if !d.presence {
-			<span>Presence unavailable</span>
-		} else if n := readyAgents(d.agents); n == 0 {
-			<span>No agents online</span>
-		} else if n == 1 {
-			<span>1 agent online</span>
-		} else {
-			<span>{ strconv.Itoa(n) } agents online</span>
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline, ID: "agent-status", Class: templ.Classes("agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence)).String(), Href: "/agents", Attributes: templ.Attributes{"title": "Open agents", "hidden": d.detail != nil && (!d.presence || readyAgents(d.agents) == 0)}}) {
+		if d.detail == nil || (d.presence && readyAgents(d.agents) > 0) {
+			<span class="pulse-dot"></span>
+			if !d.presence {
+				<span>Presence unavailable</span>
+			} else if n := readyAgents(d.agents); n == 0 {
+				<span>No agents online</span>
+			} else if n == 1 {
+				<span>1 agent online</span>
+			} else {
+				<span>{ strconv.Itoa(n) } agents online</span>
+			}
 		}
 	}
 }
@@ -454,16 +456,25 @@ templ notification(message, tone string) {
 	}
 }
 
+// Operation-keyed roots isolate responses from a dismissed/reopened dialog.
+templ dialogError(name, operation, message string) {
+	@alert.Alert(alert.Props{ID: dialogErrorID(name, operation), Class: "notice dialog-error", Attributes: templ.Attributes{"role": "alert", "aria-live": "polite", "hidden": message == "", "data-succeeded": operation != "" && message == ""}}) {
+		{ message }
+	}
+}
+
 templ dialogs(d pageData) {
 	@assignmentDialog(d)
-	<dialog id="fix-dialog" aria-labelledby="fix-dialog-title" data-effect="if ($fixOpen && !el.open) el.showModal(); else if (!$fixOpen && el.open) el.close()" data-on:close="$fixOpen = false" data-on:cancel="$fixOpen = false">
+	<dialog id="fix-dialog" aria-labelledby="fix-dialog-title" data-effect="window.jawaDialog(el, $fixOpen)" data-on:close="if (!el.open) $fixOpen = false" data-on:cancel="$fixOpen = false">
+		@dialogError("fix", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "fix-dialog-title"}) {
 			Send to Fix
 		}
 		@dialog.Description() {
 			Describe what needs fixing. An agent will update the existing pull request on its original branch, without merging it.
 		}
-		<form method="post" action="/cards/fix" data-on:submit__prevent="@post('/cards/fix', {contentType:'form'})">
+		<form method="post" action="/cards/fix" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/fix', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:fix-card/>
@@ -483,14 +494,16 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<dialog id="guide-dialog" aria-labelledby="guide-dialog-title" data-effect="if ($guideOpen && !el.open) el.showModal(); else if (!$guideOpen && el.open) el.close()" data-on:close="$guideOpen = false" data-on:cancel="$guideOpen = false">
+	<dialog id="guide-dialog" aria-labelledby="guide-dialog-title" data-effect="window.jawaDialog(el, $guideOpen)" data-on:close="if (!el.open) $guideOpen = false" data-on:cancel="$guideOpen = false">
+		@dialogError("guide", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "guide-dialog-title"}) {
 			Reply with guidance
 		}
 		@dialog.Description() {
 			The agent paused on a blocker. Your guidance resumes the same run, keeping its conversation, branch and work so far.
 		}
-		<form method="post" action="/cards/guide" data-on:submit__prevent="@post('/cards/guide', {contentType:'form'})">
+		<form method="post" action="/cards/guide" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/guide', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:guide-card/>
@@ -511,8 +524,10 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<dialog id="project-dialog" aria-labelledby="project-dialog-title" data-effect="if ($projectOpen && !el.open) el.showModal(); else if (!$projectOpen && el.open) el.close()" data-on:close="$projectOpen = false" data-on:cancel="$projectOpen = false">
-		<form method="post" action="/projects" data-on:submit__prevent="@post('/projects', {contentType:'form'})">
+	<dialog id="project-dialog" aria-labelledby="project-dialog-title" data-effect="window.jawaDialog(el, $projectOpen)" data-on:close="if (!el.open) $projectOpen = false" data-on:cancel="$projectOpen = false">
+		@dialogError("project", "", "")
+		<form method="post" action="/projects" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/projects', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			@dialog.Title(dialog.TitleProps{ID: "project-dialog-title"}) {
@@ -520,18 +535,11 @@ templ dialogs(d pageData) {
 			}
 			<p class="muted">Connect a repository so agents can open pull requests against it.</p>
 			@textField("project-name", "name", "Name", "", true)
-			<div class="field">
+			<div class="field" data-on:change="$projectProvider = evt.target.value">
 				@label.Label(label.Props{For: "project-provider"}) {
 					Provider
 				}
-				@nativeselect.NativeSelect(nativeselect.Props{ID: "project-provider", Name: "provider", Attributes: templ.Attributes{"data-bind:project-provider": true}}) {
-					@nativeselect.Option(nativeselect.OptionProps{Value: "github"}) {
-						GitHub
-					}
-					@nativeselect.Option(nativeselect.OptionProps{Value: "forgejo"}) {
-						Forgejo
-					}
-				}
+				@selectField("project-provider", "provider", "github", false, []selectcomp.ItemData{{Value: "github", Label: "GitHub"}, {Value: "forgejo", Label: "Forgejo"}}, nil)
 			</div>
 			<div class="field" hidden data-attr:hidden="$projectProvider !== 'forgejo'">
 				@label.Label(label.Props{For: "project-forgejo-url"}) {
@@ -555,8 +563,10 @@ templ dialogs(d pageData) {
 			</div>
 		</form>
 	</dialog>
-	<dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="if ($cardOpen && !el.open) el.showModal(); else if (!$cardOpen && el.open) el.close()" data-on:close="$cardOpen = false" data-on:cancel="$cardOpen = false">
-		<form method="post" action="/cards" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards', {contentType:'form', retry: 'never'})">
+	<dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="window.jawaDialog(el, $cardOpen)" data-on:close="if (!el.open) $cardOpen = false" data-on:cancel="$cardOpen = false">
+		@dialogError("card", "", "")
+		<form method="post" action="/cards" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			<input id="card-issue-submission" type="hidden" name="issue_submission" value={ newID() }/>
 			@viewFields(d.v)
@@ -568,13 +578,7 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "card-project"}) {
 					Project
 				}
-				@nativeselect.NativeSelect(nativeselect.Props{Name: "project_id", ID: "card-project", Required: true}) {
-					for _, p := range d.projects {
-						@nativeselect.Option(nativeselect.OptionProps{Value: p.ID, Selected: p.ID == d.v.Project}) {
-							{ p.Name }
-						}
-					}
-				}
+				@selectField("card-project", "project_id", projectSelectDefault(d.projects, d.v.Project), true, projectSelectItems(d.projects), nil)
 			</div>
 			@textField("card-title", "title", "Title", "", true)
 			<div class="field">
@@ -588,11 +592,7 @@ templ dialogs(d pageData) {
 					Open issue (optional)
 				}
 				<div class="issue-autofill-row">
-					@nativeselect.NativeSelect(nativeselect.Props{ID: "card-issue", Name: "issue_url", Attributes: templ.Attributes{"aria-describedby": "card-issue-status"}}) {
-						@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
-							No linked issue
-						}
-					}
+					@selectField("card-issue", "issue_url", "", false, []selectcomp.ItemData{{Value: "", Label: "No linked issue"}}, templ.Attributes{"aria-describedby": "card-issue-status"})
 					@label.Label(label.Props{ID: "card-create-issue-label", For: "card-create-issue", Attributes: templ.Attributes{"data-create-issue": true}}) {
 						@checkbox.Checkbox(checkbox.Props{ID: "card-create-issue", Name: "create_issue", Value: "yes", DefaultChecked: true, Attributes: templ.Attributes{"aria-labelledby": "card-create-issue-label", "aria-describedby": "card-create-issue-help"}})
 						Create issue
@@ -608,9 +608,6 @@ templ dialogs(d pageData) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
 					Refresh issues
 				}
-				<noscript>
-					Issue creation occurs only on submit. Uncheck Create issue for an unlinked card. Enable JavaScript to select an open issue.
-				</noscript>
 			</jawa-issue-selector>
 			<div class="dialog-actions">
 				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {
@@ -620,7 +617,8 @@ templ dialogs(d pageData) {
 			</div>
 		</form>
 	</dialog>
-	<dialog id="delete-dialog" aria-labelledby="delete-dialog-title" data-effect="if ($deleteOpen && !el.open) el.showModal(); else if (!$deleteOpen && el.open) el.close()" data-on:close="$deleteOpen = false" data-on:cancel="$deleteOpen = false">
+	<dialog id="delete-dialog" aria-labelledby="delete-dialog-title" data-effect="window.jawaDialog(el, $deleteOpen)" data-on:close="if (!el.open) $deleteOpen = false" data-on:cancel="$deleteOpen = false">
+		@dialogError("delete", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "delete-dialog-title"}) {
 			Delete this card?
 		}
@@ -628,7 +626,8 @@ templ dialogs(d pageData) {
 			This permanently removes the card and its attempt history. This cannot be undone.
 			<span data-show="$deleteOrphan">This run needs reconciliation. Deleting does not stop the agent: it may orphan a run that continues working, committing, or opening pull requests.</span>
 		}
-		<form method="post" action="/cards/delete" data-on:submit__prevent="@post('/cards/delete', {contentType:'form'})">
+		<form method="post" action="/cards/delete" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/delete', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:delete-card/>
@@ -646,14 +645,16 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<dialog id="cancel-dialog" aria-labelledby="cancel-dialog-title" data-effect="if ($cancelOpen && !el.open) el.showModal(); else if (!$cancelOpen && el.open) el.close()" data-on:close="$cancelOpen = false" data-on:cancel="$cancelOpen = false">
+	<dialog id="cancel-dialog" aria-labelledby="cancel-dialog-title" data-effect="window.jawaDialog(el, $cancelOpen)" data-on:close="if (!el.open) $cancelOpen = false" data-on:cancel="$cancelOpen = false">
+		@dialogError("cancel", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "cancel-dialog-title"}) {
 			Request cancellation?
 		}
 		@dialog.Description() {
 			This asks the agent to stop its current run; cancellation may not be confirmed. It cannot undo external actions already taken, such as commits or pull requests.
 		}
-		<form method="post" action="/cards/cancel" data-on:submit__prevent="@post('/cards/cancel', {contentType:'form'})">
+		<form method="post" action="/cards/cancel" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/cancel', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:cancel-card/>
@@ -667,14 +668,16 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<dialog id="force-dialog" aria-labelledby="force-dialog-title" data-effect="if ($forceOpen && !el.open) el.showModal(); else if (!$forceOpen && el.open) el.close()" data-on:close="$forceOpen = false" data-on:cancel="$forceOpen = false">
+	<dialog id="force-dialog" aria-labelledby="force-dialog-title" data-effect="window.jawaDialog(el, $forceOpen)" data-on:close="if (!el.open) $forceOpen = false" data-on:cancel="$forceOpen = false">
+		@dialogError("force", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "force-dialog-title"}) {
 			Force stop this run?
 		}
 		@dialog.Description() {
 			Use this when a run is stuck or its agent is gone. JAWA stops tracking the run now and ignores anything it reports later. The agent is asked to stop, but it may keep running and could still push commits or update its pull request. Afterwards you can retry, reset to Todo, or delete the card.
 		}
-		<form method="post" action="/cards/force-stop" data-on:submit__prevent="@post('/cards/force-stop', {contentType:'form'})">
+		<form method="post" action="/cards/force-stop" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/force-stop', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:force-card/>
@@ -692,14 +695,16 @@ templ dialogs(d pageData) {
 			}
 		</form>
 	</dialog>
-	<dialog id="ready-dialog" aria-labelledby="ready-dialog-title" data-effect="if ($readyOpen && !el.open) el.showModal(); else if (!$readyOpen && el.open) el.close()" data-on:close="$readyOpen = false" data-on:cancel="$readyOpen = false">
+	<dialog id="ready-dialog" aria-labelledby="ready-dialog-title" data-effect="window.jawaDialog(el, $readyOpen)" data-on:close="if (!el.open) $readyOpen = false" data-on:cancel="$readyOpen = false">
+		@dialogError("ready", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "ready-dialog-title"}) {
 			Force this card to Done?
 		}
 		@dialog.Description() {
 			CI, review and mergeability checks will be skipped. Inspect the pull request manually before confirming. This only moves the card to Done; it does not merge the PR or make any changes on GitHub or Forgejo.
 		}
-		<form method="post" action="/cards/force-ready" data-on:submit__prevent="@post('/cards/force-ready', {contentType:'form'})">
+		<form method="post" action="/cards/force-ready" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/force-ready', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+			<input type="hidden" name="dialog_operation"/>
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:ready-card/>

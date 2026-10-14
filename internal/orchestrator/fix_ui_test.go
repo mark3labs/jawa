@@ -25,6 +25,7 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 			t.Errorf("board missing %q", want)
 		}
 	}
+	assertCardPRLink(t, body, "card-"+c.ID, original.PRURL)
 	form := url.Values{"_csrf": {csrf.Value}, "card_id": {c.ID}, "message": {"Repair review feedback"}, "view": {"board"}, "project": {c.ProjectID}}
 	status(t, request(a, "GET", "/cards/fix", nil, session, csrf), http.StatusMethodNotAllowed)
 	status(t, request(a, "POST", "/cards/fix", nil, session, csrf), http.StatusForbidden)
@@ -45,10 +46,16 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 	if strings.Contains(body, "Pull request has merge conflicts.") {
 		t.Fatal("stale conflict visible during repair")
 	}
+	assertCardPRLink(t, body, "card-"+c.ID, original.PRURL)
+	body = request(a, "GET", boardPath(c.ProjectID), nil, session, csrf).Body.String()
+	assertCardPRLink(t, body, "card-"+c.ID, original.PRURL)
 	assertActionLane(t, a.workflow, c.ProjectID, "Fix", c.ID)
 	repair, err := a.workflow.CardResult(c.ID)
 	if err != nil || repair.RepairMessage != "Repair review feedback" {
 		t.Fatalf("repair %+v: %v", repair, err)
+	}
+	if repair.PRURL != "" || repair.RepairPRURL != original.PRURL {
+		t.Fatal("repair conflated PR assignment with completion evidence")
 	}
 	status(t, request(a, "POST", "/cards/fix", form, session, csrf), http.StatusBadRequest)
 	latest, _ := a.workflow.CardResult(c.ID)
@@ -59,14 +66,17 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = request(a, "GET", boardPath(c.ProjectID), nil, session, csrf).Body.String()
+	assertCardPRLink(t, body, "card-"+c.ID, original.PRURL)
 	if !strings.Contains(body, "Retry attempt") {
 		t.Fatal("Fix retry missing")
 	}
 	status(t, request(a, "POST", "/cards/retry", form, session, csrf), http.StatusSeeOther)
 	latest, _ = a.workflow.CardResult(c.ID)
-	if latest.Number != repair.Number+1 || latest.RepairMessage != repair.RepairMessage {
+	if latest.Number != repair.Number+1 || latest.RepairMessage != repair.RepairMessage || latest.PRURL != "" || latest.RepairPRURL != original.PRURL {
 		t.Fatal("retry lost repair assignment")
 	}
+	body = request(a, "GET", boardPath(c.ProjectID), nil, session, csrf).Body.String()
+	assertCardPRLink(t, body, "card-"+c.ID, original.PRURL)
 }
 
 func TestConflictWarningOnlyForConflict(t *testing.T) {

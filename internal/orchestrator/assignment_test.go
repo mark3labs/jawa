@@ -506,3 +506,22 @@ func TestTargetedPlanningHistoryLabel(t *testing.T) {
 		t.Fatalf("queued target projection %+v", runs[0])
 	}
 }
+
+// Exports only the real assignment dialog for the agent-selector race tests.
+func TestAgentSelectorFixture(t *testing.T) {
+	path := os.Getenv("JAWA_AGENT_SELECTOR_HTML")
+	if path == "" {
+		t.Skip("set JAWA_AGENT_SELECTOR_HTML to export the fixture")
+	}
+	d := pageData{csrf: "token", uiSnapshot: uiSnapshot{
+		cards:    []Card{{ID: "todo", Title: "Todo", Status: "Todo"}, {ID: "planning", Title: "Planning", Status: "Planning"}},
+		planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "Current reviewed spec"}}},
+	}}
+	var out strings.Builder
+	if err := assignmentDialog(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(out.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+}

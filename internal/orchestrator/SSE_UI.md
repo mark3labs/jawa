@@ -20,7 +20,18 @@ Stable element patch roots:
 - All screens: `sidebar-nav`, `agent-status`, and action-only `notice`.
 
 Live updates omit notice; mutation success clears it or shows a success flash.
-Expected failures return finite SSE notices rather than navigation/raw SQL errors.
+Expected failures return finite SSE alerts rather than navigation/raw SQL errors.
+Shared mutation dialogs own `project|card|delete|fix|guide|cancel|ready|force-error`
+roots, outside live view roots. Each opening assigns a validated opaque operation
+suffix to its error root and hidden form transport field. Only fixed server-owned
+POST routes select a destination; messages remain templ-escaped. Non-dialog
+actions retain the page notice fallback and native failures retain HTTP statuses.
+Failures leave the modal open and preserve drafts/acknowledgements. Live snapshots
+omit these roots. Fresh open and dismissal clear local errors; dismissal also
+aborts that opening’s request, so delayed errors and success signals cannot
+contaminate another operation. Success clears the correlated alert, marks form
+reset evidence and closes via existing signals. Issue creation keeps its dedicated
+recovery controls and explicit retry policy.
 Dialog-close signals accompany success. Project creation patches `goto` with a
 server-generated same-origin board URL; the stable shell navigates through a
 Datastar effect. No script strings from user input are executed.
@@ -43,7 +54,7 @@ observation without blocking upstream. Initial replay starts at zero for bounded
 historical durable activity; subsequent reconnections use only the processed
 durable cursor. Live equal-sequence events are not deduplicated. Snapshot
 refreshes coalesce durable/StepFinish changes and replace covered live activity.
-Closure shows unreachable and retries reads only with 1–30 second backoff.
+Closure silently retains observations and retries reads only with 1–30 second backoff.
 Offline/capacity states do not authorize mutations. Notices/drafts are never
 cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
 
@@ -104,13 +115,22 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+
+Run detail silently omits empty sources/optional fields. Trace tables use API-only
+snapshot/durable/live data, not local deliveries or inferred journal history.
+Chat payload disclosures preserve open state. A view-local Rocket controller
+resizes the composer, validates Ctrl+Enter (not IME/plain Enter), prevents duplicate
+pending sends and follows transcript updates only at bottom. Confirmed send SSE
+returns the submitted text as a signal; it clears only an unchanged draft. Newer
+and uncertain drafts survive. All controller listeners/observers are cleaned up.
+
 Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
 read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
 and resume keep the key, retries create another. Generic `/snapshot?view=runs`
 and `/events?view=runs` include queued/unpinned and retained planning history.
 Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with the
 same bounded writes, authentication rechecks and identity-change fencing as build
-details. Its controls root explains observation-only policy; no planning composer
+details. Its controls remain observation-only without passive policy text; no planning composer
 or Stop is rendered. Build authority collections and `/activity` are unchanged.
 Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
 and `guideMessage`; error notices and live snapshots do not clear them. The

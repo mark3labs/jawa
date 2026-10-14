@@ -248,7 +248,7 @@ func TestForceStopHTTPRequiresAcknowledgement(t *testing.T) {
 	}
 	form := url.Values{"_csrf": {csrf.Value}, "card_id": {c.ID}}
 	body := assertSSE(t, sseRequest(a, "POST", "/cards/force-stop", form, session, csrf))
-	if !strings.Contains(body, "confirm") || !strings.Contains(body, `"forceOpen":false`) {
+	if !strings.Contains(body, "confirm") || !strings.Contains(body, `id="force-error"`) || strings.Contains(body, "datastar-patch-signals") {
 		t.Fatal(body)
 	}
 	if latest, _ := a.workflow.CardResult(c.ID); latest.RunState == abandonedRunState {

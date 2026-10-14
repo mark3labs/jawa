@@ -62,9 +62,12 @@ jobs:
           npm run test:guidance
           npm run test:pr-refresh
           npm run test:issues
-          JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" go test ../../../internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture)$' -count=1
+          JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" go test ../../../internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1
           JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" npm run test:components
+          JAWA_RUN_DETAIL_HTML="$PWD/node_modules/.run-detail" go test ../../../internal/orchestrator -run '^TestRunDetailVisualFixture$' -count=1
+          JAWA_RUN_DETAIL_HTML="$PWD/node_modules/.run-detail" npm run test:run-detail
           JAWA_CARD_VISUAL_HTML="$PWD/node_modules/.cards.html" go test ../../../internal/orchestrator -run '^TestCardVisualFixture$' -count=1
           JAWA_CARD_VISUAL_HTML="$PWD/node_modules/.cards.html" npm run test:cards
+          JAWA_CARD_VISUAL_HTML="$PWD/node_modules/.cards.html" JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" npm run test:ui
           JAWA_ISSUE_FIXTURE="$PWD/node_modules/.issues.html" go test ../../../internal/orchestrator -run '^TestIssueRecoveryFixture$' -count=1
           JAWA_ISSUE_FIXTURE="$PWD/node_modules/.issues.html" npm run test:issue-recovery
