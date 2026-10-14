@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	defaultModel          = "opencode/glm-5.3-flash"
 	defaultSandboxRoot    = ".bonnie/workspaces"
 	defaultSandboxImage   = "ghcr.io/mark3labs/jawa:latest"
 	defaultPresenceBucket = "jawa_agents"
@@ -43,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 	bonnie.New(
-		bonnie.WithModel(envOr("JAWA_MODEL", "opencode/glm-5.3-flash")),
+		bonnie.WithModel(startupModel()),
 		// Default to loopback outside Docker. Container port publishing must
 		// restrict access to this unauthenticated API.
 		bonnie.WithAddr(envOr("JAWA_HTTP_ADDR", "127.0.0.1:8080")),
@@ -207,4 +208,8 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func startupModel() string {
+	return envOr("JAWA_MODEL", defaultModel)
 }

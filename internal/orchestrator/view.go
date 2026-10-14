@@ -488,7 +488,7 @@ func connectSnippet(natsURL, username string) string {
 	if username == "" {
 		username = "agent"
 	}
-	return "NATS_URL=" + natsURL + "\nNATS_USERNAME=" + username + "\nNATS_PASSWORD=<agent password>\nJAWA_NATS_PRESENCE=true\nJAWA_NATS_AGENT_ID=jawa-1\n./bin/jawa"
+	return "NATS_URL=" + natsURL + "\nNATS_USERNAME=" + username + "\nNATS_PASSWORD=<agent password>\nJAWA_NATS_AGENT_ID=jawa-1\n./bin/jawa"
 }
 
 func providerLabel(p string) string {
@@ -589,4 +589,11 @@ func natsDisplayURL(u string) string {
 
 func planningPath(cardID string) string {
 	return viewParams{View: viewPlanning, Card: cardID}.Path()
+}
+
+func agentModelLabel(r presence.Record, key string) string {
+	if value := r.Labels[key]; value != "" {
+		return value
+	}
+	return "Unknown"
 }

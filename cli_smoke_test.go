@@ -15,9 +15,12 @@ import (
 	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
+	"github.com/mark3labs/bonnie/presence"
+	presencenats "github.com/mark3labs/bonnie/presence/nats"
 	"github.com/mark3labs/bonnie/runtime"
 	server "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
+	"jawa/internal/runapitoken"
 )
 
 // TestCLISmoke exercises the actual executable, CLI parsing, authenticated NATS,
@@ -32,6 +35,15 @@ func TestCLISmoke(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, output)
 	}
+	for _, entry := range []string{"default", "serve"} {
+		for _, api := range []string{"false", "true"} {
+			t.Run(entry+"/api-"+api, func(t *testing.T) { cliSmokeAgent(t, binary, entry, api) })
+		}
+	}
+}
+
+func cliSmokeAgent(t *testing.T, binary, entry, api string) {
+	dir := t.TempDir()
 	broker, err := server.NewServer(&server.Options{Host: "127.0.0.1", Port: -1, JetStream: true, StoreDir: filepath.Join(dir, "broker"), Username: "smoke", Password: "smoke-password"})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +91,11 @@ func TestCLISmoke(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "serve", "--addr=127.0.0.1:0", "--model=custom/cli-smoke", "--provider-url="+endpoint.URL+"/v1", "--provider-api-key=smoke-api-key", "--nats-url="+broker.ClientURL(), "--nats-username=smoke", "--nats-password=smoke-password", "--nats-token=", "--nats-nkey-seed=", "--nats-agent-id=cli-agent", "--nats-root-subject=cli_smoke", "--nats-consumer=cli-workers", "--nats-presence=true", "--nats-presence-bucket=cli_agents", "--sandbox-root="+filepath.Join(dir, "work"))
+	args := []string{"--addr=127.0.0.1:0", "--model=custom/cli-smoke", "--provider-url=" + endpoint.URL + "/v1", "--provider-api-key=smoke-api-key", "--nats-url=" + broker.ClientURL(), "--nats-username=smoke", "--nats-password=smoke-password", "--nats-token=", "--nats-nkey-seed=", "--nats-agent-id=cli-agent", "--nats-root-subject=cli_smoke", "--nats-consumer=cli-workers", "--nats-presence-bucket=cli_agents", "--sandbox-root=" + filepath.Join(dir, "work"), "--nats-api=" + api}
+	if entry == "serve" {
+		args = append([]string{"serve"}, args...)
+	}
+	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = dir
 	// Do not inherit credentials, project config, or production connection details.
 	for _, item := range os.Environ() {
@@ -95,6 +111,15 @@ func TestCLISmoke(t *testing.T) {
 	}
 	defer func() { _ = logFile.Close() }()
 	cmd.Stdout, cmd.Stderr = logFile, logFile
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if api == "true" {
+		if _, err := js.CreateKeyValue(&nats.KeyValueConfig{Bucket: runapitoken.Bucket}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,15 +136,32 @@ func TestCLISmoke(t *testing.T) {
 		output, _ := os.ReadFile(logFile.Name())
 		t.Logf("agent log:\n%s", output)
 	}()
-	js, err := nc.JetStream()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the flag-selected presence bucket and task stream before publishing.
+	// Wait for a registered record and task stream before publishing.
 	for {
-		_, bucketErr := js.KeyValue("cli_agents")
+		store, bucketErr := presencenats.New(ctx, nc, presencenats.Config{Bucket: "cli_agents", TTL: 30 * time.Second})
+		var records []presence.Record
+		if bucketErr == nil {
+			records, bucketErr = store.Discover(ctx, presence.Filter{})
+		}
 		_, streamErr := js.StreamNameBySubject("cli_smoke.tasks.agent.cli-agent")
-		if bucketErr == nil && streamErr == nil {
+		if bucketErr == nil && streamErr == nil && len(records) == 1 {
+			raw, err := json.Marshal(records[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, secret := range []string{"smoke-api-key", "smoke-password", endpoint.URL} {
+				if strings.Contains(string(raw), secret) {
+					t.Fatal("presence exposed credentials or provider URL")
+				}
+			}
+			labels := records[0].Labels
+			if labels["jawa.provider"] != "custom" || labels["jawa.model"] != "cli-smoke" {
+				t.Fatalf("incorrect model labels: %v", labels)
+			}
+			subject := labels["jawa.api_subject"]
+			if (api == "true" && subject != "cli_smoke.api.agent.cli-agent") || (api == "false" && subject != "") {
+				t.Fatalf("incorrect API label: %q", subject)
+			}
 			break
 		}
 		select {
