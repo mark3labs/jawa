@@ -63,6 +63,10 @@ try {
         }
         assert.equal(await page.locator('[data-project-id="zero"] .nav-count.live').count(), 0);
         if (view === 'board') {
+          const fixPR = page.locator('[data-card-id="fixer"] a[title="Open pull request"]');
+          assert.equal(await fixPR.count(), 1);
+          assert.ok(await fixPR.isVisible(), `Fix PR badge hidden at ${width}px`);
+          assert.equal(await fixPR.getAttribute('href'), 'https://github.com/example/visual-fixtures/pull/1');
           assert.match(await page.locator('.view-stats').textContent(), /4 active/);
           assert.equal(await page.getByRole('group', { name: '4 active work items: 2 planning, 1 building, 1 fixing (includes queued and archived work)', exact: true }).count(), 1);
         }

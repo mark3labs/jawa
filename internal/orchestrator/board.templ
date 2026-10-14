@@ -146,7 +146,7 @@ templ cardChips(d pageData, c Card) {
 	@assignedAgent(d.cardAgent(c))
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		@manualReadyBadge(d, la[0])
-		if pr := safeActivityURL(la[0].PRURL); pr != "" {
+		if pr := cardPRURL(c, la[0]); pr != "" {
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Href: pr, Attributes: templ.Attributes{"target": "_blank", "rel": "noopener noreferrer", "title": "Open pull request"}}) {
 				@icon("pr")
 				<span>PR</span>

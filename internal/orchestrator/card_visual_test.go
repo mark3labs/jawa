@@ -44,7 +44,7 @@ func TestCardVisualFixture(t *testing.T) {
 		case "Done":
 			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "ready", Ready: true, PRURL: "https://github.com/example/visual-fixtures/pull/1", UpdatedAt: now})
 		case "Fix":
-			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", AgentID: "fix-agent", UpdatedAt: now})
+			d.attempts = append(d.attempts, Attempt{CardID: fixture.id, Number: 1, State: "running", RepairPRURL: "https://github.com/example/visual-fixtures/pull/1", AgentID: "fix-agent", UpdatedAt: now})
 		}
 	}
 	d.attempts = append(d.attempts, Attempt{CardID: "b1", Number: 1, State: "running", AgentID: "builder-agent", UpdatedAt: now})
