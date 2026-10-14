@@ -78,13 +78,14 @@ try {
       page.setDefaultTimeout(10000);
       let css, js;
       let cssSeen = 0, jsSeen = 0;
-      await context.route('**/assets/style.css', async route => {
+      // Match by pathname: asset URLs carry a cache-busting ?v= query.
+      await context.route(url => url.pathname === '/assets/style.css', async route => {
         cssSeen++;
         if (mode === 'held-css' || mode === 'failed-css') await css.promise;
         if (mode === 'failed-css') await route.abort('failed');
         else await route.continue();
       });
-      await context.route('**/assets/app.js', async route => {
+      await context.route(url => url.pathname === '/assets/app.js', async route => {
         jsSeen++;
         await js.promise;
         await route.continue();
@@ -125,7 +126,7 @@ try {
             assert.deepEqual(colors, Array(2).fill(['rgb(19, 15, 11)', 'rgb(238, 226, 207)']));
             assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).margin), '0px');
           } else {
-            await page.waitForFunction(() => [...document.styleSheets].some(sheet => sheet.href?.endsWith('/assets/style.css')));
+            await page.waitForFunction(() => [...document.styleSheets].some(sheet => sheet.href && new URL(sheet.href).pathname === '/assets/style.css'));
             await styled(page);
           }
           if (screenshots && action === 'cold') {

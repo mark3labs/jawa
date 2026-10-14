@@ -12,8 +12,10 @@ const failure = await readFile(`${fixture}.sse`);
 let posts = 0;
 let submission;
 const server = createServer(async (req, res) => {
-  if (req.url.startsWith('/assets/')) {
-    try { res.setHeader('Content-Type', req.url.endsWith('.js') ? 'text/javascript' : req.url.endsWith('.css') ? 'text/css' : 'application/octet-stream'); res.end(await readFile(new URL(`../${req.url.slice(1)}`, import.meta.url))); }
+  // Strip cache-busting queries (e.g. /assets/app.js?v=hash) before reading assets.
+  const path = new URL(req.url, 'http://localhost').pathname;
+  if (path.startsWith('/assets/')) {
+    try { res.setHeader('Content-Type', path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'application/octet-stream'); res.end(await readFile(new URL(`../${path.slice(1)}`, import.meta.url))); }
     catch { res.writeHead(404).end(); }
   } else if (req.url.startsWith('/projects/issues')) {
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({issues:[{number:17,title:'Existing fixture issue',body:'**Markdown**',url:'https://github.com/acme/repo/issues/17'}]}));
