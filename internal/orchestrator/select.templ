@@ -19,10 +19,11 @@ templ selectField(id, name, value string, required bool, items []selectcomp.Item
 				}
 			}
 		}
-		if name == "issue_url" {
-			<template data-issue-item>
+		// Prototype for options loaded after render (issues, connected agents).
+		if name == "issue_url" || name == "target_agent_id" {
+			<template data-select-item>
 				@selectcomp.Item(selectcomp.ItemProps{}) {
-					Issue 
+					Option
 				}
 			</template>
 		}

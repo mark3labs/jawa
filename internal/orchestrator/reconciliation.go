@@ -117,6 +117,9 @@ func (w *Workflow) Reconcile(taskID, runID, remoteAttemptID string) (retErr erro
 	if out.TaskID != taskID || out.RunID != runID || out.AttemptID != remoteAttemptID || out.AgentID == "" || (string(out.State) != "completed" && string(out.State) != "failed") {
 		return errors.New("reconcile: retained outcome must be completed or failed with matching nonempty identities")
 	}
+	if a.TargetAgentID != "" && a.TargetAgentID != out.AgentID {
+		return errors.New("reconcile: execution differs from assigned agent")
+	}
 	reported, err := acceptedReport(tx, taskID)
 	if err != nil {
 		return err

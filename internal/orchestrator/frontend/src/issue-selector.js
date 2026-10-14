@@ -166,7 +166,7 @@ export function setupIssueSelector(host, cleanup) {
       for (const issue of data.issues) {
         sources.set(issue.url, {title: issue.title, body: issue.body});
         const label = `#${issue.number} ${issue.title}`;
-        const item = host.querySelector('template[data-issue-item]').content.firstElementChild.cloneNode(true);
+        const item = host.querySelector('template[data-select-item]').content.firstElementChild.cloneNode(true);
         item.dataset.templValue = issue.url;
         item.dataset.templLabel = label;
         item.querySelector('.cn-select-item-text').textContent = label;

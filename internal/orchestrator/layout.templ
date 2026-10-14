@@ -234,7 +234,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,readyOpen:false,readyCard:'',readyToken:'',readyPR:'',readyNumber:'',readyReason:'',readyAcknowledged:false,readyLane:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
+	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,readyOpen:false,readyCard:'',readyToken:'',readyPR:'',readyNumber:'',readyReason:'',readyAcknowledged:false,readyLane:'',assignOpen:false,assignCard:'',assignMode:'',assignMessage:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -464,6 +464,7 @@ templ dialogError(name, operation, message string) {
 }
 
 templ dialogs(d pageData) {
+	@assignmentDialog(d)
 	<dialog id="fix-dialog" aria-labelledby="fix-dialog-title" data-effect="window.jawaDialog(el, $fixOpen)" data-on:close="if (!el.open) $fixOpen = false" data-on:cancel="$fixOpen = false">
 		@dialogError("fix", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "fix-dialog-title"}) {

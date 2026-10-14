@@ -8,9 +8,11 @@ import './acknowledgement.js';
 import './dialog-errors.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
+import {setupAgentSelector} from './agent-selector.js';
 import {setupRunDetail} from './run-detail.js';
 import {setupIssueSelector} from './issue-selector.js';
 
+rocket('jawa-agent-selector', {mode: 'light', setup: ({host, cleanup}) => setupAgentSelector(host, cleanup)});
 rocket('jawa-run-detail', {
   mode: 'light',
   setup: ({host, cleanup}) => setupRunDetail(host.parentElement, mergePaths, cleanup),
@@ -280,7 +282,7 @@ document.addEventListener('datastar-fetch', event => {
 // and clears a form once the server reports success (no error notice showing).
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
-  if (!el?.matches?.('form') || el.matches('.pr-refresh-form, #run-composer')) return;
+  if (!el?.matches?.('form') || el.matches('.pr-refresh-form, #run-composer') || el.closest('#assignment-dialog')) return;
   const buttons = el.querySelectorAll('button[type="submit"]');
   if (type === 'started') {
     el.dataset.pending = '';

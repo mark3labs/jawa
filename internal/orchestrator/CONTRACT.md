@@ -293,6 +293,42 @@ go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningCompo
 then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
 in frontend. Native recovery is exported alongside the issue fixture as `.native`.
 
+## Explicit agent assignment
+
+Card menus offer **Plan with agent** and **Build with agent** in Todo,
+**Build with agent** in Planning, and **Fix with agent** in Ready for review.
+Todo builds start immediately without plan approval. Only generated plans need
+review: Planning shows the rendered revision and one acknowledgement, then
+**Approve & build with agent** freezes that exact revision in the existing
+approval transaction. A stale revision is rejected; refresh the page to review
+the new plan. Until a plan is ready, the dialog links to the planning view.
+Fix requires a verified PR and a nonempty repair message, preserving its branch.
+Existing shared-queue actions, drag/drop and ordinary Approve & build remain shared.
+
+The selector lists connected agent IDs with advisory provider/model metadata and
+availability. Busy input-capable agents are selectable; this is not a capacity
+reservation or execution lease. Planning and build selections are independent.
+The desired target is durable per task, separate from the observed run owner.
+Publishing, restart recovery and fresh Retry retain it even after presence expires.
+Queued targeted work waits for the selected stable ID within broker retention;
+it never falls back to shared delivery or another agent. Replies, guidance,
+cancellation and Resume still address the observed execution, not a new task.
+Assignment fences admission but is not isolation against hostile trusted agents.
+
+`GET /agents/choices` is authenticated, setup-guarded, GET-only and no-store.
+Discovery is bounded to two seconds; the JSON contains only agent ID, provider,
+model, availability and selectable capability. Targeted mutations revalidate
+this projection before their atomic lane/task transaction. Shared actions do not
+require presence. No browser-supplied subject, PR URL, branch or run selects work.
+The assignment dialog stays outside SSE patch roots. It loads on open/Refresh,
+aborts and invalidates stale reads, and retains drafts on failed submissions.
+Successful `/cards/assign` responses clear only its assignment signals.
+Run `npm run test:agents` in the frontend directory for selector race regressions.
+
+Back up the database before migration 00019 and coordinate backend deployment.
+Existing streams must include `bonnie.tasks.agent.*`; existing agents already
+support targeted delivery. No provider permissions or model configuration change.
+
 Select fields require JavaScript; there is no native-select or noscript select
 fallback. The standalone recovery page still submits an ordinary HTTP POST.
 The shared `selectField` keeps trigger/content/input siblings for beta.14's

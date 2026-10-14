@@ -26,6 +26,7 @@ type Attempt struct {
 	ID, CardID                                         string
 	Number                                             int
 	TaskID, TaskJSON, AgentID, RunID, RemoteAttemptID  string
+	TargetAgentID                                      string
 	State, RunState, Result, OutcomeJSON, Error, PRURL string
 	Published, Ready                                   bool
 	EventSeq                                           int
@@ -177,12 +178,12 @@ func (w *Workflow) Agents(ctx context.Context) ([]presence.Record, error) {
 	return w.presence.Discover(ctx, presence.Filter{})
 }
 
-const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at,branch,repair_message,repair_pr_url,repair_source_number`
+const attemptColumns = `id,card_id,number,task_id,task_json,agent_id,run_id,remote_attempt_id,state,run_state,result,outcome_json,error,pr_url,published,ready,event_seq,created_at,updated_at,branch,repair_message,repair_pr_url,repair_source_number,target_agent_id`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var created, updated int64
-	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated, &a.Branch, &a.RepairMessage, &a.RepairPRURL, &a.RepairSourceNumber)
+	err := row.Scan(&a.ID, &a.CardID, &a.Number, &a.TaskID, &a.TaskJSON, &a.AgentID, &a.RunID, &a.RemoteAttemptID, &a.State, &a.RunState, &a.Result, &a.OutcomeJSON, &a.Error, &a.PRURL, &a.Published, &a.Ready, &a.EventSeq, &created, &updated, &a.Branch, &a.RepairMessage, &a.RepairPRURL, &a.RepairSourceNumber, &a.TargetAgentID)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	a.UpdatedAt = time.UnixMilli(updated).UTC()
 	return a, err
@@ -220,6 +221,10 @@ func (w *Workflow) MoveCard(id, status string, pos int) error {
 // assignments in Fix, or starts legacy Building work with no attempt.
 func (w *Workflow) Retry(id string) error { return w.moveCard(id, "Building", 0, true) }
 func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
+	return w.moveCardTo(id, status, pos, retry, "")
+}
+
+func (w *Workflow) moveCardTo(id, status string, pos int, retry bool, target string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
@@ -241,6 +246,12 @@ func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 		return latestErr
 	}
 	noAttempt := errors.Is(latestErr, sql.ErrNoRows)
+	if target != "" && source != "Todo" {
+		return errors.New("only Todo cards can build directly with an agent")
+	}
+	if retry && !noAttempt {
+		target = latest.TargetAgentID
+	}
 	if retry && source == "Fix" {
 		if noAttempt || latest.RepairPRURL == "" || !terminalFailure(latest) {
 			return errors.New("retry requires a terminal failed or blocked repair")
@@ -306,7 +317,7 @@ func (w *Workflow) moveCard(id, status string, pos int, retry bool) error {
 			return err
 		}
 		now := time.Now().UTC().UnixMilli()
-		if _, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, taskID, id, number, taskID, string(payload), now, now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at,target_agent_id) VALUES(?,?,?,?,?,?,?,?)`, taskID, id, number, taskID, string(payload), now, now, target); err != nil {
 			return err
 		}
 	}
@@ -509,7 +520,7 @@ func (w *Workflow) dispatch() {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
-		_, err := w.client.Submit(ctx, task)
+		err := w.submitTask(ctx, a.TargetAgentID, task)
 		cancel()
 		if err != nil {
 			if w.ctx.Err() == nil {
@@ -528,7 +539,7 @@ func (w *Workflow) dispatch() {
 }
 
 func matches(a Attempt, agent, run, remote string) bool {
-	return (a.AgentID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.AgentID == agent && a.RunID == run && a.RemoteAttemptID == remote)
+	return (a.TargetAgentID == "" || a.TargetAgentID == agent) && ((a.AgentID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.AgentID == agent && a.RunID == run && a.RemoteAttemptID == remote))
 }
 func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	tx, err := w.s.writeTx()

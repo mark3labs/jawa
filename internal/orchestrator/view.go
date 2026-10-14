@@ -243,6 +243,9 @@ func runLabel(a Attempt) string {
 	case "running":
 		return "Running"
 	}
+	if (a.State == "queued" || a.State == "submitted") && a.AgentID == "" && a.TargetAgentID != "" {
+		return "Queued for " + a.TargetAgentID
+	}
 	if a.State == "queued" {
 		return "Queued"
 	}

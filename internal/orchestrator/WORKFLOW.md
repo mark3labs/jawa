@@ -16,7 +16,7 @@ outcomes or typed reports. Ready fences late deliveries. Exact duplicate tokens
 preserve the original audit/time; repairs and configuration changes cannot reuse
 them. No provider mutation, merge or agent command is performed. Store's legacy API is unchanged and must not be used to bypass these rules.
 
-Tasks use shared `bonnie.tasks`; root provisioning enables targeted subjects for future use. Task UUID is deterministic from card ID and monotonically increasing attempt number. Persisted task payload and identity never change on publish retries. Broker ACK marks publication, not execution. Delivery is at least once, not exactly once outside the broker deduplication window; agents must deduplicate by task identity.
+Shared tasks use `bonnie.tasks`; explicit assignments use `bonnie.tasks.agent.<agentID>`. Root provisioning enables targeted subjects. Task UUID is deterministic from card ID and monotonically increasing attempt number. Persisted task payload and identity never change on publish retries. Broker ACK marks publication, not execution. Delivery is at least once, not exactly once outside the broker deduplication window; agents must deduplicate by task identity.
 
 `Attempts() ([]Attempt, error)` lists history; `CardResult(id) (Attempt, error)` returns latest attempt; `Ready(id) (bool, error)` exposes verified readiness. Agent/run/remote-attempt identity is pinned by the first event or result: competing agent executions cannot overwrite it. Events never establish success. Only `completeTask(pr_number)` and `reportBlocker(reason)` typed tool submissions establish build reports. The versioned `internal/reportprotocol` request is validated independently, including its canonical payload hash, exact pinned task/agent/run/attempt ownership, current card/attempt, and active BONNIE Status runtime observation with matching turn. A missed admission event can be resolved by that exact runtime observation. No identity comes from model arguments. Natural completed outcomes without an accepted typed report fail clearly; natural text is never parsed or used as fallback. Accepted terminal reports cannot be overridden by natural outcomes, status events, reconciliation or resync. A `reportBlocker` committed as awaiting guidance is not terminal: it parks the run until operator guidance is delivered (see BLOCKER_GUIDANCE.md). Result and OutcomeJSON contain the typed request for accepted reports.
 
@@ -42,3 +42,39 @@ for outbox/restart/cancellation semantics and coordinated v7 deployment.
 continuation for an owned execution failure only. UI routes require the rendered
 failure-generation token. Fresh Retry remains separate. See [FAILED_RESUME.md](FAILED_RESUME.md)
 for the verified BONNIE APIs, JAWA host control protocol, durability and ambiguity limits.
+
+## Explicit agent assignment
+
+Card menus offer **Plan with agent** and **Build with agent** in Todo,
+**Build with agent** in Planning, and **Fix with agent** in Ready for review.
+Todo builds start immediately without plan approval. Only generated plans need
+review: Planning shows the rendered revision and one acknowledgement, then
+**Approve & build with agent** freezes that exact revision in the existing
+approval transaction. A stale revision is rejected; refresh the page to review
+the new plan. Until a plan is ready, the dialog links to the planning view.
+Fix requires a verified PR and a nonempty repair message, preserving its branch.
+Existing shared-queue actions, drag/drop and ordinary Approve & build remain shared.
+
+The selector lists connected agent IDs with advisory provider/model metadata and
+availability. Busy input-capable agents are selectable; this is not a capacity
+reservation or execution lease. Planning and build selections are independent.
+The desired target is durable per task, separate from the observed run owner.
+Publishing, restart recovery and fresh Retry retain it even after presence expires.
+Queued targeted work waits for the selected stable ID within broker retention;
+it never falls back to shared delivery or another agent. Replies, guidance,
+cancellation and Resume still address the observed execution, not a new task.
+Assignment fences admission but is not isolation against hostile trusted agents.
+
+`GET /agents/choices` is authenticated, setup-guarded, GET-only and no-store.
+Discovery is bounded to two seconds; the JSON contains only agent ID, provider,
+model, availability and selectable capability. Targeted mutations revalidate
+this projection before their atomic lane/task transaction. Shared actions do not
+require presence. No browser-supplied subject, PR URL, branch or run selects work.
+The assignment dialog stays outside SSE patch roots. It loads on open/Refresh,
+aborts and invalidates stale reads, and retains drafts on failed submissions.
+Successful `/cards/assign` responses clear only its assignment signals.
+Run `npm run test:agents` in the frontend directory for selector race regressions.
+
+Back up the database before migration 00019 and coordinate backend deployment.
+Existing streams must include `bonnie.tasks.agent.*`; existing agents already
+support targeted delivery. No provider permissions or model configuration change.
