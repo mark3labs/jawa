@@ -408,7 +408,8 @@ Presence is advisory to the orchestrator; discovery outages do not change task
 scheduling or at-least-once delivery.
 
 Presence labels `jawa.provider` and `jawa.model` report the effective startup model
-selection (`--model` overrides `JAWA_MODEL`; an empty flag retains the default).
+selection (`--model` overrides `JAWA_MODEL`; an empty flag retains `JAWA_MODEL`
+when nonempty, otherwise the built-in default).
 For `custom/org/model`, they contain `custom` and `org/model`. The Agents cards,
 record inspection and authenticated activity JSON expose these values; older
 records show **Unknown** independently for missing values. These are advisory
