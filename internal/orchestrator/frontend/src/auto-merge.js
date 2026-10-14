@@ -7,7 +7,9 @@ export function setupAutoMerge(host, cleanup) {
   const on = onRoot.nextElementSibling;
   const sync = () => {
     on.disabled = inherit.checked;
-    onRoot.toggleAttribute('disabled', inherit.checked);
+    onRoot.toggleAttribute('data-disabled', inherit.checked);
+    onRoot.tabIndex = inherit.checked ? -1 : 0;
+    onRoot.querySelector('[data-slot="switch-thumb"]').toggleAttribute('data-disabled', inherit.checked);
     onRoot.setAttribute('aria-disabled', String(inherit.checked));
     canonical.value = inherit.checked ? 'inherit' : on.checked ? 'on' : 'off';
   };

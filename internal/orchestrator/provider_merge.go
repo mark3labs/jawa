@@ -112,6 +112,9 @@ func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) me
 				} else if t, e := http.ParseTime(resp.Header.Get("Retry-After")); e == nil {
 					outcome.retryAfter = t
 				}
+				if resp.StatusCode == http.StatusForbidden && !outcome.retryAfter.IsZero() {
+					outcome.state, outcome.category = "deferred", "rate_limited"
+				}
 			}
 		}
 	}

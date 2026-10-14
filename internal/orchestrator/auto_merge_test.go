@@ -466,7 +466,7 @@ func TestAutoMergeDisableDuringDispatch(t *testing.T) {
 }
 
 func TestAutoMergeWriteBoundaryFailures(t *testing.T) {
-	for _, scenario := range []string{"redirect", "oversized", "malformed", "rate", "cancel"} {
+	for _, scenario := range []string{"redirect", "oversized", "malformed", "rate", "secondary-rate", "forbidden", "cancel"} {
 		t.Run(scenario, func(t *testing.T) {
 			s, a := conflictFixture(t, "github")
 			writes := 0
@@ -493,6 +493,11 @@ func TestAutoMergeWriteBoundaryFailures(t *testing.T) {
 					headers.Set("Location", "https://evil.example/")
 				case "oversized":
 					body = strings.Repeat("x", (4<<20)+1)
+				case "forbidden":
+					code = 403
+				case "secondary-rate":
+					code = 403
+					headers.Set("Retry-After", "3600")
 				case "rate":
 					code = 429
 					headers.Set("Retry-After", "3600")
@@ -500,10 +505,14 @@ func TestAutoMergeWriteBoundaryFailures(t *testing.T) {
 				return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: headers, Request: r}, nil
 			})
 			out := adapter.dispatch(t.Context(), a, v)
-			if calls != 1 || out.state == "merged" || out.state != "deferred" {
+			want := "deferred"
+			if scenario == "forbidden" {
+				want = "rejected"
+			}
+			if calls != 1 || out.state != want {
 				t.Fatal(calls, out)
 			}
-			if scenario == "rate" && time.Until(out.retryAfter) < 59*time.Minute {
+			if (scenario == "rate" || scenario == "secondary-rate") && time.Until(out.retryAfter) < 59*time.Minute {
 				t.Fatal("retry-after lost")
 			}
 		})

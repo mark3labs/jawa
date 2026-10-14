@@ -20,6 +20,8 @@ try {
   const mode=()=>page.locator('[name=auto_merge_mode]').inputValue();
   assert.equal(await mode(),'inherit');assert.equal(await on.getAttribute('aria-disabled'),'true');
   await inherit.focus();await page.keyboard.press('Space');assert.equal(await mode(),'off');
+  assert.equal(await on.getAttribute('tabindex'),'0');
+  await page.keyboard.press('Tab');assert.equal(await on.evaluate(el=>document.activeElement===el),true);
   await on.click();assert.equal(await mode(),'on');
   const data=await page.locator('form').evaluate(el=>Object.fromEntries(new FormData(el)));
   assert.equal(data.auto_merge_mode,'on');
