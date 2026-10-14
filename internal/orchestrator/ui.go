@@ -214,6 +214,16 @@ func attemptBranch(a Attempt) string {
 	}
 	return branch
 }
+
+// cardPRURL displays repair assignment without treating it as completion evidence.
+func cardPRURL(c Card, a Attempt) string {
+	pr := a.PRURL
+	if pr == "" && c.Status == "Fix" {
+		pr = a.RepairPRURL
+	}
+	return safeActivityURL(pr)
+}
+
 func safeActivityURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
