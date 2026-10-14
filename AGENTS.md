@@ -97,7 +97,7 @@ The web UI (`internal/orchestrator/*.templ`) is built with
 - **Component JavaScript:** `frontend/build.sh` bundles only the pinned
   shadcn-templ runtimes in use (`baseui/lifecycle`, Select and its Base UI/Floating UI helpers, `checkbox`, `switch`). If
   you adopt a component that ships a `.js` behavior file, add it to the
-  generated entry in `build.sh`. No CDN: everything is self-hosted and embedded.
+  module list in `frontend/runtime.sh` (shared by `build.sh` and the `dev.mjs` watch). No CDN: everything is self-hosted and embedded.
 - **Interactivity** uses Datastar + Rocket (vendored in `frontend/src/datastar-rocket.js`).
   templ owns the markup. Keep stable keyed patch roots (`board-content`,
   `runs-content`, `agents-content`, `sidebar-nav`, `agent-status`, `notice`) intact.
