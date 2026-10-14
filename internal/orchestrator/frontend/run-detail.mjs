@@ -48,6 +48,8 @@ try {
   const context = await browser.newContext({serviceWorkers:'block'});
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
+  const externalRequests = [];
+  page.on('request', req => { if (!req.url().startsWith(url.split('/runs/')[0])) externalRequests.push(req.url()); });
   page.on('console', m => { if(m.type() === 'error') console.error(m.text()); });
   page.on('pageerror', e => console.error(e.message));
   for (const width of [320,390,768,1024,1440]) {
@@ -157,6 +159,23 @@ try {
   await page.locator('.run-role-assistant').first().evaluate(el => el.append(document.createTextNode('appended text')));
   await page.waitForTimeout(100);
   assert.equal(await transcript.evaluate(el => el.scrollTop),0,'Scrolled-up reader moved');
+  await transcript.evaluate(el => {el.scrollTop=el.scrollHeight; el.dispatchEvent(new Event('scroll'));});
+  await page.waitForTimeout(100);
+  await page.locator('#run-transcript').evaluate(el => {
+    const article = document.createElement('article');
+    article.textContent = 'new message '.repeat(300);
+    el.append(article);
+  });
+  await expect.poll(()=>transcript.evaluate(el => el.scrollHeight-el.clientHeight-el.scrollTop)).toBeLessThan(32);
+  // Expanded JSON/code stays within the transcript and short viewports remain
+  // navigable in normal document flow rather than clipping the composer.
+  await page.setViewportSize({width:390,height:500});
+  await page.locator('.run-tool').first().evaluate(el => el.open = true);
+  await page.locator('.run-message-payload').first().evaluate(el => el.open = true);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+1));
+  await send.scrollIntoViewIfNeeded();
+  await expect(send).toBeVisible();
+  assert.deepEqual(externalRequests, [], 'Remote media/assets requested');
   await page.goto(`${url}?tab=chat&offline=1`);
   await page.locator('#run-draft').fill('offline draft');
   await page.locator('#run-draft').press('Control+Enter');
