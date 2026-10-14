@@ -67,12 +67,13 @@ approval":
 - Shell calls time out after at most 600 seconds. Wait in `sleep` chunks of at
   most 540 seconds (with a matching shell timeout), re-checking state between
   chunks. Keep polling output minimal.
-- A review bot's rate limit or cooldown (for example CodeRabbit "Review limit
-  reached" / "Next included review available in 47 minutes") is a wait, not a
-  failure. Follow the `resolve-reviews` skill: sleep until the posted time has
-  passed, request one review, and continue.
-- Build tasks wait only for the initial review. After addressing it, DO NOT
-  WAIT for additional reviews. Repair (fix) tasks DO NOT WAIT for reviews.
+- For builds and repairs, after PR creation and every push, inspect current-head checks
+  and all-author feedback. Wait for observed pending work within the task's
+  applicable time budget, fix actionable findings, and repeat for the new head.
+  Re-read head/checks/comments immediately before completion; follow existing
+  repository/provider no-CI policy for empty evidence, never enable a bypass.
+  Do not wait for or request a nonexistent review. Informational cooldowns
+  alone do not create pending work or authorize a manual review request.
 - Title a PR opened before the work is finished with a `WIP: ` prefix; remove
   it once the work is complete.
 

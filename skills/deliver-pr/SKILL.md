@@ -1,6 +1,6 @@
 ---
 name: deliver-pr
-description: "End-to-end delivery for orchestrator build and repair tasks: implement on the assigned branch, test, commit, push, open or update the PR, get CI and review bots green, then call completeTask. Use whenever the task authorizes committing, pushing and opening a PR (task text names a Branch and asks to implement a card, approved spec, or repair an existing PR)."
+description: "End-to-end delivery for orchestrator build and repair tasks: implement on the assigned branch, test, commit, push, open or update the PR, verify current-head checks and all-author feedback, then call completeTask. Use whenever the task authorizes committing, pushing and opening a PR (task text names a Branch and asks to implement a card, approved spec, or repair an existing PR)."
 ---
 
 # Deliver a pull request
@@ -42,8 +42,8 @@ branch and what is authorized. Follow the system instructions' Git and
 
 Follow the `create-pr` skill for host detection, template, body and UI
 evidence, targeting the task's base branch. If you open the PR before the
-implementation is finished, prefix its title with `WIP: ` (review bots skip
-it) and remove the prefix once the work is complete and pushed. If a PR for this branch exists,
+implementation is finished, prefix its title with `WIP: ` and remove the
+prefix once the work is complete and pushed. If a PR for this branch exists,
 update its description only when it is now inaccurate.
 
 For new or existing PRs, use `create-pr`'s GitHub screenshot-attachment example
@@ -52,25 +52,41 @@ and existing evidence rather than creating a replacement PR or duplicate upload.
 
 ## 5. Get to green
 
-Loop until CI and review are clean:
+Use the same evidence-driven loop for build and repair tasks:
 
-1. Poll CI checks for the current head SHA in ≤540 s sleep chunks. On failure,
-   read the logs, reproduce locally where possible, fix, commit, push, repeat.
-   Distinguish flaky or infrastructure failures from real ones; re-run once if
-   the host supports it, and report evidence rather than guessing.
-2. Handle review-bot and actionable review comments with the
-   `resolve-reviews` skill, including its rate-limit cooldown procedure. A
-   posted cooldown is a wait, not a blocker. Build tasks wait only for the
-   initial review; after addressing it, DO NOT WAIT for additional reviews.
-   Repair tasks DO NOT WAIT for reviews at all; address only findings already
-   posted.
-3. Never claim green without checking the current head SHA.
+1. After PR creation and every push, inspect current-head checks: obtain the
+   actual PR head SHA, then query host jobs/check runs and commit statuses with
+   supported CLI/API operations and pagination. Inspect expected/required
+   contexts too; missing required evidence is not success. Neither workflow
+   configuration, an older SHA, nor an empty result proves green.
+2. Wait for observed pending work (queued/in-progress jobs, including review
+   jobs) within the task's applicable time budget. Use ≤540 s sleep chunks and
+   recheck between chunks. A review running without a check may be waited on
+   only with actual host/bot progress evidence, not assumed scheduling.
+3. Inspect failures and logs, reproduce where possible, fix, validate locally,
+   commit and push; restart this loop for the new head. Diagnose flaky or
+   infrastructure failures with evidence and use authorized host-supported
+   reruns where appropriate. Documenting a failure does not make it green.
+4. Fetch all-author feedback with pagination: review summaries, inline threads
+   and PR discussion comments, including comments posted during checks. Use
+   `resolve-reviews` to address actionable findings from humans and bots.
+   After fixes or any push, re-fetch all feedback and current-head evidence.
+5. Immediately before reporting, re-read the head, checks and comments. If the
+   head changes, discard stale check evidence and repeat. Complete only when
+   applicable checks succeed or are accepted by existing host policy, no
+   observed jobs remain pending, and no actionable or provider-blocking review
+   feedback remains. Do not wait for or request a nonexistent review. Absence
+   of a posted/running review does not itself justify waiting or solicitation.
+6. No checks observed is not green checks. Follow the existing repository/provider
+   no-CI policy or report missing evidence; never enable a bypass to finish.
+   Unreadable/incomplete evidence and missing required checks cannot be ignored.
 
 ## 6. Report
 
-- Success: call `completeTask` with the PR number once the PR exists, CI for
-  the head SHA has passed (or failures are proven unrelated and documented in
-  the PR), and no actionable review findings remain.
+- Success: call `completeTask` with the positive PR number only after the final
+  current-head checks and feedback reread satisfies the loop above. Report the
+  observed evidence, not an assumed review schedule or integration.
 - Otherwise call `reportBlocker` with a concrete reason: what failed, evidence,
-  what was tried, and what decision or access is needed.
+  what was tried, and what decision or access is needed. Exceeding the task's
+  applicable waiting budget with pending work is not success.
 - Never call `completeTask` without a real PR number.

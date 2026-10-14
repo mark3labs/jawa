@@ -113,6 +113,15 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	checkBuildPolicy := func(a Attempt) {
+		t.Helper()
+		var task client.Task
+		if err := json.Unmarshal([]byte(a.TaskJSON), &task); err != nil {
+			t.Fatal(err)
+		}
+		assertReviewPolicy(t, task.Text, buildReviewPolicy)
+	}
+	checkBuildPolicy(a)
 	if !strings.Contains(a.TaskJSON, "Approved spec v2") {
 		t.Fatal("approved spec not in build task")
 	}
@@ -126,6 +135,7 @@ func TestPlanningBackendConversationApprovalAndRetrySnapshot(t *testing.T) {
 	if e != nil || !strings.Contains(a.TaskJSON, "Approved spec v2") {
 		t.Fatal("retry lost approved spec", e)
 	}
+	checkBuildPolicy(a)
 	if e = planningDelivery(t, w, first); e != nil {
 		t.Fatal(e)
 	}
