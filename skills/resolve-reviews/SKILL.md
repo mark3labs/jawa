@@ -1,6 +1,6 @@
 ---
 name: resolve-reviews
-description: "Verify review-bot (e.g. CodeRabbit) findings on a pull or merge request, fix valid ones, push, and wait for the re-review — including sleeping through a posted review rate limit or cooldown instead of giving up. Use when addressing bot review comments, iterating until reviews are clean, or when a bot reports 'Review limit reached'."
+description: "Verify review-bot (e.g. CodeRabbit) findings on a pull or merge request, fix valid ones and push. Waits only for the initial review (including sleeping through a posted rate limit or cooldown); never waits for re-reviews after addressing it, and repair tasks never wait for reviews. Use when addressing bot review comments or when a bot reports 'Review limit reached'."
 ---
 
 # Resolve review-bot findings
@@ -34,11 +34,23 @@ tasks have it for their own PR).
    (`fix(review): …` or similar Conventional Commits subject; body lists
    findings fixed) and push without force.
 
-## Wait for the next review
+## Review waiting policy
 
-7. Record the pushed SHA. Determine whether the bot reviews automatically. Poll
-   at 90–240 s intervals using `sleep` (≤540 s per shell call). An older review
-   says nothing about the new SHA.
+- Build tasks: wait only for the INITIAL review of the completed PR. Once its
+  findings are addressed and pushed, DO NOT WAIT for additional reviews or
+  re-reviews and do not request one.
+- Repair tasks: DO NOT WAIT for reviews at all. Address findings already
+  posted, then finish; never sleep or poll for new reviews.
+- CodeRabbit here reviews each PR once, automatically, and skips PRs whose
+  title contains `WIP`.
+
+## Wait for the initial review (build tasks only)
+
+7. If no review exists yet for the completed PR, record the head SHA and poll
+   at 90–240 s intervals using `sleep` (≤540 s per shell call). If the PR title
+   still contains `WIP` and the work is complete, remove it first. If no review
+   has started about 10 minutes after the title is final, request exactly one
+   (CodeRabbit: `@coderabbitai review`).
 
 ### Rate limits and cooldowns — wait, do not give up
 
@@ -73,15 +85,15 @@ When you see one:
 4. Resume polling for that review. If the bot posts another limit, repeat
    this procedure with the new duration.
 
-## Repeat and report
+## Finish and report
 
-8. Re-fetch comments and thread states; match by IDs and reviewed SHA, not
-   text. Repeat verify → fix → check → push → wait while actionable findings
-   remain.
+8. After the initial review arrives, verify and fix its findings (steps 4–6)
+   once. Do not wait for a re-review of the fix commit.
 9. If a fixed thread stays open, reply once with the fixing commit. Do not nudge
    repeatedly.
 10. Report: findings fixed, skipped (with reasons), replies posted, commits
     pushed, checks for the final SHA, review status, any cooldown waited, and
-    outstanding threads. Call the loop clean only when the current review
-    for the head SHA has completed with no actionable findings. If no review
-    bot is configured, say so rather than inventing a loop.
+    outstanding threads. Reviews are resolved when every actionable finding
+    from the initial review (or, for repairs, every already-posted finding) is
+    fixed or answered. If no review bot is configured, say so rather than
+    inventing a loop.

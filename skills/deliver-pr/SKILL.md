@@ -41,7 +41,9 @@ branch and what is authorized. Follow the system instructions' Git and
 ## 4. Open or update the PR
 
 Follow the `create-pr` skill for host detection, template, body and UI
-evidence, targeting the task's base branch. If a PR for this branch exists,
+evidence, targeting the task's base branch. If you open the PR before the
+implementation is finished, prefix its title with `WIP: ` (review bots skip
+it) and remove the prefix once the work is complete and pushed. If a PR for this branch exists,
 update its description only when it is now inaccurate.
 
 For new or existing PRs, use `create-pr`'s GitHub screenshot-attachment example
@@ -58,7 +60,10 @@ Loop until CI and review are clean:
    the host supports it, and report evidence rather than guessing.
 2. Handle review-bot and actionable review comments with the
    `resolve-reviews` skill, including its rate-limit cooldown procedure. A
-   posted cooldown is a wait, not a blocker.
+   posted cooldown is a wait, not a blocker. Build tasks wait only for the
+   initial review; after addressing it, DO NOT WAIT for additional reviews.
+   Repair tasks DO NOT WAIT for reviews at all; address only findings already
+   posted.
 3. Never claim green without checking the current head SHA.
 
 ## 6. Report

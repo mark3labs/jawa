@@ -71,6 +71,10 @@ approval":
   reached" / "Next included review available in 47 minutes") is a wait, not a
   failure. Follow the `resolve-reviews` skill: sleep until the posted time has
   passed, request one review, and continue.
+- Build tasks wait only for the initial review. After addressing it, DO NOT
+  WAIT for additional reviews. Repair (fix) tasks DO NOT WAIT for reviews.
+- Title a PR opened before the work is finished with a `WIP: ` prefix; remove
+  it once the work is complete.
 
 ## Tools and environment
 

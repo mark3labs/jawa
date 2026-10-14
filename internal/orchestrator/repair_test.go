@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -61,6 +62,14 @@ func TestRepairLifecycle(t *testing.T) {
 		if err := json.Unmarshal([]byte(a.TaskJSON), &task); err != nil || task.TaskID != a.TaskID {
 			t.Fatalf("outbox %v", err)
 		}
+		// Repair agents must never block on review bots.
+		if !strings.Contains(task.Text, repairReviewPolicy) {
+			t.Fatalf("repair prompt lacks review policy: %s", task.Text)
+		}
+	}
+	var originalTask client.Task
+	if err := json.Unmarshal([]byte(original.TaskJSON), &originalTask); err != nil || !strings.Contains(originalTask.Text, buildReviewPolicy) || !strings.Contains(originalTask.Text, `"WIP: "`) {
+		t.Fatalf("build prompt lacks review policy: %v %s", err, originalTask.Text)
 	}
 	check(repair)
 	if repair.Ready || repair.Published || repair.State != "queued" || repair.TaskID == original.TaskID {

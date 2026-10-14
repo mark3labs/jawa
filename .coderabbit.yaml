@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  auto_review:
+    enabled: true
+    # Review only once, on the first push of a PR; later pushes are not re-reviewed
+    # automatically (request one explicitly with `@coderabbitai review`).
+    auto_incremental_review: false
+    drafts: false
+    # Agents prefix unfinished PRs with "WIP"; skip them until the prefix is removed.
+    ignore_title_keywords:
+      - WIP
