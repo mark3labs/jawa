@@ -44,7 +44,7 @@ func TestCardPlanningAssignmentMatrix(t *testing.T) {
 			if strings.Count(html, `title="Assigned agent"`) != count {
 				t.Fatalf("assignment count: %s", html)
 			}
-			for _, stale := range []string{"stale-planner", "wrong-session", "old-builder", "old-error", `title="View runs"`} {
+			for _, stale := range []string{"stale-planner", "wrong-session", "old-builder", "old-error"} {
 				if strings.Contains(html, stale) {
 					t.Errorf("leaked %s", stale)
 				}

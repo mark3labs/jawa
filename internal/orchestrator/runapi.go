@@ -74,7 +74,8 @@ func (p *runAPI) client(agent string) (*bonnieclient.Client, *http.Client, func(
 
 // Transports are bounded by active hubs and requests and never evicted beneath
 // callers. No idle per-agent cache or retained offline transport is needed.
-func (p *runAPI) snapshot(ctx context.Context, a Attempt) (*bonnieclient.Snapshot, error) {
+func (p *runAPI) snapshot(ctx context.Context, source runObserver) (*bonnieclient.Snapshot, error) {
+	a := source.observationIdentity()
 	c, _, close, err := p.client(a.AgentID)
 	if err != nil {
 		return nil, err
@@ -123,7 +124,7 @@ func (p *runAPI) cancelTurn(ctx context.Context, a Attempt, turn string) (runtim
 	defer cancel()
 	return c.RequestCancel(ctx, a.RunID, turn)
 }
-func runKey(a Attempt) string { return a.AgentID + "/" + a.RunID }
+func runKey(a runObserver) string { id := a.observationIdentity(); return id.AgentID + "/" + id.RunID }
 func (p *runAPI) reserveSend(a Attempt) (func(), bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -134,7 +135,8 @@ func (p *runAPI) reserveSend(a Attempt) (func(), bool) {
 	p.sends[k] = true
 	return func() { p.mu.Lock(); delete(p.sends, k); p.mu.Unlock() }, true
 }
-func (p *runAPI) observe(a Attempt) (*runHub, func(), error) {
+func (p *runAPI) observe(source runObserver) (*runHub, func(), error) {
+	a := source.observationIdentity()
 	// A tab switch can arrive while the previous viewer's stream is closing.
 	// Wait boundedly for that same hub, rather than returning a finite SSE error
 	// or overlapping upstream streams outside the capacity accounting.
@@ -223,7 +225,8 @@ func boundedEvents(events []runtime.Event, ev runtime.Event) ([]runtime.Event, b
 	}
 	return events, omitted
 }
-func (p *runAPI) runHub(ctx context.Context, a Attempt, h *runHub) {
+func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
+	a := source.observationIdentity()
 	defer close(h.done)
 	defer func() {
 		p.mu.Lock()

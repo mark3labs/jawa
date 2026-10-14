@@ -26,7 +26,7 @@ func runDetailFixture() runDetail {
 	projected := projectRunMessages(messages)
 	projected = append(projected, runMessage{Role: "unknown", Key: "unsupported-fixture", Raw: `{"unsupported":"preserved diagnostic payload"}`, Parts: []runPart{{Key: "unsupported-part", Unsupported: true}}})
 	live := []runtime.Event{{TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "First equal-sequence observation"}, {TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "Second equal-sequence observation"}}
-	return runDetail{Attempt: Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}, Messages: projected, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Durable: []runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, Live: live, Truncated: true}}
+	return runDetail{Record: buildRun(Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}), Messages: projected, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Durable: []runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, Live: live, Truncated: true}}
 }
 
 func TestRunDetailVisualFixture(t *testing.T) {
@@ -51,6 +51,27 @@ func TestRunDetailVisualFixture(t *testing.T) {
 			}
 		}
 	}
+	// Export the same transcript through the planning-only observation surface.
+	d = runDetailFixture()
+	d.Record.Mode = "Planning"
+	d.Record.State = "waiting"
+	d.Record.InteractionStatus = "pending"
+	d.Record.InteractionKind = "propose_spec"
+	d.Policy = runPolicy{Reason: "Planning is observation-only. Replies, review, guidance, recovery and cancellation live on the card."}
+	for _, tab := range []string{"chat", "trace"} {
+		d.Tab = tab
+		p := pageData{v: viewParams{View: viewRuns}, detail: &d}
+		var out bytes.Buffer
+		if err := appPage(p).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if path := os.Getenv("JAWA_RUN_DETAIL_HTML"); path != "" {
+			if err := os.WriteFile(path+".planning-"+tab, out.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
 }
 
 func TestRunDetailPresentationAndIdentity(t *testing.T) {
@@ -110,7 +131,7 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 
 func TestRunDetailEmptyOfflineAndErrors(t *testing.T) {
 	for _, tab := range []string{"chat", "trace"} {
-		d := runDetail{Tab: tab, Observation: runObservation{Unreachable: true, Truncated: true}, Attempt: Attempt{Error: "<script>failure</script>"}}
+		d := runDetail{Tab: tab, Observation: runObservation{Unreachable: true, Truncated: true}, Record: buildRun(Attempt{Error: "<script>failure</script>"})}
 		var out bytes.Buffer
 		if err := runDetailContent(d).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)

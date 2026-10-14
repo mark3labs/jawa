@@ -292,3 +292,40 @@ Export real Settings/dialog markup with `JAWA_COMPONENT_FIXTURE=/path/components
 go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture)$' -count=1`,
 then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
 in frontend. Native recovery is exported alongside the issue fixture as `.native`.
+
+### Planning run observation
+
+`GET /runs/planning/{turnID}?tab=chat|trace` and
+`GET /runs/planning/{turnID}/events?tab=chat|trace` reuse the authenticated,
+no-store Chat/Trace viewer and shared BONNIE observation hubs. Unknown, unpinned
+or malformed identities return 404; browser fields never choose a remote target.
+The stream re-fetches planning storage and terminates if the pinned tuple changes
+or the task disappears. Trace uses the same separate snapshot/durable/live API
+source tables, not local planning receipts. Offline observations remain read-only;
+missing fields/history are silently omitted rather than reconstructed.
+
+
+Planning viewers are observation-only: no composer or Stop, and crafted chat/stop
+POSTs return 403 without sending agent commands. Replies, specification review,
+guidance, recovery and cancellation remain on the authoritative card page.
+Existing implementation URLs and Send/Stop policies are unchanged. Board and
+Archive planning status badges and View runs menus are native filtered-history
+links; the card key/eye still opens the card. Planning execution history provides
+Open run for each valid pinned task, including older sessions.
+## Blocked full-card discussion checks
+
+`/planning?card=<id>` is the full card view even without a planning session.
+Accepted build/Fix blockers and saved guidance remain readable after delivery,
+cancellation and restart, grouped by attempt following planning discussion.
+Only the current pending interaction offers inline guidance; queued delivery
+shows saved text immediately without allowing another reply.
+
+From `internal/orchestrator/frontend`, run `npm run test:guidance`. It exports
+real production markup with `JAWA_GUIDANCE_HTML` via `TestGuidanceBrowserFixture`
+and tests the embedded bundle: success-only modal closure, rejected draft,
+inline form payload/token, repeated live patch draft preservation, new-token
+replacement, keyboard submit, and 320/390/1440px overflow. Set
+`JAWA_GUIDANCE_SCREENSHOT_DIR` to an existing directory to capture Chromium PNGs.
+Standalone fixture export from root:
+`JAWA_GUIDANCE_HTML=/tmp/guidance.html go test ./internal/orchestrator -run '^TestGuidanceBrowserFixture$' -count=1`.
+The `.pending`, `.queued` and `.next` suffixes are patch roots for this script.

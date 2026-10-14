@@ -32,6 +32,7 @@ type uiSnapshot struct {
 	agents         []presence.Record
 	planning       map[string]PlanningDetail
 	prChecks       map[string]PRCheck
+	runs           []RunRecord
 	attempts       []Attempt
 	nats           NATSConfig
 	natsConfigured bool
@@ -41,11 +42,12 @@ type uiSnapshot struct {
 
 // pageData is everything a view needs to render. Views never query storage.
 type pageData struct {
-	detail    *runDetail
-	csrf      string
-	v         viewParams
-	dashboard map[string]string
-	defaults  map[string]string
+	workflowDiscussion []WorkflowExchange
+	detail             *runDetail
+	csrf               string
+	v                  viewParams
+	dashboard          map[string]string
+	defaults           map[string]string
 	uiSnapshot
 }
 
@@ -121,6 +123,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 			return snap, fmt.Errorf("load attempt history: %w", err)
 		}
 	}
+	if snap.runs, err = s.runHistory(ctx, snap.attempts); err != nil {
+		return snap, err
+	}
 	return snap, nil
 }
 
@@ -142,7 +147,11 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 	if len(runtimeDefaults) > 0 {
 		maps.Copy(defaults, runtimeDefaults[0])
 	}
-	return pageData{csrf: csrf, v: v, dashboard: dashboard, defaults: defaults, uiSnapshot: snap}, nil
+	d := pageData{csrf: csrf, v: v, dashboard: dashboard, defaults: defaults, uiSnapshot: snap}
+	if v.View == viewPlanning {
+		d.workflowDiscussion, err = s.workflowDiscussion(v.Card)
+	}
+	return d, err
 }
 
 // renderFragments returns only stable patch roots, never the shell or open
@@ -382,7 +391,7 @@ func (d pageData) blocker(c Card) (BlockerGuidance, bool) {
 // canGuide matches GuideBlocked: only an unanswered blocker accepts guidance.
 func (d pageData) canGuide(c Card) bool {
 	b, ok := d.blocker(c)
-	return ok && !b.Queued
+	return ok && !b.Queued && !b.Cancelling && latestAttempt(c.ID, d.attempts)[0].State == "blocked"
 }
 
 func guideDialogAction(cardID, token string) string {

@@ -41,6 +41,9 @@ are ignored. Typed reports are refused while a blocker is open.
 
 1. **Reply with guidance…** (`POST /cards/guide`, `GuideBlocked`) queues the reply.
    The form carries the blocker's report ID; stale or repeated replies are rejected.
+   Successful enhanced submission closes the guidance dialog and clears its
+   signals only after persistence; rejected/stale submissions keep the draft.
+   This acceptance is not confirmation that the agent has consumed the reply.
 2. The dispatcher delivers queued guidance once the trusted waiting outcome
    (answer route and turn) is stored, retrying across restart. Delivery marks the
    interaction answered and the attempt running.
@@ -62,3 +65,27 @@ Deploy agents and orchestrator together. A new agent with an old orchestrator
 keeps terminal blockers. An old agent with a new orchestrator completes the run;
 the orchestrator then closes the interaction and treats the blocker as terminal,
 so the card is never stuck waiting for guidance it cannot deliver.
+
+## Full-card discussion
+
+`/planning?card=<id>` is the full card view, including cards built directly from
+Todo. Discussion shows existing planning discussion first, then accepted typed
+build/Fix blockers paired with nonempty operator replies in attempt/report order.
+Identical reasons remain separate messages keyed by report identity. Legacy
+blockers without interactions are read-only; answered and cancelled exchanges
+remain visible across reload/restart. Operational errors, proposals, initial
+descriptions and arbitrary agent output do not become discussion messages.
+All messages use the shared sanitized Markdown renderer.
+
+The latest pending Building/Fix interaction offers an inline **Reply with
+guidance** composer posting the same `/cards/guide` endpoint and exact report
+ID as the dialog. Drafts survive live patches for that interaction; a later
+blocker replaces both form and textarea identities. Guidance is persisted and
+shown immediately while queued, with no second composer until a new blocker.
+Cancellation-requested, ready, running and closed interactions cannot invite
+replies. Historical messages never authorize guidance; server CAS remains
+final authority for stale forms/races. No new execution attempt is created.
+
+No precise reply timestamps are available: replies are displayed beside their
+blocker, not as a globally timestamp-sorted chat transcript. History is loaded
+only for the selected full-card view, not every board snapshot.

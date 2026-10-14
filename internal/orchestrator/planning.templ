@@ -95,30 +95,6 @@ templ planningContent(d pageData) {
 						}
 					}
 				</section>
-				<section class="planning-section" aria-label="Planning discussion">
-					@card.Card(card.Props{Class: "planning-surface"}) {
-						<h2>Discussion</h2>
-						for _, message := range detail.Discussion {
-							<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
-						}
-						if c.Status == "Planning" && planningCanReply(detail) {
-							<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
-								@planningFields(d, c)
-								<input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
-								<div class="field">
-									@label.Label(label.Props{For: "planning-reply"}) {
-										if detail.Blocker != "" {
-											Reply with guidance
-										} else {
-											Reply or request a revision
-										}
-									}@textarea.Textarea(textarea.Props{ID: "planning-reply", Name: "reply", Attributes: templ.Attributes{"required": true, "maxlength": "65536"}})
-								</div>
-								@submit("Send reply")
-							</form>
-						}
-					}
-				</section>
 				if len(detail.Interactions) > 0 {
 					<section class="planning-section" aria-label="Planning reports">
 						@card.Card(card.Props{Class: "planning-surface"}) {
@@ -180,18 +156,93 @@ templ planningContent(d pageData) {
 					</section>
 				}
 			} else if c.Status == "Todo" {
-				<section class="planning-section">@card.Card(card.Props{Class: "planning-surface"}) {
-	<h2>Plan before building</h2>
-	<p class="meta">Investigate the repository, discuss questions, and review a versioned plan. Planning is optional; you can still move Todo directly to Building.</p>
-	<div class="plan-actions">@planningAction(d, c, "/cards/plan", "Start planning")</div>
-}</section>
+				<section class="planning-section">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Plan before building</h2>
+						<p class="meta">Investigate the repository, discuss questions, and review a versioned plan. Planning is optional; you can still move Todo directly to Building.</p>
+						<div class="plan-actions">@planningAction(d, c, "/cards/plan", "Start planning")</div>
+					}
+				</section>
 			} else {
-				<section class="planning-section">@card.Card(card.Props{Class: "planning-surface"}) {
-	<p class="meta">This card has no planning session.</p>@button.Button(button.Props{Class: "btn", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
+				<section class="planning-section">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<p class="meta">This card has no planning session.</p>@button.Button(button.Props{Class: "btn", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {
 	View runs
 }
-}</section>
+					}
+				</section>
 			}
+			if d.hasRuns(c.ID) {
+				<section class="planning-section" aria-label="Execution history">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Execution history</h2>
+						for _, run := range filterHistory(d.runs, viewParams{Card: c.ID, State: "all"}) {
+							if run.Mode == "Planning" {
+								<div class="plan-actions">
+									<span>Planning #{ strconv.Itoa(run.Number) } · { run.label() }</span>
+									if run.pinned() {
+										@button.Button(button.Props{Href: run.path("chat"), Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"role": "link"}}) {
+											Open run
+										}
+									}
+								</div>
+							}
+						}
+					}
+				</section>
+			}
+			<section class="planning-section" aria-label="Discussion">
+				@card.Card(card.Props{Class: "planning-surface"}) {
+					<h2>Discussion</h2>
+					if detail, exists := d.planning[c.ID]; exists {
+						for _, message := range detail.Discussion {
+							<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
+						}
+						if c.Status == "Planning" && planningCanReply(detail) {
+							<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+								@planningFields(d, c)
+								<input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
+								<div class="field">
+									@label.Label(label.Props{For: "planning-reply"}) {
+										if detail.Blocker != "" {
+											Reply with guidance
+										} else {
+											Reply or request a revision
+										}
+									}@textarea.Textarea(textarea.Props{ID: "planning-reply", Name: "reply", Attributes: templ.Attributes{"required": true, "maxlength": "65536"}})
+								</div>
+								@submit("Send reply")
+							</form>
+						}
+					}
+					for i, exchange := range d.workflowDiscussion {
+						if i == 0 || d.workflowDiscussion[i-1].AttemptID != exchange.AttemptID {
+							<div class="meta">{ "Build/Fix attempt " + strconv.Itoa(exchange.Number) }</div>
+						}
+						<article id={ "workflow-message-" + exchange.ReportID + "-assistant" } class="plan-message"><h3>assistant</h3>@planningMarkdownText(exchange.Reason)</article>
+						if exchange.Reply != "" {
+							<article id={ "workflow-message-" + exchange.ReportID + "-user" } class="plan-message"><h3>user</h3>@planningMarkdownText(exchange.Reply)</article>
+						}
+					}
+					if b, open := d.blocker(c); open {
+						if b.Queued {
+							<p class="meta" role="status">{ guidanceQueuedNotice }</p>
+						} else if d.canGuide(c) {
+							<form id={ "guidance-reply-form-" + b.Token } method="post" action="/cards/guide" data-on:submit__prevent="@post('/cards/guide', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+								@planningFields(d, c)
+								<input type="hidden" name="expected_interaction" value={ b.Token }/>
+								<div class="field">
+									@label.Label(label.Props{For: "guidance-reply-" + b.Token}) {
+										Reply with guidance
+									}
+									@textarea.Textarea(textarea.Props{ID: "guidance-reply-" + b.Token, Name: "message", Attributes: templ.Attributes{"required": true, "maxlength": "64000"}})
+								</div>
+								@submit("Send guidance")
+							</form>
+						}
+					}
+				}
+			</section>
 		} else {
 			<h1>Card not found</h1>
 			<p class="meta">Choose a card from the board to review its plan.</p>@button.Button(button.Props{Class: "btn", Href: "/board", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {

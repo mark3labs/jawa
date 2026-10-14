@@ -13,7 +13,7 @@ import (
 )
 
 func detailAction(d runDetail, action string) string {
-	return "/runs/" + d.Attempt.ID + "/" + action + "?tab=" + d.Tab
+	return d.Record.basePath() + "/" + action + "?tab=" + d.Tab
 }
 func detailVariant(active bool) button.Variant {
 	if active {
@@ -31,40 +31,40 @@ templ runDetailPage(d runDetail, csrf string) {
 		}
 		<header class="run-detail-header">
 			<h1>
-				Run #{ strconv.Itoa(d.Attempt.Number) }
+				{ d.Record.Mode } run #{ strconv.Itoa(d.Record.Number) }
 			</h1>
 			<dl class="run-detail-metadata">
-				if d.Attempt.AgentID != "" {
+				if d.Record.AgentID != "" {
 					<div>
 						<dt>Agent</dt>
 						<dd>
-							{ d.Attempt.AgentID }
+							{ d.Record.AgentID }
 						</dd>
 					</div>
 				}
-				if d.Attempt.RunID != "" {
+				if d.Record.RunID != "" {
 					<div>
 						<dt>Run</dt>
 						<dd>
-							{ d.Attempt.RunID }
+							{ d.Record.RunID }
 						</dd>
 					</div>
 				}
-				if d.Attempt.Branch != "" {
+				if d.Record.Mode != "Planning" && d.Record.Build.Branch != "" {
 					<div>
 						<dt>Branch</dt>
 						<dd>
-							{ d.Attempt.Branch }
+							{ d.Record.Build.Branch }
 						</dd>
 					</div>
 				}
 			</dl>
 		</header>
 		<nav class="run-detail-tabs" aria-label="Run detail tabs">
-			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
 				Chat
 			}
-			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
 				Trace
 			}
 		</nav>
@@ -77,7 +77,7 @@ templ runDetailPage(d runDetail, csrf string) {
 			</div>
 		}
 		@runDetailContent(d)
-		if d.Tab=="chat" {
+		if d.Tab=="chat" && d.Record.Mode!="Planning" {
 			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface"}) {
 				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-on:submit={ "@post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
 					<input type="hidden" name="_csrf" value={ csrf }/>
@@ -97,10 +97,10 @@ templ runDetailPage(d runDetail, csrf string) {
 
 templ runDetailControls(d runDetail, csrf string) {
 	<div id="run-detail-controls" class="run-controls">
-		if d.Tab == "chat" {
+		if d.Tab == "chat" && d.Record.Mode != "Planning" {
 			<span class="meta">Ctrl+Enter to send</span>
 		}
-		if d.Tab=="chat" {
+		if d.Tab=="chat" && d.Record.Mode != "Planning" {
 			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!" + strconv.FormatBool(d.Policy.Send) + " || $runSending"}}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
@@ -118,7 +118,7 @@ templ runDetailControls(d runDetail, csrf string) {
 				}
 			</form>
 		}
-		@button.Button(button.Props{Type: button.TypeButton, Href: string(planningPath(d.Attempt.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Href: string(planningPath(d.Record.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
 			Open card for recovery / guidance
 		}
 	</div>
@@ -127,10 +127,15 @@ templ runDetailControls(d runDetail, csrf string) {
 // Adapted from BONNIE web/views.templ (MIT); see BONNIE-LICENSE.
 templ runDetailContent(d runDetail) {
 	<div id="run-detail-content" class="run-history">
-		if d.Attempt.RunState != "" {
+		if d.Record.Mode == "Planning" {
+ @badge.Badge() {
+ { d.Record.label() }
+ }
+ }
+ if d.Record.RunState != "" {
 			<div class="run-observed-state">
 				@badge.Badge() {
-					{ d.Attempt.RunState }
+					{ d.Record.RunState }
 				}
 			</div>
 		}
