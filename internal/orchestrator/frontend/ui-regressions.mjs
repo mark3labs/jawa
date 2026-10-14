@@ -53,12 +53,20 @@ try {
     await posted;
     const branch=page.locator('.meta-unit');const b=await branch.boundingBox();
     assert.ok(b.height<30,'Branch icon/text stay in one unit');
-    if(width===1440) {const mark=await page.locator('.view-title .proj-mark').boundingBox();const title=await page.locator('.view-title h1').boundingBox();assert.ok(mark.x+mark.width<=title.x);}
+    const mark=await page.locator('.view-title .proj-mark').boundingBox();
+    const title=await page.locator('.view-title h1').boundingBox();
+    const meta=await page.locator('.view-head .meta').boundingBox();
+    assert.ok(mark.x+mark.width<=title.x,'Project mark precedes title');
+    assert.ok(Math.abs(mark.y+mark.height/2-title.y-title.height/2)<2,'Project mark/title centers align');
+    assert.ok(meta.y>=Math.max(mark.y+mark.height,title.y+title.height),'Git metadata is below the entire title row');
+    assert.ok(Math.abs(meta.x-mark.x)<2,'Git metadata starts under the title row');
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
    }
    if(screenshots&&[390,1440].includes(width)) await page.screenshot({path:`${screenshots}/${view}-${width}.png`,fullPage:true});
   }
   await page.goto(`${base}/planning`);
   if(width>=768) {
+   assert.equal((await page.locator('[aria-label="Latest run"] [title="Assigned agent"]').textContent()).trim(),'fixture-agent');
    const positions=await page.locator('[aria-label="Latest run"] .card-meta > *').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return r.top+r.height/2;}));
    assert.ok(positions.length>=3); assert.ok(Math.max(...positions)-Math.min(...positions)<3,'Latest run row');
   }
@@ -75,11 +83,14 @@ try {
     const [a,b]=colors.map(lum);assert.ok((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,`${state} primary contrast: ${colors}`);
    }
   }
+  await page.evaluate(()=>window.scrollTo(0,0));
+  if(screenshots&&[390,1440].includes(width))await page.screenshot({path:`${screenshots}/planning-${width}.png`,fullPage:true});
   await page.goto(`${base}/agents`);
   assert.match(await page.locator('#agent-fixture').textContent(),/custom.*org\/model/s);
   const time=page.locator('.agent-run jawa-time');
   assert.equal(await time.evaluate(el=>getComputedStyle(el).whiteSpace),'nowrap');
   const t=await time.boundingBox(), link=await page.locator('.agent-run a').boundingBox();assert.ok(link.x+link.width<=t.x,'Title yields to timestamp');
+  if(screenshots&&[390,1440].includes(width))await page.screenshot({path:`${screenshots}/agents-original-${width}.png`,fullPage:true});
   await page.evaluate(()=>{const el=document.createElement('button');el.setAttribute('data-on:click',"@get('/snapshot')");el.id='patch-agents';el.textContent='Patch agents';document.body.append(el);});
   await page.locator('#patch-agents').click();await page.waitForFunction(()=>document.querySelector('#agent-fixture').textContent.includes('new/slashed/model'));await page.locator('#patch-agents').evaluate(el=>el.remove());
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -99,7 +110,11 @@ try {
    // Unsolicited Agents content morphs must not touch any shell-owned error.
    await page.evaluate(()=>{const el=document.createElement('span');el.setAttribute('data-init',"@get('/snapshot')");document.body.append(el);});
    await page.waitForTimeout(50);assert.equal(await dialog.locator('.dialog-error').isVisible(),true);
-   if(screenshots&&name==='delete'&&[390,1440].includes(width))await page.screenshot({path:`${screenshots}/delete-error-${width}.png`});
+   await dialog.evaluate(async el=>{await Promise.all(el.getAnimations().map(animation=>animation.finished));});
+   const alertBox=await dialog.locator('.dialog-error').boundingBox();
+   const titleBox=await dialog.locator('[data-slot="dialog-title"]').boundingBox();
+   assert.ok(titleBox.y-alertBox.y-alertBox.height>=12,'Dialog alert has breathing room before its title');
+   if(screenshots&&[390,1440].includes(width))await page.screenshot({path:`${screenshots}/${name}-error-${width}.png`});
    await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await page.waitForTimeout(50);
    await signal(page,{[`${name}Open`]:true});await dialog.waitFor({state:'visible'});assert.equal(await dialog.locator('.dialog-error').isVisible(),false);
    if(name==='fix') {

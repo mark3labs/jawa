@@ -15,23 +15,23 @@ templ boardContent(d pageData) {
 	<div id="board-content" class="view board-view">
 		if p, ok := selectedProject(d.projects, d.v.Project); ok {
 			<div class="view-head">
-				<div class="view-title">
-					<span class="proj-mark lg">{ initial(p.Name) }</span>
-					<div>
+				<div class="view-title project-heading">
+					<div class="project-title-row">
+						<span class="proj-mark lg">{ initial(p.Name) }</span>
 						<h1>{ p.Name }</h1>
-						<p class="meta">
-							@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip plain"}) {
-								{ providerLabel(p.Provider) }
-							}
-							if u := repoURL(p.Repo); u != "" {
-								<a class="meta-link" href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">{ repoLabel(p.Repo) }</a>
-							} else {
-								<span>{ repoLabel(p.Repo) }</span>
-							}
-							<span class="meta-sep">·</span>
-							<span class="meta-unit">@icon("branch") <span>{ p.BaseBranch }</span></span>
-						</p>
 					</div>
+					<p class="meta">
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip plain"}) {
+							{ providerLabel(p.Provider) }
+						}
+						if u := repoURL(p.Repo); u != "" {
+							<a class="meta-link" href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">{ repoLabel(p.Repo) }</a>
+						} else {
+							<span>{ repoLabel(p.Repo) }</span>
+						}
+						<span class="meta-sep">·</span>
+						<span class="meta-unit">@icon("branch") <span>{ p.BaseBranch }</span></span>
+					</p>
 				</div>
 				<div class="view-stats">
 					{{ work := projectWork(d.uiSnapshot, p.ID) }}

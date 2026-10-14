@@ -294,4 +294,9 @@ filter shortcuts, short project headings, Latest run metadata, primary contrast,
 agent timestamps and record-provided labels after keyed replacement at
 320/390/768/1024/1440px. Shared dialog failures retain drafts, clear on reopening,
 and isolate late responses. Set `JAWA_UI_SCREENSHOTS=/path/images` for untracked
-390/1440px screenshots. Existing component/issue-recovery tests remain independent.
+390/1440px screenshots covering Board/Archive search and project headings,
+Planning Latest run and enabled primary controls, Agents before/after label
+replacement, and every shared mutation dialog error. Geometry checks require
+the project mark/title to share a row above Git metadata and a visible gap
+between each dialog alert and title. Existing component/issue-recovery tests
+remain independent.

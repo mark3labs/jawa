@@ -233,6 +233,9 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.012em; }
 .view-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .view-head h1 { font-size: 20px; letter-spacing: -.02em; }
 .view-title { display: flex; align-items: center; gap: 12px; }
+.project-heading { flex-direction: column; align-items: flex-start; gap: 3px; }
+.project-title-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.project-heading .meta { margin-top: 0; }
 .meta { display: flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--text-3); font-size: 12.5px; flex-wrap: wrap; }
 .meta .ic { width: 13px; height: 13px; }
 .meta-link { color: var(--text-2); }
@@ -465,6 +468,7 @@ dialog [data-slot="dialog-description"] { margin: 4px 0 16px; color: var(--text-
 }
 .notice.info { border-color: rgba(163, 184, 108, .4); background: var(--sage-dim); color: #c3d49a; }
 .content > .notice { margin-bottom: 14px; }
+dialog > .dialog-error:not([hidden]) { margin-bottom: 14px; }
 [data-slot="separator"] { background: var(--line) !important; }
 
 /* Empty states ------------------------------------------------------------ */
