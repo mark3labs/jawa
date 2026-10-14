@@ -1,5 +1,5 @@
 // The build substitutes a content hash so a new binary gets a fresh cache.
-const CACHE = 'jawa-public-6458c0aae3db8e0e';
+const CACHE = 'jawa-public-cfaa290ae0aa1518';
 const PUBLIC = [
   '/assets/offline.html', '/assets/style.css', '/assets/app.js',
   '/assets/inter.woff2', '/assets/favicon.svg', '/assets/manifest.webmanifest',

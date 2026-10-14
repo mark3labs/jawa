@@ -42,7 +42,7 @@ observation without blocking upstream. Initial replay starts at zero for bounded
 historical durable activity; subsequent reconnections use only the processed
 durable cursor. Live equal-sequence events are not deduplicated. Snapshot
 refreshes coalesce durable/StepFinish changes and replace covered live activity.
-Closure shows unreachable and retries reads only with 1–30 second backoff.
+Closure silently retains observations and retries reads only with 1–30 second backoff.
 Offline/capacity states do not authorize mutations. Notices/drafts are never
 cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
 
@@ -67,3 +67,11 @@ fetch loop or page reload is used for card actions.
 - `run_display.go`: ordered safe message/tool projection; BONNIE MIT attribution.
 
 See CONTRACT.md for run-detail routes and build instructions.
+
+Run detail silently omits empty sources/optional fields. Trace tables use API-only
+snapshot/durable/live data, not local deliveries or inferred journal history.
+Chat payload disclosures preserve open state. A view-local Rocket controller
+resizes the composer, validates Ctrl+Enter (not IME/plain Enter), prevents duplicate
+pending sends and follows transcript updates only at bottom. Confirmed send SSE
+returns the submitted text as a signal; it clears only an unchanged draft. Newer
+and uncertain drafts survive. All controller listeners/observers are cleaned up.

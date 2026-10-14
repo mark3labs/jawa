@@ -7,7 +7,13 @@
 import './acknowledgement.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
+import {setupRunDetail} from './run-detail.js';
 import {setupIssueSelector} from './issue-selector.js';
+
+rocket('jawa-run-detail', {
+  mode: 'light',
+  setup: ({host, cleanup}) => setupRunDetail(host.parentElement, mergePaths, cleanup),
+});
 
 // Installation is progressive enhancement; HTTP deployments remain usable.
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -258,7 +264,7 @@ rocket('jawa-shortcuts', {
 
 // Refresh state outlives board/form replacements; only finite refresh POSTs own it.
 const pendingRefreshes = new Set();
-mergePaths([['prRefreshing', false]]);
+mergePaths([['prRefreshing', false], ['runSending', false], ['runConfirmedDraft', '']]);
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
   if (!el?.matches?.('form.pr-refresh-form')) return;
@@ -273,7 +279,7 @@ document.addEventListener('datastar-fetch', event => {
 // and clears a form once the server reports success (no error notice showing).
 document.addEventListener('datastar-fetch', event => {
   const {type, el} = event.detail;
-  if (!el?.matches?.('form') || el.matches('.pr-refresh-form')) return;
+  if (!el?.matches?.('form') || el.matches('.pr-refresh-form, #run-composer')) return;
   const buttons = el.querySelectorAll('button[type="submit"]');
   if (type === 'started') {
     el.dataset.pending = '';

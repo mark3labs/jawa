@@ -433,16 +433,18 @@ templ topbar(d pageData) {
 
 // agentStatus is a live patch root present on every screen.
 templ agentStatus(d pageData) {
-	@badge.Badge(badge.Props{Variant: badge.VariantOutline, ID: "agent-status", Class: templ.Classes("agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence)).String(), Href: "/agents", Attributes: templ.Attributes{"title": "Open agents"}}) {
-		<span class="pulse-dot"></span>
-		if !d.presence {
-			<span>Presence unavailable</span>
-		} else if n := readyAgents(d.agents); n == 0 {
-			<span>No agents online</span>
-		} else if n == 1 {
-			<span>1 agent online</span>
-		} else {
-			<span>{ strconv.Itoa(n) } agents online</span>
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline, ID: "agent-status", Class: templ.Classes("agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence)).String(), Href: "/agents", Attributes: templ.Attributes{"title": "Open agents", "hidden": d.detail != nil && (!d.presence || readyAgents(d.agents) == 0)}}) {
+		if d.detail == nil || (d.presence && readyAgents(d.agents) > 0) {
+			<span class="pulse-dot"></span>
+			if !d.presence {
+				<span>Presence unavailable</span>
+			} else if n := readyAgents(d.agents); n == 0 {
+				<span>No agents online</span>
+			} else if n == 1 {
+				<span>1 agent online</span>
+			} else {
+				<span>{ strconv.Itoa(n) } agents online</span>
+			}
 		}
 	}
 }
