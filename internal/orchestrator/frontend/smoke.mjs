@@ -453,7 +453,7 @@ try {
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
  await page.getByLabel('Plan revision to approve').selectOption('2');
- await page.locator('#planning-approve-form input[type="checkbox"]').check();
+ await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
  await waitActivity(d => d.attempts.some(a => a.CardID === resumableID && a.PRURL && a.OutcomeJSON), 'approved plan distinct build');

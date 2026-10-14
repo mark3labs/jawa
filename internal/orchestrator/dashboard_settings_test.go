@@ -70,7 +70,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 		t.Fatal("secret appeared in settings page")
 	}
 	assertSettingsProviderUX(t, page.Body.String())
-	if !strings.Contains(page.Body.String(), `name="auto-resume-failed-runs" value="true" checked>`) {
+	if !strings.Contains(page.Body.String(), `id="runtime-auto-resume" checked name="auto-resume-failed-runs" value="true"`) {
 		t.Fatal("auto-resume not enabled by default")
 	}
 	invalidAuto := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "auto-resume-failed-runs": {"yes"}, "debug": {"true"}}, session, csrf)
@@ -115,7 +115,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("saved secret appeared in live refresh")
 	}
-	if strings.Contains(live, `name="auto-resume-failed-runs" value="true" checked>`) {
+	if strings.Contains(live, `id="runtime-auto-resume" checked name="auto-resume-failed-runs" value="true"`) {
 		t.Fatal("explicit false lost in SSE")
 	}
 	partial := request(a, "POST", "/settings/orchestrator", url.Values{"_csrf": {csrf.Value}, "debug": {"true"}}, session, csrf)
@@ -130,7 +130,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(live, `name="auto-resume-failed-runs" value="true" checked>`) || !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `name="debug" value="true">`) || !strings.Contains(live, `name="allow-no-ci" value="true" checked>`) {
+	if !strings.Contains(live, `id="runtime-auto-resume" checked name="auto-resume-failed-runs" value="true"`) || !strings.Contains(live, `name="listen" value="127.0.0.1:9001"`) || !strings.Contains(live, `id="runtime-debug" name="debug" value="true"`) || !strings.Contains(live, `id="runtime-allow-no-ci" checked name="allow-no-ci" value="true"`) {
 		t.Fatalf("live reset did not restore bootstrap values: %s", live)
 	}
 	if strings.Contains(live, "JAWA_SECRET_SHOULD_NOT_APPEAR") {

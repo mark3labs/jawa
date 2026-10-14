@@ -20,6 +20,45 @@ rocket('jawa-issue-selector', {
   setup: ({host, cleanup}) => setupIssueSelector(host, cleanup),
 });
 
+// Datastar effects supply the boolean state; only the native input owns values
+// and validity. The pinned runtime keeps ARIA and the indicator synchronized.
+window.jawaSyncAcknowledgement = (host, checked, required) => {
+  const root = host.querySelector('[data-slot="checkbox"]');
+  const input = root?.nextElementSibling;
+  if (!input) return;
+  input.required = !!required;
+  root.setAttribute('aria-required', String(!!required));
+  window.templ.checkbox.setChecked(root, !!checked);
+};
+
+// Native reset happens after its event; synchronize browser-owned controls once
+// defaults have been restored. Delegation also covers inserted SSE fragments.
+document.addEventListener('reset', event => {
+  if (!(event.target instanceof HTMLFormElement)) return;
+  queueMicrotask(() => {
+    for (const root of event.target.querySelectorAll('[data-slot="checkbox"], [data-slot="switch"]')) {
+      const input = root.nextElementSibling;
+      if (!input?.matches('input[type="checkbox"]')) continue;
+      if (root.dataset.slot === 'checkbox') window.templ.checkbox.setChecked(root, input.checked);
+      else input.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+  });
+});
+
+// Morphs may change checked attributes without firing native change. The
+// switch runtime has no setChecked API: its native change adapter is public DOM
+// behavior. Observe only native checked mutations, never indicator attributes.
+const componentStates = new MutationObserver(records => {
+  for (const {target} of records) {
+    if (!target.matches('input[type="checkbox"]')) continue;
+    const root = target.previousElementSibling;
+    if (!root?.matches('[data-slot="checkbox"], [data-slot="switch"]')) continue;
+    if (root.dataset.slot === 'checkbox') window.templ.checkbox.setChecked(root, target.checked);
+    else target.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+});
+componentStates.observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ['checked']});
+
 const cardsIn = list => [...list.querySelectorAll(':scope > .task-card')];
 
 // jawa-board: drag-and-drop between lanes. Sortable only handles the gesture;
@@ -49,7 +88,7 @@ rocket('jawa-board', {
           animation: 150,
           delay: 120,
           delayOnTouchOnly: true,
-          filter: 'a,button,summary,form,select,input,textarea,[popover]',
+          filter: 'a,button,summary,form,select,input,textarea,[role=checkbox],[role=switch],[popover]',
           preventOnFilter: false,
           ghostClass: 'drag-ghost',
           chosenClass: 'drag-chosen',

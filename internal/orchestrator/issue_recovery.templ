@@ -1,0 +1,94 @@
+package orchestrator
+
+import (
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/checkbox"
+	"github.com/axadrn/shadcn-templ/v2/components/input"
+	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
+	"github.com/axadrn/shadcn-templ/v2/components/textarea"
+	"net/http"
+)
+
+// Shared by finite SSE failures and the native 409 response. Recovery is always
+// explicit; these controls never initiate provider requests on their own.
+templ issueRecoveryControls(state, message string) {
+	@alert.Alert(alert.Props{ID: "card-issue-recovery", Attributes: templ.Attributes{"data-state": state}}) {
+		<p>{ message }</p>
+		if state != "" && state != "completed" && state != "created" {
+			<div class="field">
+				@label.Label(label.Props{For: "issue-recovery-action"}) {
+					Recovery action
+				}
+				@nativeselect.NativeSelect(nativeselect.Props{ID: "issue-recovery-action", Name: "issue_recovery"}) {
+					@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
+						No recovery selected
+					}
+					@nativeselect.Option(nativeselect.OptionProps{Value: "link"}) {
+						Link existing issue
+					}
+					@nativeselect.Option(nativeselect.OptionProps{Value: "unlinked"}) {
+						Create unlinked card
+					}
+					if state == "rejected" {
+						@nativeselect.Option(nativeselect.OptionProps{Value: "retry"}) {
+							Retry rejected creation (new submission)
+						}
+					}
+				}
+			</div>
+			<div class="field">
+				@label.Label(label.Props{For: "issue-recovery-url"}) {
+					Same-repository issue URL
+				}
+				@input.Input(input.Props{ID: "issue-recovery-url", Name: "recovery_url", Type: "url", Placeholder: "https://host/owner/repo/issues/123"})
+			</div>
+			<p>Refresh issues / check repository before recovering. Select an issue above or paste its URL. Linking/unlinked recovery uses the original submitted draft. A rejected retry uses your corrected fields.</p>
+		}
+	}
+}
+
+templ issueSubmissionToken(token string) {
+	<input id="card-issue-submission" type="hidden" name="issue_submission" value={ token }/>
+}
+
+// No workspace subscription: the native page retains the reservation and draft.
+templ issueRecoveryPage(r *http.Request, state, message string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		@head("New card recovery · Jawa")
+		<body class="style-nova auth-body">
+			<main class="auth-wrap">
+				@card.Card(card.Props{Class: "auth-card recovery-card"}) {
+					<h1>New card</h1>
+					<form method="post" action="/cards">
+						for _, name := range []string{"_csrf", "project_id", "view", "project"} {
+							<input type="hidden" name={ name } value={ r.FormValue(name) }/>
+						}
+						@issueSubmissionToken(r.FormValue("issue_submission"))
+						@textField("recovery-title", "title", "Title", r.FormValue("title"), true)
+						<div class="field">
+							@label.Label(label.Props{For: "recovery-description"}) {
+								Description
+							}
+							@textarea.Textarea(textarea.Props{ID: "recovery-description", Name: "description", Value: r.FormValue("description"), Rows: 5})
+						</div>
+						if state == "" || state == "created" {
+							@label.Label(label.Props{For: "recovery-create-issue", Class: "check"}) {
+								@checkbox.Checkbox(checkbox.Props{ID: "recovery-create-issue", Name: "create_issue", Value: "yes", DefaultChecked: r.FormValue("create_issue") != ""})
+								Create issue
+							}
+						}
+						@issueRecoveryControls(state, message)
+						@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary"}) {
+							Create card
+						}
+						<a href="/board">Cancel</a>
+					</form>
+				}
+			</main>
+		</body>
+	</html>
+}

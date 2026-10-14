@@ -3,10 +3,14 @@ package orchestrator
 import (
 	"strings"
 
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/checkbox"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
+	switchcomp "github.com/axadrn/shadcn-templ/v2/components/switch"
 )
 
 templ settingsContent(d pageData) {
@@ -18,7 +22,9 @@ templ settingsContent(d pageData) {
 			</div>
 		</div>
 		if !d.natsConfigured {
-			<div class="notice" role="alert">Complete NATS authentication setup: choose an agent password below. The default username is worker. Projects, cards and work remain blocked until credentials are saved.</div>
+			@alert.Alert(alert.Props{Class: "notice", }) {
+				Complete NATS authentication setup: choose an agent password below. The default username is worker. Projects, cards and work remain blocked until credentials are saved.
+			}
 		}
 		@card.Card(card.Props{Class: "panel", ID: "connection"}) {
 			@card.Header() {
@@ -118,7 +124,9 @@ templ settingsContent(d pageData) {
 			<form method="post" action="/settings/orchestrator/reset">
 				<input type="hidden" name="_csrf" value={ d.csrf }/>
 				@viewFields(d.v)
-				<button class="btn btn-secondary" type="submit">Reset overrides</button>
+				@button.Button(button.Props{Class: "btn btn-secondary", Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+					Reset overrides
+				}
 			</form>
 		</div>
 	</div>
@@ -143,12 +151,14 @@ templ providerRow(p providerConfig) {
 			}
 		</div>
 		<div class="provider-edit">
-			<label class="sr-only" for={ "runtime-" + strings.ToLower(p.Name) + "-token" }>{ p.Name } provider token</label>
+			@label.Label(label.Props{Class: "sr-only", For: "runtime-" + strings.ToLower(p.Name) + "-token"}) {
+				{ p.Name } provider token
+			}
 			@input.Input(input.Props{ID: "runtime-" + strings.ToLower(p.Name) + "-token", Name: strings.ToLower(p.Name) + "-token", Type: "password", Placeholder: "Paste a new token to replace", Attributes: templ.Attributes{"autocomplete": "new-password"}})
-			<label class="check">
-				<input type="checkbox" name={ strings.ToLower(p.Name) + "-token-clear" } value="true"/>
+			@label.Label(label.Props{Class: "check"}) {
+				@checkbox.Checkbox(checkbox.Props{ID: strings.ToLower(p.Name) + "-token-clear", Name: strings.ToLower(p.Name) + "-token-clear", Value: "true"})
 				<span>Clear saved { p.Name } token override</span>
-			</label>
+			}
 		</div>
 	</li>
 }
@@ -157,11 +167,11 @@ templ providerRow(p providerConfig) {
 // "false" when off; the server reads the first value, so order matters.
 templ switchField(id, name, title, hint string, on bool) {
 	<div class="switch-field">
-		<label for={ id }>
+		@label.Label(label.Props{For: id}) {
 			<span class="switch-title">{ title }</span>
 			<span class="muted small">{ hint }</span>
-		</label>
-		<input class="switch" type="checkbox" role="switch" id={ id } name={ name } value="true" checked?={ on }/>
+		}
+		@switchcomp.Switch(switchcomp.Props{ID: id, Name: name, Value: "true", DefaultChecked: on})
 		<input type="hidden" name={ name } value="false"/>
 	</div>
 }

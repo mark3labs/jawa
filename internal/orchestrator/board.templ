@@ -3,9 +3,12 @@ package orchestrator
 import (
 	"strconv"
 
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
+	"github.com/axadrn/shadcn-templ/v2/components/separator"
 )
 
 templ boardContent(d pageData) {
@@ -17,7 +20,9 @@ templ boardContent(d pageData) {
 					<div>
 						<h1>{ p.Name }</h1>
 						<p class="meta">
-							<span class="chip plain">{ providerLabel(p.Provider) }</span>
+							@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip plain"}) {
+								{ providerLabel(p.Provider) }
+							}
 							if u := repoURL(p.Repo); u != "" {
 								<a class="meta-link" href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">{ repoLabel(p.Repo) }</a>
 							} else {
@@ -42,11 +47,13 @@ templ boardContent(d pageData) {
 							<header class="lane-head">
 								@laneIcon(status)
 								<h2>{ laneName(status) }</h2>
-								<span class="lane-count">{ strconv.Itoa(len(cardsIn(d.cards, p.ID, status))) }</span>
+								@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "lane-count"}) {
+									{ strconv.Itoa(len(cardsIn(d.cards, p.ID, status))) }
+								}
 								if status == "Todo" {
-									<button type="button" class="icon-btn lane-add" aria-label="New card" data-on:click="$cardOpen = true">
+									@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn lane-add", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "New card", "data-on:click": "$cardOpen = true"}}) {
 										@icon("plus")
-									</button>
+									}
 								}
 							</header>
 							<div class="lane-actions">
@@ -80,7 +87,7 @@ templ boardContent(d pageData) {
 					}
 				}
 				@empty.Content() {
-					@button.Button(button.Props{Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$projectOpen = true"}}) {
+					@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeButton, Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$projectOpen = true"}}) {
 						@icon("plus")
 						New project
 					}
@@ -96,9 +103,9 @@ templ taskCard(d pageData, c Card) {
 			<a class="card-key" href={ templ.SafeURL(planningPath(c.ID)) } title="View card and plan">{ cardKey(d.projects, c) }</a>
 			<div class="card-tools">
 				@archiveButton(d, c)
-				<a class="icon-btn card-view-action" href={ templ.SafeURL(planningPath(c.ID)) } aria-label={ "View card and plan: " + cardKey(d.projects, c) } title="View card and plan">
+				@button.Button(button.Props{Class: "icon-btn card-view-action", Href: planningPath(c.ID), Type: button.TypeButton, Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link", "aria-label": "View card and plan: " + cardKey(d.projects, c), "title": "View card and plan"}}) {
 					@icon("eye")
-				</a>
+				}
 				@cardMenu(d, c)
 			</div>
 		</div>
@@ -115,43 +122,43 @@ templ taskCard(d pageData, c Card) {
 
 templ cardChips(d pageData, c Card) {
 	if c.Status == "Planning" {
-		<span class={ "chip", "planning-badge", "tone-" + planningTone(planningState(d, c.ID)) }>
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}) {
 			@toneIcon(planningTone(planningState(d, c.ID)))
 			<span>{ planningLabel(planningState(d, c.ID)) }</span>
-		</span>
+		}
 	}
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		if c.Status != "Planning" {
-			<a class={ "chip", "tone-" + runTone(la[0]) } href={ templ.SafeURL(runsForCardPath(c.ID)) } title="View runs">
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: templ.Classes("chip", "tone-"+runTone(la[0])).String(), Href: runsForCardPath(c.ID), Attributes: templ.Attributes{"title": "View runs"}}) {
 				@toneIcon(runTone(la[0]))
 				if d.prChecks[c.ID].State == "merged" && la[0].Ready {
 					<span>Merged</span>
 				} else {
 					<span>{ d.runLabel(la[0]) }</span>
 				}
-			</a>
+			}
 		}
 	} else if c.Status == "Building" || c.Status == "Fix" {
-		<span class="chip tone-queued">
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip tone-queued"}) {
 			@toneIcon("queued")
 			<span>Not started</span>
-		</span>
+		}
 	}
 	@assignedAgent(d.cardAgent(c))
 	if la := latestAttempt(c.ID, d.attempts); len(la) > 0 {
 		@manualReadyBadge(d, la[0])
 		if pr := safeActivityURL(la[0].PRURL); pr != "" {
-			<a class="chip" href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer" title="Open pull request">
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Href: pr, Attributes: templ.Attributes{"target": "_blank", "rel": "noopener noreferrer", "title": "Open pull request"}}) {
 				@icon("pr")
 				<span>PR</span>
-			</a>
+			}
 		}
 	}
 	if iss := safeActivityURL(c.IssueURL); iss != "" {
-		<a class="chip" href={ templ.SafeURL(iss) } target="_blank" rel="noopener noreferrer" title="Open linked issue">
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Href: iss, Attributes: templ.Attributes{"target": "_blank", "rel": "noopener noreferrer", "title": "Open linked issue"}}) {
 			@icon("issue")
 			<span>Issue</span>
-		</a>
+		}
 	}
 	{{ updated := d.cardActivity(c) }}
 	<span class="chip-time">
@@ -161,10 +168,10 @@ templ cardChips(d pageData, c Card) {
 
 templ assignedAgent(agentID string) {
 	if agentID != "" {
-		<span class="chip plain" title="Assigned agent">
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip plain", Attributes: templ.Attributes{"title": "Assigned agent"}}) {
 			@icon("agents")
 			<span>{ agentID }</span>
-		</span>
+		}
 	}
 }
 
@@ -176,17 +183,21 @@ templ cardNote(d pageData, c Card) {
 		@cardPRStatus(d, c)
 	}
 	if b, ok := d.blocker(c); ok {
-		<div class="card-note tone-blocked" role="status">
+		@alert.Alert(alert.Props{Class: "card-note tone-blocked", Attributes: templ.Attributes{"aria-live": "polite"}}) {
 			<p><strong>Blocked:</strong> { b.Reason }</p>
 			if b.Queued {
 				<p class="muted small">{ guidanceQueuedNotice }</p>
 			} else {
-				<button type="button" class="btn small" data-on:click={ guideDialogAction(c.ID, b.Token) }>Reply with guidance…</button>
+				@button.Button(button.Props{Type: button.TypeButton, Class: "btn small", Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"data-on:click": guideDialogAction(c.ID, b.Token)}}) {
+					Reply with guidance…
+				}
 			}
-		</div>
+		}
 	}
 	if note, tone := d.cardDiagnostic(c); note != "" {
-		<p class={ "card-note", "tone-" + tone }>{ note }</p>
+		@alert.Alert(alert.Props{Class: "card-note tone-" + tone}) {
+			{ note }
+		}
 	}
 }
 
@@ -194,9 +205,9 @@ templ cardNote(d pageData, c Card) {
 // popover next to its trigger and closes it after an action is chosen.
 templ cardMenu(d pageData, c Card) {
 	<jawa-menu>
-		<button type="button" class="icon-btn" popovertarget={ "menu-" + c.ID } aria-label={ "Actions for " + c.Title } aria-haspopup="menu">
+		@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"popovertarget": "menu-" + c.ID, "aria-label": "Actions for " + c.Title, "aria-haspopup": "menu"}}) {
 			@icon("more")
-		</button>
+		}
 		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
 			if c.Status == "Done" {
 				if canAction(c, d.attempts, "fix") {
@@ -204,10 +215,10 @@ templ cardMenu(d pageData, c Card) {
 						{{ attempt := latestAttempt(c.ID, d.attempts)[0] }}
 						@menuPost(d, c, "/cards/mark-merged", "Mark as merged", "check", [][2]string{{"expected_attempt_id", attempt.ID}, {"expected_pr_url", attempt.PRURL}})
 					}
-					<button type="button" class="menu-item" role="menuitem" data-on:click={ fixDialogAction(c.ID, "") }>
+					@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": fixDialogAction(c.ID, "")}}) {
 						@icon("retry")
 						<span>Send to Fix…</span>
-					</button>
+					}
 				} else {
 					@menuDisabled("Send to Fix", "retry", "Fix requires a verified pull request and no active attempt.")
 				}
@@ -228,10 +239,10 @@ templ cardMenu(d pageData, c Card) {
 			}
 			if d.canGuide(c) {
 				{{ b, _ := d.blocker(c) }}
-				<button type="button" class="menu-item" role="menuitem" data-on:click={ guideDialogAction(c.ID, b.Token) }>
+				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": guideDialogAction(c.ID, b.Token)}}) {
 					@icon("play")
 					<span>Reply with guidance…</span>
-				</button>
+				}
 			}
 			if canAction(c, d.attempts, "retry") {
 				@menuPost(d, c, "/cards/retry", "Retry attempt", "retry", nil)
@@ -248,45 +259,47 @@ templ cardMenu(d pageData, c Card) {
 			}
 			if c.Status == "Building" || c.Status == "Fix" {
 				if canAction(c, d.attempts, "cancel") {
-					<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$cancelCard = " + strconv.Quote(c.ID) + "; $cancelOpen = true" }>
+					@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$cancelCard = " + strconv.Quote(c.ID) + "; $cancelOpen = true"}}) {
 						@icon("reset")
 						<span>Cancel run…</span>
-					</button>
+					}
 				} else {
 					@menuDisabled("Cancel run", "reset", "Cancellation requires an active run with a confirmed agent and remote target.")
 				}
 			}
-   if d.canForceReady(c) {
-    <button type="button" class="menu-item danger" role="menuitem" data-on:click={ d.readyDialogAction(c) }>
-     @icon("check")
-     <span>Force ready…</span>
-    </button>
-   }
+			if d.canForceReady(c) {
+				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": d.readyDialogAction(c)}}) {
+					@icon("check")
+					<span>Force ready…</span>
+				}
+			}
 			if canAction(c, d.attempts, "force-stop") {
-				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$forceCard = " + strconv.Quote(c.ID) + "; $forceAcknowledged = false; $forceOpen = true" }>
+				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$forceCard = " + strconv.Quote(c.ID) + "; $forceAcknowledged = false; $forceOpen = true"}}) {
 					@icon("reset")
 					<span>Force stop…</span>
-				</button>
+				}
 			}
 			if len(latestAttempt(c.ID, d.attempts)) > 0 {
-				<a class="menu-item" role="menuitem" href={ templ.SafeURL(runsForCardPath(c.ID)) }>
+				@button.Button(button.Props{Class: "menu-item", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
 					@icon("runs")
 					<span>View runs</span>
-				</a>
+				}
 			}
 			if iss := safeActivityURL(c.IssueURL); iss != "" {
-				<a class="menu-item" role="menuitem" href={ templ.SafeURL(iss) } target="_blank" rel="noopener noreferrer">
+				@button.Button(button.Props{Class: "menu-item", Href: iss, Target: "_blank", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "rel": "noopener noreferrer"}}) {
 					@icon("external")
 					<span>Open issue</span>
-				</a>
+				}
 			}
-			<a class="menu-item" role="menuitem" href={ templ.SafeURL(planningPath(c.ID)) }>View card &amp; plan</a>
-			<div class="menu-sep" role="separator"></div>
+			@button.Button(button.Props{Class: "menu-item", Href: planningPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
+				View card &amp; plan
+			}
+			@separator.Separator(separator.Props{Class: "menu-sep"})
 			if canAction(c, d.attempts, "delete") {
-				<button type="button" class="menu-item danger" role="menuitem" data-on:click={ "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true" }>
+				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true"}}) {
 					@icon("trash")
 					<span>Delete…</span>
-				</button>
+				}
 			} else {
 				@menuDisabled("Delete", "trash", actionReason(c, d.attempts, "delete"))
 			}
@@ -302,19 +315,19 @@ templ menuPost(d pageData, c Card, route, label, ic string, extra [][2]string) {
 		for _, kv := range extra {
 			<input type="hidden" name={ kv[0] } value={ kv[1] }/>
 		}
-		<button type="submit" class="menu-item" role="menuitem">
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
 			@icon(ic)
 			<span>{ label }</span>
-		</button>
+		}
 	</form>
 }
 
 templ menuDisabled(label, ic, reason string) {
-	<div class="menu-item disabled" role="menuitem" aria-disabled="true" title={ reason }>
+	@button.Button(button.Props{Disabled: true, Class: "menu-item disabled", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "aria-disabled": "true", "title": reason}}) {
 		@icon(ic)
 		<span>{ label }</span>
 		<span class="menu-reason">{ reason }</span>
-	</div>
+	}
 }
 
 // Refresh forms work natively and use finite SSE when Datastar is available.
@@ -324,13 +337,13 @@ templ prRefreshForm(d pageData, projectID, cardID, label string) {
 		<input type="hidden" name="project_id" value={ projectID }/>
 		<input type="hidden" name="card_id" value={ cardID }/>
 		@viewFields(d.v)
-		<button type="submit" class="btn small" data-attr:disabled="$prRefreshing" data-attr:aria-busy="$prRefreshing ? 'true' : 'false'">
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn small", Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"data-attr:disabled": "$prRefreshing", "data-attr:aria-busy": "$prRefreshing ? 'true' : 'false'"}}) {
 			<span data-show="!$prRefreshing">{ label }</span>
 			<span class="pr-refresh-pending" style="display: none" data-show="$prRefreshing">
 				<span class="pr-refresh-spinner" aria-hidden="true"></span>
 				Refreshing ready PRs…
 			</span>
-		</button>
+		}
 	</form>
 }
 
@@ -338,7 +351,7 @@ templ cardPRStatus(d pageData, c Card) {
 	{{ check := d.prChecks[c.ID] }}
 	<div class={ "card-pr-status", templ.KV("card-conflict", check.State == "conflict") } role="status" data-pr-check-state={ check.State }>
 		if check.State == "conflict" || check.State == "error" {
-			<span class="chip tone-failed" title={ prCheckLabel(check) }>
+			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip tone-failed", Attributes: templ.Attributes{"title": prCheckLabel(check)}}) {
 				if check.State == "conflict" {
 					@icon("warning")
 					Merge Conflict
@@ -346,7 +359,7 @@ templ cardPRStatus(d pageData, c Card) {
 					@icon("warning")
 					Checks Failed
 				}
-			</span>
+			}
 		} else if check.State != "merged" {
 			<p>{ prCheckLabel(check) }</p>
 		}
@@ -371,10 +384,10 @@ templ cardPRStatus(d pageData, c Card) {
 			</details>
 		}
 		if check.State == "conflict" {
-			<button type="button" class="btn small conflict-fix" data-on:click={ fixDialogAction(c.ID, conflictFixMessage) }>
+			@button.Button(button.Props{Type: button.TypeButton, Class: "btn small conflict-fix", Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"data-on:click": fixDialogAction(c.ID, conflictFixMessage)}}) {
 				@icon("warning")
 				Fix Merge Conflict
-			</button>
+			}
 		}
 	</div>
 }
@@ -385,10 +398,10 @@ templ archiveButton(d pageData, c Card) {
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
 		<input type="hidden" name="card_id" value={ c.ID }/>
-		<button type="submit" class="archive-action" title="Changes visibility only; work and history are preserved">
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "archive-action", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"title": "Changes visibility only; work and history are preserved"}}) {
 			@icon("archive")
 			{ archiveLabel(c) }
-		</button>
+		}
 	</form>
 }
 
@@ -434,7 +447,9 @@ func hasArchivedCards(cards []Card, project string) bool {
 }
 
 templ manualReadyBadge(d pageData, a Attempt) {
- if r,ok := d.readyOverrides[a.ID]; ok {
-  <span class="chip" title={ "Manually readied at " + r.MarkedAt.UTC().Format("2006-01-02 15:04:05.000 UTC") }>Manually readied</span>
- }
+	if r,ok := d.readyOverrides[a.ID]; ok {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip", Attributes: templ.Attributes{"title": "Manually readied at " + r.MarkedAt.UTC().Format("2006-01-02 15:04:05.000 UTC")}}) {
+			Manually readied
+		}
+	}
 }

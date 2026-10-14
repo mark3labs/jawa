@@ -72,7 +72,7 @@ func TestCardVisualFixture(t *testing.T) {
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, label := range []string{"Merge Conflict", "Merged", "Checks Failed", `class="archive-action"`} {
+	for _, label := range []string{"Merge Conflict", "Merged", "Checks Failed", `archive-action"`} {
 		if !strings.Contains(out.String(), label) {
 			t.Errorf("missing %q", label)
 		}

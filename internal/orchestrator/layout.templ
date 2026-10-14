@@ -1,10 +1,10 @@
 package orchestrator
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/breadcrumb"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
@@ -13,7 +13,9 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/kbd"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
+	"net/http"
 )
 
 func authPageWithRequest(w http.ResponseWriter, r *http.Request, kind, msg string) {
@@ -52,8 +54,8 @@ templ head(title string) {
 // logo is the Jawa mark: a hooded figure whose two eyes glow amber.
 templ logo(size int) {
 	<svg class="logo" width={ strconv.Itoa(size) } height={ strconv.Itoa(size) } viewBox="0 0 32 32" aria-hidden="true">
-		<path d="M16 2.5c-6.4 0-10.5 5-10.5 11.4V25c0 2.2 1.6 4.2 4.2 4.2h12.6c2.6 0 4.2-2 4.2-4.2V13.9C26.5 7.5 22.4 2.5 16 2.5z" fill="#3b2d1d" stroke="#6b5036" stroke-width="1"/>
-		<path d="M9.2 15.2c0-3.2 2.9-5.4 6.8-5.4s6.8 2.2 6.8 5.4v2.2c0 2.6-2.9 4.6-6.8 4.6s-6.8-2-6.8-4.6z" fill="#0d0a07"/>
+		<path d="M16 2.5c-6.4 0-10.5 5-10.5 11.4V25c0 2.2 1.6 4.2 4.2 4.2h12.6c2.6 0 4.2-2 4.2-4.2V13.9C26.5 7.5 22.4 2.5 16 2.5z" fill="#3b2d1d" stroke="#6b5036" stroke-width="1"></path>
+		<path d="M9.2 15.2c0-3.2 2.9-5.4 6.8-5.4s6.8 2.2 6.8 5.4v2.2c0 2.6-2.9 4.6-6.8 4.6s-6.8-2-6.8-4.6z" fill="#0d0a07"></path>
 		<circle cx="12.6" cy="15.6" r="3" fill="#ffb000" opacity=".18"></circle>
 		<circle cx="19.4" cy="15.6" r="3" fill="#ffb000" opacity=".18"></circle>
 		<circle cx="12.6" cy="15.6" r="1.35" fill="#ffc533"></circle>
@@ -183,7 +185,7 @@ templ toneIcon(tone string) {
 }
 
 templ submit(title string) {
-	@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary"}) {
+	@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary"}) {
 		{ title }
 	}
 }
@@ -296,16 +298,24 @@ templ sidebar(d pageData) {
 		@sidebarNav(d)
 		<div class="sidebar-foot">
 			<div class="hints" aria-label="Keyboard shortcuts">
-				<span>@kbd.Kbd() { C }</span><span>new card</span>
-				<span>@kbd.Kbd() { / }</span><span>filter</span>
-				<span>@kbd.Kbd() { G }@kbd.Kbd() { B }</span><span>go to…</span>
+				<span>@kbd.Kbd() {
+	C
+}</span><span>new card</span>
+				<span>@kbd.Kbd() {
+	/
+}</span><span>filter</span>
+				<span>@kbd.Kbd() {
+	G
+}@kbd.Kbd() {
+	B
+}</span><span>go to…</span>
 			</div>
 			<form method="post" action="/logout">
 				<input type="hidden" name="_csrf" value={ d.csrf }/>
-				<button type="submit" class="nav-item nav-quiet">
+				@button.Button(button.Props{Type: button.TypeSubmit, Class: "nav-item nav-quiet", Size: button.SizeSm, Variant: button.VariantGhost}) {
 					@icon("logout")
 					<span>Sign out</span>
-				</button>
+				}
 			</form>
 		</div>
 	</aside>
@@ -324,13 +334,17 @@ templ sidebarNav(d pageData) {
 				@icon("runs")
 				<span>Runs</span>
 				if n := countRunStates(d.attempts, "active"); n > 0 {
-					<span class="nav-count live">{ strconv.Itoa(n) }</span>
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "nav-count live"}) {
+						{ strconv.Itoa(n) }
+					}
 				}
 			</a>
 			<a class="nav-item" href="/agents" aria-current={ isCurrent(d.v.View == viewAgents) }>
 				@icon("agents")
 				<span>Agents</span>
-				<span class={ "nav-count", templ.KV("online", readyAgents(d.agents) > 0) }>{ strconv.Itoa(readyAgents(d.agents)) }</span>
+				@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: templ.Classes("nav-count", templ.KV("online", readyAgents(d.agents) > 0)).String()}) {
+					{ strconv.Itoa(readyAgents(d.agents)) }
+				}
 			</a>
 			<a class="nav-item" href="/settings" aria-current={ isCurrent(d.v.View == viewSettings) }>
 				@icon("settings")
@@ -340,9 +354,9 @@ templ sidebarNav(d pageData) {
 		<div class="nav-group">
 			<div class="nav-label nav-label-row">
 				<span>Projects</span>
-				<button type="button" class="icon-btn" aria-label="New project" data-on:click="$projectOpen = true">
+				@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "New project", "data-on:click": "$projectOpen = true"}}) {
 					@icon("plus")
-				</button>
+				}
 			</div>
 			for _, p := range d.projects {
 				{{ work := projectWork(d.uiSnapshot, p.ID) }}
@@ -350,7 +364,9 @@ templ sidebarNav(d pageData) {
 					<span class="proj-mark">{ initial(p.Name) }</span>
 					<span class="nav-text">{ p.Name }</span>
 					if work.Total() > 0 {
-						<span class="nav-count live" title={ work.Label() }>{ strconv.Itoa(work.Total()) }</span>
+						@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "nav-count live", Attributes: templ.Attributes{"title": work.Label()}}) {
+							{ strconv.Itoa(work.Total()) }
+						}
 					}
 				</a>
 			}
@@ -396,15 +412,17 @@ templ topbar(d pageData) {
 		}
 		<div class="topbar-actions">
 			if d.v.View == viewBoard || d.v.View == viewArchive {
-				<label class="search">
+				@label.Label(label.Props{Class: "search"}) {
 					@icon("search")
 					@input.Input(input.Props{ID: "card-filter", Class: "filter", Placeholder: "Filter cards", Attributes: templ.Attributes{"aria-label": "Filter cards", "data-bind:filter": "", "autocomplete": "off"}})
-					@kbd.Kbd() { / }
-				</label>
+					@kbd.Kbd() {
+						/
+					}
+				}
 			}
 			@agentStatus(d)
 			if len(d.projects) > 0 {
-				@button.Button(button.Props{Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$cardOpen = true"}}) {
+				@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeButton, Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$cardOpen = true"}}) {
 					@icon("plus")
 					New card
 				}
@@ -415,7 +433,7 @@ templ topbar(d pageData) {
 
 // agentStatus is a live patch root present on every screen.
 templ agentStatus(d pageData) {
-	<a id="agent-status" class={ "agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence) } href="/agents" title="Open agents">
+	@badge.Badge(badge.Props{Variant: badge.VariantOutline, ID: "agent-status", Class: templ.Classes("agent-chip", templ.KV("online", readyAgents(d.agents) > 0), templ.KV("degraded", !d.presence)).String(), Href: "/agents", Attributes: templ.Attributes{"title": "Open agents"}}) {
 		<span class="pulse-dot"></span>
 		if !d.presence {
 			<span>Presence unavailable</span>
@@ -426,7 +444,7 @@ templ agentStatus(d pageData) {
 		} else {
 			<span>{ strconv.Itoa(n) } agents online</span>
 		}
-	</a>
+	}
 }
 
 // notification is an independent patch root; errors never discard a draft.
@@ -449,14 +467,16 @@ templ dialogs(d pageData) {
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:fix-card/>
 			<div class="field">
-				<label for="fix-message">Fix message (required)</label>
-				<textarea id="fix-message" name="message" rows="5" required data-bind:fix-message autofocus></textarea>
+				@label.Label(label.Props{For: "fix-message"}) {
+					Fix message (required)
+				}
+				@textarea.Textarea(textarea.Props{ID: "fix-message", Name: "message", Rows: 5, Attributes: templ.Attributes{"required": true, "data-bind:fix-message": true, "autofocus": true}})
 			</div>
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$fixOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$fixOpen = false"}}) {
 					Keep in Ready for review
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$fixMessage.trim()"}}) {
+				@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$fixMessage.trim()"}}) {
 					Send to Fix
 				}
 			}
@@ -475,14 +495,16 @@ templ dialogs(d pageData) {
 			<input type="hidden" name="card_id" data-bind:guide-card/>
 			<input type="hidden" name="expected_interaction" data-bind:guide-token/>
 			<div class="field">
-				<label for="guide-message">Guidance (required)</label>
-				<textarea id="guide-message" name="message" rows="5" required maxlength="64000" data-bind:guide-message autofocus></textarea>
+				@label.Label(label.Props{For: "guide-message"}) {
+					Guidance (required)
+				}
+				@textarea.Textarea(textarea.Props{ID: "guide-message", Name: "message", Rows: 5, Attributes: templ.Attributes{"required": true, "maxlength": "64000", "data-bind:guide-message": true, "autofocus": true}})
 			</div>
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$guideOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$guideOpen = false"}}) {
 					Not now
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$guideMessage.trim()"}}) {
+				@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "!$guideMessage.trim()"}}) {
 					Send guidance
 				}
 			}
@@ -501,27 +523,31 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "project-provider"}) {
 					Provider
 				}
-				<select id="project-provider" name="provider" data-bind:project-provider>
-					<option value="github">GitHub</option>
-					<option value="forgejo">Forgejo</option>
-				</select>
+				@nativeselect.NativeSelect(nativeselect.Props{ID: "project-provider", Name: "provider", Attributes: templ.Attributes{"data-bind:project-provider": true}}) {
+					@nativeselect.Option(nativeselect.OptionProps{Value: "github"}) {
+						GitHub
+					}
+					@nativeselect.Option(nativeselect.OptionProps{Value: "forgejo"}) {
+						Forgejo
+					}
+				}
 			</div>
 			<div class="field" hidden data-attr:hidden="$projectProvider !== 'forgejo'">
 				@label.Label(label.Props{For: "project-forgejo-url"}) {
 					Forgejo URL
 				}
-				<input id="project-forgejo-url" name="forgejo_url" type="url" value="https://codeberg.org" data-attr:required="$projectProvider === 'forgejo'" data-attr:disabled="$projectProvider !== 'forgejo'"/>
+				@input.Input(input.Props{ID: "project-forgejo-url", Name: "forgejo_url", Type: "url", Value: "https://codeberg.org", Attributes: templ.Attributes{"data-attr:required": "$projectProvider === 'forgejo'", "data-attr:disabled": "$projectProvider !== 'forgejo'"}})
 			</div>
 			<div class="field">
 				@label.Label(label.Props{For: "project-repo"}) {
 					Repository name
 				}
-				<input id="project-repo" name="repo_name" placeholder="owner/repo" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+" aria-describedby="project-repo-help"/>
+				@input.Input(input.Props{ID: "project-repo", Name: "repo_name", Placeholder: "owner/repo", Required: true, Attributes: templ.Attributes{"pattern": "[A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-]+", "aria-describedby": "project-repo-help"}})
 				<p id="project-repo-help" class="muted">Enter owner/repo, not a full URL. GitHub uses https://github.com; Forgejo uses the URL above.</p>
 			</div>
 			@textField("project-base", "base_branch", "Base branch", "main", true)
 			<div class="dialog-actions">
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$projectOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$projectOpen = false"}}) {
 					Cancel
 				}
 				@submit("Create project")
@@ -531,7 +557,7 @@ templ dialogs(d pageData) {
 	<dialog id="card-dialog" aria-labelledby="card-dialog-title" data-effect="if ($cardOpen && !el.open) el.showModal(); else if (!$cardOpen && el.open) el.close()" data-on:close="$cardOpen = false" data-on:cancel="$cardOpen = false">
 		<form method="post" action="/cards" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards', {contentType:'form', retry: 'never'})">
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
-            <input id="card-issue-submission" type="hidden" name="issue_submission" value={ newID() }/>
+			<input id="card-issue-submission" type="hidden" name="issue_submission" value={ newID() }/>
 			@viewFields(d.v)
 			@dialog.Title(dialog.TitleProps{ID: "card-dialog-title"}) {
 				New card
@@ -541,11 +567,13 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "card-project"}) {
 					Project
 				}
-				<select name="project_id" id="card-project" required>
+				@nativeselect.NativeSelect(nativeselect.Props{Name: "project_id", ID: "card-project", Required: true}) {
 					for _, p := range d.projects {
-						<option value={ p.ID } selected?={ p.ID == d.v.Project }>{ p.Name }</option>
+						@nativeselect.Option(nativeselect.OptionProps{Value: p.ID, Selected: p.ID == d.v.Project}) {
+							{ p.Name }
+						}
 					}
-				</select>
+				}
 			</div>
 			@textField("card-title", "title", "Title", "", true)
 			<div class="field">
@@ -559,20 +587,24 @@ templ dialogs(d pageData) {
 					Open issue (optional)
 				}
 				<div class="issue-autofill-row">
-					<select id="card-issue" name="issue_url" aria-describedby="card-issue-status">
-						<option value="">No linked issue</option>
-					</select>
-					<label data-create-issue id="card-create-issue-label" for="card-create-issue">
+					@nativeselect.NativeSelect(nativeselect.Props{ID: "card-issue", Name: "issue_url", Attributes: templ.Attributes{"aria-describedby": "card-issue-status"}}) {
+						@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
+							No linked issue
+						}
+					}
+					@label.Label(label.Props{ID: "card-create-issue-label", For: "card-create-issue", Attributes: templ.Attributes{"data-create-issue": true}}) {
 						@checkbox.Checkbox(checkbox.Props{ID: "card-create-issue", Name: "create_issue", Value: "yes", DefaultChecked: true, Attributes: templ.Attributes{"aria-labelledby": "card-create-issue-label", "aria-describedby": "card-create-issue-help"}})
 						Create issue
-					</label>
-                    <button class="btn" type="button" data-issue-autofill hidden disabled aria-label="Autofill title and description from issue" aria-describedby="card-issue-autofill-help">Autofill</button>
+					}
+					@button.Button(button.Props{Class: "btn", Type: button.TypeButton, Disabled: true, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"data-issue-autofill": true, "hidden": true, "aria-label": "Autofill title and description from issue", "aria-describedby": "card-issue-autofill-help"}}) {
+						Autofill
+					}
 				</div>
 				<p id="card-create-issue-help" data-create-help class="muted">Creating the card will also create and link an issue in this project's repository.</p>
-                <div id="card-issue-recovery"></div>
-                <p id="card-issue-autofill-help" class="muted">Autofill replaces the title and description. You can edit them afterward.</p>
+				<div id="card-issue-recovery"></div>
+				<p id="card-issue-autofill-help" class="muted">Autofill replaces the title and description. You can edit them afterward.</p>
 				<p id="card-issue-status" class="muted" role="status" aria-live="polite">Open the dialog to load this project's issues.</p>
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
 					Refresh issues
 				}
 				<noscript>
@@ -580,7 +612,7 @@ templ dialogs(d pageData) {
 				</noscript>
 			</jawa-issue-selector>
 			<div class="dialog-actions">
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {
 					Cancel
 				}
 				@submit("Create card")
@@ -599,15 +631,15 @@ templ dialogs(d pageData) {
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:delete-card/>
-			<label data-show="$deleteOrphan">
-				<input type="checkbox" name="acknowledge_orphan" value="yes" data-bind:delete-acknowledged data-attr:required="$deleteOrphan"/>
+			@label.Label(label.Props{ID:"delete-acknowledge-label", For:"delete-acknowledge", Attributes: templ.Attributes{"data-show": "$deleteOrphan"}}) {
+				@acknowledgement("delete-acknowledge", "acknowledge_orphan", "deleteAcknowledged", "$deleteOrphan")
 				I understand that deleting may orphan a still-running agent.
-			</label>
+			}
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$deleteOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$deleteOpen = false"}}) {
 					Keep card
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger"}) {
 					Delete permanently
 				}
 			}
@@ -625,10 +657,10 @@ templ dialogs(d pageData) {
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:cancel-card/>
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cancelOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cancelOpen = false"}}) {
 					Keep running
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger"}) {
 					Request cancellation
 				}
 			}
@@ -645,43 +677,55 @@ templ dialogs(d pageData) {
 			<input type="hidden" name="_csrf" value={ d.csrf }/>
 			@viewFields(d.v)
 			<input type="hidden" name="card_id" data-bind:force-card/>
-			<label>
-				<input type="checkbox" name="acknowledge" value="yes" data-bind:force-acknowledged required/>
+			@label.Label(label.Props{ID:"force-acknowledge-label", For:"force-acknowledge"}) {
+				@acknowledgement("force-acknowledge", "acknowledge", "forceAcknowledged", "true")
 				I understand the agent may still be running.
-			</label>
+			}
 			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
-				@button.Button(button.Props{Class: "btn", Attributes: templ.Attributes{"data-on:click": "$forceOpen = false"}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$forceOpen = false"}}) {
 					Keep run
 				}
-				@button.Button(button.Props{Type: button.TypeSubmit, Class: "btn danger"}) {
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger"}) {
 					Force stop
 				}
 			}
 		</form>
 	</dialog>
-
- <dialog id="ready-dialog" aria-labelledby="ready-dialog-title" data-effect="if ($readyOpen && !el.open) el.showModal(); else if (!$readyOpen && el.open) el.close()" data-on:close="$readyOpen = false" data-on:cancel="$readyOpen = false">
-  @dialog.Title(dialog.TitleProps{ID:"ready-dialog-title"}) { Force this card to Done? }
-  @dialog.Description() {
-   CI, review and mergeability checks will be skipped. Inspect the pull request manually before confirming. This only moves the card to Done; it does not merge the PR or make any changes on GitHub or Forgejo.
-  }
-  <form method="post" action="/cards/force-ready" data-on:submit__prevent="@post('/cards/force-ready', {contentType:'form'})">
-   <input type="hidden" name="_csrf" value={ d.csrf }/>
-   @viewFields(d.v)
-   <input type="hidden" name="card_id" data-bind:ready-card/>
-   <input type="hidden" name="expected" data-bind:ready-token/>
-   <p data-show="$readyPR !== ''"><a data-attr:href="$readyPR" data-text="$readyPR" target="_blank" rel="noopener noreferrer">Pull request</a></p>
-   <label data-show="$readyPR === ''">PR number
-    <input type="number" name="pr_number" min="1" step="1" data-bind:ready-number data-attr:disabled="$readyPR !== ''" data-attr:required="$readyPR === ''"/>
-   </label>
-   <label>Reason (optional, at most 1000 bytes)<textarea name="reason" data-bind:ready-reason></textarea></label>
-   <label><input type="checkbox" name="acknowledge" value="yes" data-bind:ready-acknowledged required/>I understand that CI, review and readiness checks are bypassed and I have inspected the PR manually.</label>
-   @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
-    @button.Button(button.Props{Class:"btn",Attributes:templ.Attributes{"data-on:click":"$readyOpen = false"}}) { <span data-text="'Keep in ' + $readyLane">Keep in lane</span> }
-    @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn danger"}) { Force ready }
-   }
-  </form>
- </dialog>
+	<dialog id="ready-dialog" aria-labelledby="ready-dialog-title" data-effect="if ($readyOpen && !el.open) el.showModal(); else if (!$readyOpen && el.open) el.close()" data-on:close="$readyOpen = false" data-on:cancel="$readyOpen = false">
+		@dialog.Title(dialog.TitleProps{ID: "ready-dialog-title"}) {
+			Force this card to Done?
+		}
+		@dialog.Description() {
+			CI, review and mergeability checks will be skipped. Inspect the pull request manually before confirming. This only moves the card to Done; it does not merge the PR or make any changes on GitHub or Forgejo.
+		}
+		<form method="post" action="/cards/force-ready" data-on:submit__prevent="@post('/cards/force-ready', {contentType:'form'})">
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" data-bind:ready-card/>
+			<input type="hidden" name="expected" data-bind:ready-token/>
+			<p data-show="$readyPR !== ''"><a data-attr:href="$readyPR" data-text="$readyPR" target="_blank" rel="noopener noreferrer">Pull request</a></p>
+			@label.Label(label.Props{For:"ready-pr-number", Attributes: templ.Attributes{"data-show": "$readyPR === ''"}}) {
+				PR number
+				@input.Input(input.Props{ID:"ready-pr-number", Type: "number", Name: "pr_number", Attributes: templ.Attributes{"min": "1", "step": "1", "data-bind:ready-number": true, "data-attr:disabled": "$readyPR !== ''", "data-attr:required": "$readyPR === ''"}})
+			}
+			@label.Label(label.Props{For:"ready-reason"}) {
+				Reason (optional, at most 1000 bytes)
+				@textarea.Textarea(textarea.Props{ID:"ready-reason", Name: "reason", Attributes: templ.Attributes{"data-bind:ready-reason": true}})
+			}
+			@label.Label(label.Props{ID:"ready-acknowledge-label", For:"ready-acknowledge"}) {
+				@acknowledgement("ready-acknowledge", "acknowledge", "readyAcknowledged", "true")
+				I understand that CI, review and readiness checks are bypassed and I have inspected the PR manually.
+			}
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$readyOpen = false"}}) {
+					<span data-text="'Keep in ' + $readyLane">Keep in lane</span>
+				}
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger"}) {
+					Force ready
+				}
+			}
+		</form>
+	</dialog>
 	<form id="move-form" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
@@ -745,4 +789,12 @@ func pageEventsURL(d pageData) string {
 		return "/runs/" + d.detail.Attempt.ID + "/events?tab=" + d.detail.Tab
 	}
 	return d.v.EventsURL()
+}
+
+// Attributes on Checkbox target its span, not the adjacent native input.
+// The wrapper bridges native changes and signal-driven dialog resets.
+templ acknowledgement(id, name, signal, required string) {
+	<span class="acknowledgement" data-effect={ "window.jawaSyncAcknowledgement(el, $" + signal + ", " + required + ")" } data-on:change={ "$" + signal + " = evt.target.checked" }>
+		@checkbox.Checkbox(checkbox.Props{ID: id, Name: name, Value: "yes", Required: required == "true", Attributes:templ.Attributes{"aria-labelledby":id+"-label"}})
+	</span>
 }

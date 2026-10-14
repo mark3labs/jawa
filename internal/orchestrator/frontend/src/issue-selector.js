@@ -14,7 +14,7 @@ export function setupIssueSelector(host, cleanup) {
 
   const create = form.querySelector('[name="create_issue"]');
   const token = form.querySelector('[name="issue_submission"]');
-  const createRoot = host.querySelector('[data-slot="checkbox"]');
+  const createRoot = host.querySelector('[data-create-issue] [data-slot="checkbox"]');
   const createLabel = host.querySelector('[data-create-issue]');
   const createHelp = host.querySelector('[data-create-help]');
   const recovery = () => host.querySelector('#card-issue-recovery');

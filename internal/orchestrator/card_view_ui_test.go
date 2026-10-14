@@ -31,8 +31,8 @@ func TestCardViewShortcutHTTP(t *testing.T) {
 		}
 		page := request(a, "GET", route, nil, session, csrf)
 		status(t, page, http.StatusOK)
-		want := `class="icon-btn card-view-action" href="` + planningPath(c.ID) + `"`
-		if !strings.Contains(page.Body.String(), want) {
+		want := `href="` + planningPath(c.ID) + `" data-slot="button"`
+		if !strings.Contains(page.Body.String(), want) || !strings.Contains(page.Body.String(), `card-view-action"`) {
 			t.Fatal("missing card shortcut")
 		}
 		detail := request(a, "GET", planningPath(c.ID), nil, session, csrf)

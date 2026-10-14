@@ -66,6 +66,18 @@ try {
           assert.match(await page.locator('.view-stats').textContent(), /4 active/);
           assert.equal(await page.getByRole('group', { name: '4 active work items: 2 planning, 1 building, 1 fixing (includes queued and archived work)', exact: true }).count(), 1);
         }
+        const badgeGeometry = await page.locator('[data-slot="badge"]').evaluateAll(elements =>
+          elements.map(el => {
+            const style = getComputedStyle(el);
+            return {text: el.textContent.trim(), radius: style.borderRadius,
+              left: style.marginLeft, right: style.marginRight};
+          }));
+        assert.ok(badgeGeometry.length > 0);
+        for (const badge of badgeGeometry) {
+          assert.equal(badge.radius, '4px', `${view} ${width}: ${badge.text} radius`);
+          assert.equal(badge.left, '3px', `${view} ${width}: ${badge.text} left margin`);
+          assert.equal(badge.right, '3px', `${view} ${width}: ${badge.text} right margin`);
+        }
         const overlaps = await page.locator('[data-project-id]').evaluateAll(links =>
           links.filter(link => {
             const text = link.querySelector('.nav-text')?.getBoundingClientRect();
@@ -73,6 +85,14 @@ try {
             return text && badge && text.right > badge.left + 1;
           }).map(link => link.dataset.projectId));
         assert.deepEqual(overlaps, [], `${view} ${width}: project name overlaps badge`);
+        // The text owns the auto spacer so counts retain both 3px margins.
+        const misalignedCounts = await page.locator('[data-project-id] .nav-count').evaluateAll(badges =>
+          badges.filter(badge => {
+            const link = badge.closest('[data-project-id]');
+            const rightInset = link.getBoundingClientRect().right - badge.getBoundingClientRect().right;
+            return Math.abs(rightInset - (parseFloat(getComputedStyle(link).paddingRight) + 3)) > 1;
+          }).map(badge => badge.textContent.trim()));
+        assert.deepEqual(misalignedCounts, [], `${view} ${width}: counts must remain right aligned`);
         const overflow = await page.locator('.task-card').evaluateAll(cards =>
           cards.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.id));
         assert.deepEqual(overflow, [], `${view} ${width}: card overflow`);

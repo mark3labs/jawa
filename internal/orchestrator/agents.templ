@@ -3,8 +3,10 @@ package orchestrator
 import (
 	"strconv"
 
+	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/avatar"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
 	"github.com/axadrn/shadcn-templ/v2/components/table"
@@ -24,7 +26,9 @@ templ agentsContent(d pageData) {
 			</div>
 		</div>
 		if !d.presence {
-			<p class="card-note tone-blocked">Presence discovery is unavailable right now. This page will recover on its own.</p>
+			@alert.Alert(alert.Props{Class: "card-note tone-blocked"}) {
+				Presence discovery is unavailable right now. This page will recover on its own.
+			}
 		}
 		if len(d.agents) == 0 {
 			@empty.Empty(empty.Props{Class: "page-empty"}) {
@@ -57,10 +61,10 @@ templ connectBlock(d pageData) {
 	<div class="connect">
 		<pre class="snippet">{ connectSnippet(d.nats.URL, d.nats.Username) }</pre>
 		<jawa-copy text={ connectSnippet(d.nats.URL, d.nats.Username) }>
-			<button type="button" class="btn">
+			@button.Button(button.Props{Type: button.TypeButton, Class: "btn", Size: button.SizeSm, Variant: button.VariantOutline}) {
 				@icon("copy")
 				<span class="copy-label">Copy</span>
-			</button>
+			}
 		</jawa-copy>
 	</div>
 }

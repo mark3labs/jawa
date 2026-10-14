@@ -209,6 +209,9 @@ func TestBlockerGuidanceCardUI(t *testing.T) {
 				t.Fatal(err)
 			}
 			out := buf.String()
+			if tc.lane != "Done" && (strings.Count(out, `role="alert"`) != 1 || strings.Contains(out, `role="status"`)) {
+				t.Fatal("blocked notice must have one live region", out)
+			}
 			replies := strings.Count(out, "Reply with guidance")
 			if tc.reply != (replies == 2) || (!tc.reply && replies != 0) {
 				t.Fatalf("reply actions = %d\n%s", replies, out)
