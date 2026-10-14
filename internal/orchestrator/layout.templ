@@ -13,7 +13,7 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/kbd"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
-	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
+	selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
 	"net/http"
 )
@@ -519,18 +519,11 @@ templ dialogs(d pageData) {
 			}
 			<p class="muted">Connect a repository so agents can open pull requests against it.</p>
 			@textField("project-name", "name", "Name", "", true)
-			<div class="field">
+			<div class="field" data-on:change="$projectProvider = evt.target.value">
 				@label.Label(label.Props{For: "project-provider"}) {
 					Provider
 				}
-				@nativeselect.NativeSelect(nativeselect.Props{ID: "project-provider", Name: "provider", Attributes: templ.Attributes{"data-bind:project-provider": true}}) {
-					@nativeselect.Option(nativeselect.OptionProps{Value: "github"}) {
-						GitHub
-					}
-					@nativeselect.Option(nativeselect.OptionProps{Value: "forgejo"}) {
-						Forgejo
-					}
-				}
+				@selectField("project-provider", "provider", "github", false, []selectcomp.ItemData{{Value: "github", Label: "GitHub"}, {Value: "forgejo", Label: "Forgejo"}}, nil)
 			</div>
 			<div class="field" hidden data-attr:hidden="$projectProvider !== 'forgejo'">
 				@label.Label(label.Props{For: "project-forgejo-url"}) {
@@ -567,13 +560,7 @@ templ dialogs(d pageData) {
 				@label.Label(label.Props{For: "card-project"}) {
 					Project
 				}
-				@nativeselect.NativeSelect(nativeselect.Props{Name: "project_id", ID: "card-project", Required: true}) {
-					for _, p := range d.projects {
-						@nativeselect.Option(nativeselect.OptionProps{Value: p.ID, Selected: p.ID == d.v.Project}) {
-							{ p.Name }
-						}
-					}
-				}
+				@selectField("card-project", "project_id", projectSelectDefault(d.projects, d.v.Project), true, projectSelectItems(d.projects), nil)
 			</div>
 			@textField("card-title", "title", "Title", "", true)
 			<div class="field">
@@ -587,11 +574,7 @@ templ dialogs(d pageData) {
 					Open issue (optional)
 				}
 				<div class="issue-autofill-row">
-					@nativeselect.NativeSelect(nativeselect.Props{ID: "card-issue", Name: "issue_url", Attributes: templ.Attributes{"aria-describedby": "card-issue-status"}}) {
-						@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
-							No linked issue
-						}
-					}
+					@selectField("card-issue", "issue_url", "", false, []selectcomp.ItemData{{Value: "", Label: "No linked issue"}}, templ.Attributes{"aria-describedby": "card-issue-status"})
 					@label.Label(label.Props{ID: "card-create-issue-label", For: "card-create-issue", Attributes: templ.Attributes{"data-create-issue": true}}) {
 						@checkbox.Checkbox(checkbox.Props{ID: "card-create-issue", Name: "create_issue", Value: "yes", DefaultChecked: true, Attributes: templ.Attributes{"aria-labelledby": "card-create-issue-label", "aria-describedby": "card-create-issue-help"}})
 						Create issue
@@ -607,9 +590,6 @@ templ dialogs(d pageData) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-issue-refresh": ""}}) {
 					Refresh issues
 				}
-				<noscript>
-					Issue creation occurs only on submit. Uncheck Create issue for an unlinked card. Enable JavaScript to select an open issue.
-				</noscript>
 			</jawa-issue-selector>
 			<div class="dialog-actions">
 				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": "$cardOpen = false"}}) {

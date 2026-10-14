@@ -7,7 +7,6 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/checkbox"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
-	"github.com/axadrn/shadcn-templ/v2/components/nativeselect"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
 	"net/http"
 )
@@ -22,22 +21,7 @@ templ issueRecoveryControls(state, message string) {
 				@label.Label(label.Props{For: "issue-recovery-action"}) {
 					Recovery action
 				}
-				@nativeselect.NativeSelect(nativeselect.Props{ID: "issue-recovery-action", Name: "issue_recovery"}) {
-					@nativeselect.Option(nativeselect.OptionProps{Value: ""}) {
-						No recovery selected
-					}
-					@nativeselect.Option(nativeselect.OptionProps{Value: "link"}) {
-						Link existing issue
-					}
-					@nativeselect.Option(nativeselect.OptionProps{Value: "unlinked"}) {
-						Create unlinked card
-					}
-					if state == "rejected" {
-						@nativeselect.Option(nativeselect.OptionProps{Value: "retry"}) {
-							Retry rejected creation (new submission)
-						}
-					}
-				}
+				@selectField("issue-recovery-action", "issue_recovery", "", false, recoverySelectItems(state), nil)
 			</div>
 			<div class="field">
 				@label.Label(label.Props{For: "issue-recovery-url"}) {

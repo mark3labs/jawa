@@ -86,7 +86,7 @@ The web UI (`internal/orchestrator/*.templ`) is built with
   Check the catalog before hand-writing buttons, inputs, selects, forms/fields,
   cards, badges, alerts, tables, dialogs, menus, tabs, empty states, pagination or similar elements.
   The repo already uses Alert, Avatar, Badge, Breadcrumb, Button, Card, Checkbox,
-  Dialog, Empty, Input, Kbd, Label, NativeSelect, Separator, Switch, Table and Textarea.
+  Dialog, Empty, Input, Kbd, Label, Select, Separator, Switch, Table and Textarea.
 - Only write custom HTML when no component fits, such as page layout wrappers.
   Even then, compose it from existing components where you can.
 - When you find a hand-rolled element that a component could replace, prefer
@@ -95,7 +95,7 @@ The web UI (`internal/orchestrator/*.templ`) is built with
   (`--color-primary`, `--color-muted`, etc., mapped to the Jawa robe-brown/sand/amber
   palette). Use Tailwind utilities and component variants. Do not add hard-coded colors or new CSS files.
 - **Component JavaScript:** `frontend/build.sh` bundles only the pinned
-  shadcn-templ runtimes in use (`baseui/lifecycle`, `checkbox`, `switch`). If
+  shadcn-templ runtimes in use (`baseui/lifecycle`, Select and its Base UI/Floating UI helpers, `checkbox`, `switch`). If
   you adopt a component that ships a `.js` behavior file, add it to the
   generated entry in `build.sh`. No CDN: everything is self-hosted and embedded.
 - **Interactivity** uses Datastar + Rocket (vendored in `frontend/src/datastar-rocket.js`).
@@ -148,3 +148,12 @@ Keep these accurate when you change the behavior they describe:
 - Never commit `.env`, keys or anything in `.bonnie/`. Use `.env.example` for new variables, and document them in `README.md`.
 - Pin tool versions (templ, sqlc, golangci-lint, BONNIE) consistently across
   CI, the `Dockerfile` and the docs when you bump them.
+
+Select fields require JavaScript; there is no native-select or noscript select
+fallback. The standalone recovery page still submits an ordinary HTTP POST.
+The shared `selectField` keeps trigger/content/input siblings for beta.14's
+input lookup. The adapter uses the pinned `templ.select.setValue` for resets
+and programmatic updates; named inputs carry committed form values. Select
+portals target the trigger's native dialog when present, preserving upstream
+portal ownership and cleanup. Provider changes bridge the committed input to
+Datastar; reset must restore both the displayed selection and provider signal.

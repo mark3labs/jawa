@@ -28,6 +28,9 @@ func TestComponentSourceConformance(t *testing.T) {
 			t.Errorf("%s contains a raw visible control", file)
 		}
 		text := string(source)
+		if strings.Contains(text, "nativeselect") {
+			t.Errorf("%s uses NativeSelect", file)
+		}
 		// Hidden move-form controls are the only typeless native transport inputs.
 		for _, field := range rawInput.FindAllString(text, -1) {
 			if strings.Contains(field, `type="hidden"`) {
@@ -120,7 +123,7 @@ func TestPlanningComponentFixture(t *testing.T) {
 	if err := appPage(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, slot := range []string{"card", "checkbox", "native-select", "native-select-option", "badge", "button"} {
+	for _, slot := range []string{"card", "checkbox", "select-trigger", "select-item", "badge", "button"} {
 		if !strings.Contains(out.String(), `data-slot="`+slot+`"`) {
 			t.Errorf("missing %s", slot)
 		}
@@ -155,6 +158,42 @@ func TestComponentSwitchPersistence(t *testing.T) {
 			if strings.Contains(native, " checked") != (value == "true") {
 				t.Fatalf("switch persistence: %s", native)
 			}
+		}
+	}
+}
+
+func TestSelectDefaults(t *testing.T) {
+	projects := []Project{{ID: "first", Name: "First project"}, {ID: "second", Name: "Second <project>"}}
+	for _, tc := range []struct {
+		projects []Project
+		selected string
+		want     string
+	}{{projects, "", "first"}, {projects, "missing", "first"}, {projects, "second", "second"}, {nil, "second", ""}} {
+		if got := projectSelectDefault(tc.projects, tc.selected); got != tc.want {
+			t.Errorf("default = %q, want %q", got, tc.want)
+		}
+	}
+	for _, state := range []string{"uncertain", "rejected"} {
+		var out bytes.Buffer
+		if err := selectField("recovery", "issue_recovery", "", false, recoverySelectItems(state), nil).Render(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{`role="combobox"`, `id="recovery"`, `data-templ-controls="recovery-content"`, `id="recovery-content-list" role="listbox"`, `name="issue_recovery" value=""`, `No recovery selected`, `data-templ-value="unlinked"`} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("missing %s", want)
+			}
+		}
+		if strings.Contains(out.String(), `data-templ-value="retry"`) != (state == "rejected") {
+			t.Fatal("retry eligibility")
+		}
+	}
+	var out bytes.Buffer
+	if err := selectField("project", "project_id", "second", true, projectSelectItems(projects), nil).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`name="project_id" value="second" required`, `aria-required`, `Second &lt;project&gt;`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %s", want)
 		}
 	}
 }

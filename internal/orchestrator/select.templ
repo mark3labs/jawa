@@ -1,0 +1,68 @@
+package orchestrator
+
+import "fmt"
+import selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
+
+// Keep the trigger and generated form input adjacent: beta.14 discovers the
+// value input by sibling traversal, including after Content has been portaled.
+templ selectField(id, name, value string, required bool, items []selectcomp.ItemData, attrs templ.Attributes) {
+	<div data-select-field>
+		@selectcomp.Select(selectcomp.Props{ID: id + "-content", Name: name, DefaultValue: value, Required: required, Items: items}) {
+			@selectcomp.Trigger(selectcomp.TriggerProps{ID: id, Attributes: attrs}) {
+				@selectcomp.Value()
+			}
+			@selectcomp.Content(selectcomp.ContentProps{AlignItemWithTrigger: boolPointer(false), Align: selectcomp.AlignStart}) {
+				for _, item := range items {
+					@selectcomp.Item(selectcomp.ItemProps{Value: item.Value}) {
+						{ fmt.Sprint(item.Label) }
+					}
+				}
+			}
+		}
+		if name == "issue_url" {
+			<template data-issue-item>
+				@selectcomp.Item(selectcomp.ItemProps{}) {
+					Issue 
+				}
+			</template>
+		}
+	</div>
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func projectSelectItems(projects []Project) []selectcomp.ItemData {
+	items := make([]selectcomp.ItemData, 0, len(projects))
+	for _, p := range projects {
+		items = append(items, selectcomp.ItemData{Value: p.ID, Label: p.Name})
+	}
+	return items
+}
+
+func projectSelectDefault(projects []Project, selected string) string {
+	for _, p := range projects {
+		if p.ID == selected {
+			return p.ID
+		}
+	}
+	if len(projects) > 0 {
+		return projects[0].ID
+	}
+	return ""
+}
+
+func recoverySelectItems(state string) []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: "", Label: "No recovery selected"}, {Value: "link", Label: "Link existing issue"}, {Value: "unlinked", Label: "Create unlinked card"}}
+	if state == "rejected" {
+		items = append(items, selectcomp.ItemData{Value: "retry", Label: "Retry rejected creation (new submission)"})
+	}
+	return items
+}
+
+func revisionSelectItems(revisions []PlanningRevision) []selectcomp.ItemData {
+	items := []selectcomp.ItemData{{Value: "", Label: "Select the revision you reviewed"}}
+	for _, revision := range revisions {
+		items = append(items, selectcomp.ItemData{Value: fmt.Sprint(revision.Number), Label: fmt.Sprintf("Revision %d", revision.Number)})
+	}
+	return items
+}

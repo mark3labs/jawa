@@ -1,3 +1,4 @@
+import {chooseSelect} from './select.mjs';
 import {launchBrowser} from './browser.mjs';
 import {createServer} from 'node:http';
 import {readFile, mkdir} from 'node:fs/promises';
@@ -124,7 +125,8 @@ try {
     const approval = page.locator('#planning-acknowledge');
     const check = approval.locator('xpath=preceding-sibling::span[1]');
     assert.equal(await approval.evaluate(el=>el.required && !el.validity.valid),true);
-    await page.locator('#plan-revision').selectOption('1');
+    assert.equal(await page.locator('[name="expected_revision"]').evaluate(el => el.validity.valid), false);
+    await chooseSelect(page, '#plan-revision', '1', true);
     await check.focus(); await page.keyboard.press('Space');
     assert.equal(await approval.isChecked(),true);
     assert.equal(await approval.evaluate(el=>el.form.checkValidity()),true);

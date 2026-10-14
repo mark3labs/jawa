@@ -1,3 +1,4 @@
+import {chooseSelect} from './select.mjs';
 import { launchBrowser } from './browser.mjs';
 import assert from 'node:assert/strict';
 // playwright (without @playwright/test) supplies locators, not expect.
@@ -452,7 +453,7 @@ try {
  await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
- await page.getByLabel('Plan revision to approve').selectOption('2');
+ await chooseSelect(page, '#plan-revision', '2', true);
  await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
