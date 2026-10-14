@@ -19,7 +19,18 @@ Stable element patch roots:
 - All screens: `sidebar-nav`, `agent-status`, and action-only `notice`.
 
 Live updates omit notice; mutation success clears it or shows a success flash.
-Expected failures return finite SSE notices rather than navigation/raw SQL errors.
+Expected failures return finite SSE alerts rather than navigation/raw SQL errors.
+Shared mutation dialogs own `project|card|delete|fix|guide|cancel|ready|force-error`
+roots, outside live view roots. Each opening assigns a validated opaque operation
+suffix to its error root and hidden form transport field. Only fixed server-owned
+POST routes select a destination; messages remain templ-escaped. Non-dialog
+actions retain the page notice fallback and native failures retain HTTP statuses.
+Failures leave the modal open and preserve drafts/acknowledgements. Live snapshots
+omit these roots. Fresh open and dismissal clear local errors; dismissal also
+aborts that opening’s request, so delayed errors and success signals cannot
+contaminate another operation. Success clears the correlated alert, marks form
+reset evidence and closes via existing signals. Issue creation keeps its dedicated
+recovery controls and explicit retry policy.
 Dialog-close signals accompany success. Project creation patches `goto` with a
 server-generated same-origin board URL; the stable shell navigates through a
 Datastar effect. No script strings from user input are executed.

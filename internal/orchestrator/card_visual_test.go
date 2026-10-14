@@ -13,7 +13,7 @@ import (
 func TestCardVisualFixture(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
-	p := Project{ID: "abc", Name: "Card status fixtures", Provider: "github", Repo: "example/visual-fixtures", BaseBranch: "main"}
+	p := Project{ID: "abc", Name: "Jawa", Provider: "github", Repo: "example/visual-fixtures", BaseBranch: "master"}
 	d := pageData{v: viewParams{View: viewBoard, Project: p.ID}, now: now, projects: []Project{p}, prChecks: map[string]PRCheck{}}
 	for i, state := range []string{"conflict", "merged", "error"} {
 		id := []string{"a1", "a2", "a3"}[i]

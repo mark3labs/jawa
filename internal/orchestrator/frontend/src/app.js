@@ -5,6 +5,7 @@
 // Datastar evaluates existing effects during module initialization, so their
 // global helpers must be registered by an earlier dependency.
 import './acknowledgement.js';
+import './dialog-errors.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
 import {setupIssueSelector} from './issue-selector.js';
@@ -283,6 +284,8 @@ document.addEventListener('datastar-fetch', event => {
     buttons.forEach(button => { button.disabled = false; });
     const notice = document.getElementById('notice');
     const failed = notice && !notice.hidden && !notice.classList.contains('info');
-    if (!failed && (el.closest('dialog') || el.hasAttribute('data-reset-on-success')) && (el.action !== new URL('/cards', location.href).href || !el.closest('dialog')?.open)) el.reset();
+    // A dialog resets only on its correlated server success patch. Finishing
+    // a 200 error SSE or an aborted request is not proof of success.
+    if (!el.closest('dialog') && !failed && el.hasAttribute('data-reset-on-success')) el.reset();
   }
 });

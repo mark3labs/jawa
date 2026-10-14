@@ -279,6 +279,19 @@ The bundled lifecycle, checkbox and switch runtimes handle SSE additions; native
 no-script forms expose the adjacent input as a usable fallback.
 
 Export real Settings/dialog markup with `JAWA_COMPONENT_FIXTURE=/path/components.html
-go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture)$' -count=1`,
+go test ./internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1`,
 then run `JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:components`
 in frontend. Native recovery is exported alongside the issue fixture as `.native`.
+
+## Compact UI regression fixture
+
+Export the Board fixture and component fixtures above (including
+`TestAgentsComponentFixture`), then run `JAWA_CARD_VISUAL_HTML=/path/cards.html
+JAWA_COMPONENT_FIXTURE=/path/components.html npm run test:ui` in frontend.
+This serves only real sanitized renderer fixtures/assets and simulated finite
+SSE responses on a disposable loopback port. Chromium checks search geometry,
+filter shortcuts, short project headings, Latest run metadata, primary contrast,
+agent timestamps and record-provided labels after keyed replacement at
+320/390/768/1024/1440px. Shared dialog failures retain drafts, clear on reopening,
+and isolate late responses. Set `JAWA_UI_SCREENSHOTS=/path/images` for untracked
+390/1440px screenshots. Existing component/issue-recovery tests remain independent.

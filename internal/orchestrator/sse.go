@@ -59,21 +59,16 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 	// Expected action failures are finite 200 responses, not retryable mutations.
 	// Render through the same escaped component boundary as normal notices.
 	var notice bytes.Buffer
-	if err := notification(message, "").Render(r.Context(), &notice); err != nil {
+	component := notification(message, "")
+	if name := mutationDialog(r); name != "" {
+		component = dialogError(name, r.FormValue("dialog_operation"), message)
+	}
+	if err := component.Render(r.Context(), &notice); err != nil {
 		return
 	}
 	stream := newSSEWriter(w)
 	if err := stream.write(elementsFrame(notice.String())); err != nil {
 		return
-	}
-	if r.URL.Path == "/cards/cancel" {
-		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"cancelOpen\":false,\"cancelCard\":\"\"}\n\n")
-	}
-	if r.URL.Path == "/cards/force-ready" {
-		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"readyOpen\":false,\"readyCard\":\"\"}\n\n")
-	}
-	if r.URL.Path == "/cards/force-stop" {
-		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"forceOpen\":false,\"forceCard\":\"\"}\n\n")
 	}
 }
 
@@ -142,6 +137,9 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 		signals["fixOpen"] = "false"
 		signals["fixCard"] = `""`
 		signals["fixMessage"] = `""`
+	case "/cards/guide":
+		signals["guideOpen"] = "false"
+		signals["guideMessage"] = `""`
 	case "/cards/delete":
 		signals["deleteOpen"] = "false"
 		signals["deleteCard"] = `""`
@@ -175,6 +173,11 @@ func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects
 	var out bytes.Buffer
 	for _, fragment := range fragments {
 		if err := fragment.Render(r.Context(), &out); err != nil {
+			return "", err
+		}
+	}
+	if name := mutationDialog(r); name != "" {
+		if err := dialogError(name, r.FormValue("dialog_operation"), "").Render(r.Context(), &out); err != nil {
 			return "", err
 		}
 	}

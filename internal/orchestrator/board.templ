@@ -29,8 +29,7 @@ templ boardContent(d pageData) {
 								<span>{ repoLabel(p.Repo) }</span>
 							}
 							<span class="meta-sep">·</span>
-							@icon("branch")
-							<span>{ p.BaseBranch }</span>
+							<span class="meta-unit">@icon("branch") <span>{ p.BaseBranch }</span></span>
 						</p>
 					</div>
 				</div>
