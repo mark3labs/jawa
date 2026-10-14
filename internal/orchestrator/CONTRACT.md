@@ -318,3 +318,20 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+## Blocked full-card discussion checks
+
+`/planning?card=<id>` is the full card view even without a planning session.
+Accepted build/Fix blockers and saved guidance remain readable after delivery,
+cancellation and restart, grouped by attempt following planning discussion.
+Only the current pending interaction offers inline guidance; queued delivery
+shows saved text immediately without allowing another reply.
+
+From `internal/orchestrator/frontend`, run `npm run test:guidance`. It exports
+real production markup with `JAWA_GUIDANCE_HTML` via `TestGuidanceBrowserFixture`
+and tests the embedded bundle: success-only modal closure, rejected draft,
+inline form payload/token, repeated live patch draft preservation, new-token
+replacement, keyboard submit, and 320/390/1440px overflow. Set
+`JAWA_GUIDANCE_SCREENSHOT_DIR` to an existing directory to capture Chromium PNGs.
+Standalone fixture export from root:
+`JAWA_GUIDANCE_HTML=/tmp/guidance.html go test ./internal/orchestrator -run '^TestGuidanceBrowserFixture$' -count=1`.
+The `.pending`, `.queued` and `.next` suffixes are patch roots for this script.

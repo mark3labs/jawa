@@ -12,6 +12,7 @@ snapshot polling, not browser polling. Streams terminate on disconnect, revocati
 or shutdown. Write deadlines are refreshed to bound slow consumers.
 
 Stable element patch roots:
+- Full card: `planning-content` (`/planning?card=<id>`), including direct builds.
 - Board: `board-content` (only the selected project's lanes/cards).
 - Runs: `runs-content` (card/state filters, newest-first rows).
 - Agents: `agents-content` (presence summaries and endpoints).
@@ -103,3 +104,11 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
+and `guideMessage`; error notices and live snapshots do not clear them. The
+inline `/cards/guide` composer lives inside `planning-content`, with form and
+textarea IDs keyed by report identity and `data-ignore-morph` draft preservation.
+A new report replaces the old composer; queued replies render immediately with
+no further composer. History is loaded only for the selected full card through
+shared full-page/SSE loading. Run `npm run test:guidance` for production Go-markup
+and embedded Datastar bundle regression checks.
