@@ -797,7 +797,7 @@ func cardChips(d pageData, c Card) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var40), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = badge.Badge(badge.Props{Variant: badge.VariantOutline, Href: runsForCardPath(c.ID), Attributes: templ.Attributes{"title": "View runs"}, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var40), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1506,7 +1506,7 @@ func cardMenu(d pageData, c Card) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if len(latestAttempt(c.ID, d.attempts)) > 0 {
+		if d.hasRuns(c.ID) {
 			templ_7745c5c3_Var68 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)

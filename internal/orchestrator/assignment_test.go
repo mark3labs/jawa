@@ -492,3 +492,17 @@ func TestTargetedPlanningCannotReplaceExistingTurn(t *testing.T) {
 		t.Fatalf("replaced planning %+v", d.Turns)
 	}
 }
+
+func TestTargetedPlanningHistoryLabel(t *testing.T) {
+	_, w, c := planningLocal(t)
+	if err := w.startPlanningTo(c.ID, 0, "planner"); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := w.s.runHistory(t.Context(), nil)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("history %v %v", runs, err)
+	}
+	if runs[0].label() != "Queued for planner" || runs[0].pinned() || !runs[0].matches("active") {
+		t.Fatalf("queued target projection %+v", runs[0])
+	}
+}

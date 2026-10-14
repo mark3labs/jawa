@@ -785,3 +785,18 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+### Planning run history
+
+Planning status badges and **View runs** open card-filtered Runs on Board and
+Archive. Runs lists Planning, Build and Fix separately, including queued tasks
+and all retained sessions. **Open** appears once the remote identity is pinned;
+planning Chat/Trace is read-only. Return to the card to reply, revise, approve,
+recover or cancel. Replies/resumes keep one history entry, retries add another,
+and approval shows both the planner and its distinct build. Archived/cancelled
+history remains discoverable until card/project deletion.
+
+Planning input/specification review appears under **Blocked**, unfinished work or
+queued replies under **Active**, and failed turns under **Failed**. **Ready**
+continues to mean implementation/PR readiness, not plan approval. Stored workflow
+state is separate from the live BONNIE snapshot; offline agents show retained
+diagnostics and cannot supply a cold conversation archive.

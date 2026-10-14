@@ -318,6 +318,25 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+### Planning run observation
+
+`GET /runs/planning/{turnID}?tab=chat|trace` and
+`GET /runs/planning/{turnID}/events?tab=chat|trace` reuse the authenticated,
+no-store Chat/Trace viewer and shared BONNIE observation hubs. Unknown, unpinned
+or malformed identities return 404; browser fields never choose a remote target.
+The stream re-fetches planning storage and terminates if the pinned tuple changes
+or the task disappears. Trace shows at most 256 newest planning event/outcome
+receipts (received time then row ID), ignoring malformed JSON and foreign tuples.
+Stored execution/workflow state is distinct from a live snapshot. Offline reads
+show stored diagnostics, not a reconstructed conversation.
+
+Planning viewers are observation-only: no composer or Stop, and crafted chat/stop
+POSTs return 403 without sending agent commands. Replies, specification review,
+guidance, recovery and cancellation remain on the authoritative card page.
+Existing implementation URLs and Send/Stop policies are unchanged. Board and
+Archive planning status badges and View runs menus are native filtered-history
+links; the card key/eye still opens the card. Planning execution history provides
+Open run for each valid pinned task, including older sessions.
 ## Blocked full-card discussion checks
 
 `/planning?card=<id>` is the full card view even without a planning session.

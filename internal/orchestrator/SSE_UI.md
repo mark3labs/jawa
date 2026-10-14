@@ -104,6 +104,14 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
+read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
+and resume keep the key, retries create another. Generic `/snapshot?view=runs`
+and `/events?view=runs` include queued/unpinned and retained planning history.
+Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with the
+same bounded writes, authentication rechecks and identity-change fencing as build
+details. Its controls root explains observation-only policy; no planning composer
+or Stop is rendered. Build authority collections and `/activity` are unchanged.
 Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
 and `guideMessage`; error notices and live snapshots do not clear them. The
 inline `/cards/guide` composer lives inside `planning-content`, with form and

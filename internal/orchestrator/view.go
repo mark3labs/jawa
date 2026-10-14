@@ -265,31 +265,6 @@ func matchesRunState(a Attempt, state string) bool {
 	return true
 }
 
-func countRunStates(attempts []Attempt, state string) int {
-	n := 0
-	for _, a := range attempts {
-		if matchesRunState(a, state) {
-			n++
-		}
-	}
-	return n
-}
-
-// filterRuns returns attempts newest first, optionally narrowed by card/state.
-func filterRuns(attempts []Attempt, v viewParams) []Attempt {
-	out := make([]Attempt, 0, len(attempts))
-	for _, a := range attempts {
-		if v.Card != "" && a.CardID != v.Card {
-			continue
-		}
-		if matchesRunState(a, v.State) {
-			out = append(out, a)
-		}
-	}
-	slices.SortStableFunc(out, func(a, b Attempt) int { return b.CreatedAt.Compare(a.CreatedAt) })
-	return out
-}
-
 func cardByID(cards []Card, id string) (Card, bool) {
 	for _, c := range cards {
 		if c.ID == id {

@@ -14,7 +14,7 @@ import (
 )
 
 func detailAction(d runDetail, action string) string {
-	return "/runs/" + d.Attempt.ID + "/" + action + "?tab=" + d.Tab
+	return d.Record.basePath() + "/" + action + "?tab=" + d.Tab
 }
 func detailVariant(active bool) button.Variant {
 	if active {
@@ -32,18 +32,20 @@ templ runDetailPage(d runDetail, csrf string) {
 			Back to Runs
 		}
 		<header class="run-detail-header">
-			<h1>Run #{ strconv.Itoa(d.Attempt.Number) }</h1>
+			<h1>{ d.Record.Mode } run #{ strconv.Itoa(d.Record.Number) }</h1>
 			<dl class="run-detail-metadata">
-				<div><dt>Agent</dt><dd>{ displayDash(d.Attempt.AgentID) }</dd></div>
-				<div><dt>Run</dt><dd>{ displayDash(d.Attempt.RunID) }</dd></div>
-				<div><dt>Branch</dt><dd>{ attemptBranch(d.Attempt) }</dd></div>
+				<div><dt>Agent</dt><dd>{ displayDash(d.Record.AgentID) }</dd></div>
+				<div><dt>Run</dt><dd>{ displayDash(d.Record.RunID) }</dd></div>
+				if d.Record.Mode != "Planning" {
+					<div><dt>Branch</dt><dd>{ attemptBranch(d.Record.Build) }</dd></div>
+				}
 			</dl>
 		</header>
 		<nav class="run-detail-tabs" aria-label="Run detail tabs">
-			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("chat"), Variant: detailVariant(d.Tab == "chat"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "chat")}}) {
 				Chat
 			}
-			@button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
+			@button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("trace"), Variant: detailVariant(d.Tab == "trace"), Attributes: templ.Attributes{"role": "link", "aria-current": isCurrent(d.Tab == "trace")}}) {
 				Trace
 			}
 		</nav>
@@ -56,7 +58,7 @@ templ runDetailPage(d runDetail, csrf string) {
 			</div>
 		}
 		@runDetailContent(d)
-		if d.Tab=="chat" {
+		if d.Tab=="chat" && d.Record.Mode!="Planning" {
 			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface"}) {
 				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-on:submit={ "@post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
 					<input type="hidden" name="_csrf" value={ csrf }/>
@@ -76,7 +78,7 @@ templ runDetailPage(d runDetail, csrf string) {
 templ runDetailControls(d runDetail, csrf string) {
 	<div id="run-detail-controls" class="run-controls">
 		<p class="meta">{ d.Policy.Reason }</p>
-		if d.Tab=="chat" {
+		if d.Tab=="chat" && d.Record.Mode!="Planning" {
 			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
@@ -94,7 +96,7 @@ templ runDetailControls(d runDetail, csrf string) {
 				}
 			</form>
 		}
-		@button.Button(button.Props{Type: button.TypeButton, Href: string(planningPath(d.Attempt.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
+		@button.Button(button.Props{Type: button.TypeButton, Href: string(planningPath(d.Record.CardID)), Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "link"}}) {
 			Open card for recovery / guidance
 		}
 	</div>
@@ -113,10 +115,13 @@ templ runDetailEmpty(text string) {
 templ runDetailContent(d runDetail) {
 	<div id="run-detail-content" class="run-history">
 		<div class="run-observed-state">
-			@badge.Badge() {
-				{ displayDash(d.Attempt.RunState) }
+			if d.Record.Mode == "Planning" {
+				@badge.Badge() { { d.Record.label() } }
 			}
-			<span class="meta">Observed run state · workflow outcome is separate</span>
+			@badge.Badge() {
+				{ displayDash(d.Record.RunState) }
+			}
+			<span class="meta">Stored execution state · workflow outcome and live snapshot are separate</span>
 		</div>
 		if d.Observation.Unreachable {
 			@alert.Alert(alert.Props{ID: "run-unreachable", Class: "run-notice"}) {
@@ -128,14 +133,14 @@ templ runDetailContent(d runDetail) {
 				Activity truncated to bounded retained history.
 			}
 		}
-		if d.Attempt.Error!="" {
+		if d.Record.Error!="" {
 			@alert.Alert(alert.Props{ID: "run-error", Class: "run-notice"}) {
-				{ d.Attempt.Error }
+				{ d.Record.Error }
 			}
 		}
-		if d.Attempt.Result!="" {
+		if d.Record.Result!="" {
 			@card.Card(card.Props{ID: "run-outcome-surface", Class: "run-outcome"}) {
-				<details id="run-outcome" data-preserve-attr="open"><summary>Stored workflow outcome</summary><pre class="result">{ d.Attempt.Result }</pre></details>
+				<details id="run-outcome" data-preserve-attr="open"><summary>Stored workflow outcome</summary><pre class="result">{ d.Record.Result }</pre></details>
 			}
 		}
 		if d.Tab=="trace" {
@@ -192,7 +197,7 @@ templ runChat(d runDetail) {
 		}
 		if d.Observation.Unreachable {
 			<p class="meta">
-				Offline Chat cannot reconstruct a conversation from workflow deliveries. @button.Button(button.Props{Type: button.TypeButton, Href: detailPath(d.Attempt, "trace"), Variant: button.VariantLink, Attributes: templ.Attributes{"role": "link"}}) {
+				Offline Chat cannot reconstruct a conversation from workflow deliveries. @button.Button(button.Props{Type: button.TypeButton, Href: d.Record.path("trace"), Variant: button.VariantLink, Attributes: templ.Attributes{"role": "link"}}) {
 	Inspect stored diagnostics in Trace
 }
 			</p>
