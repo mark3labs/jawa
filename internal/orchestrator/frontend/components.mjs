@@ -133,7 +133,9 @@ try {
   assert.equal(await input.isVisible(),true);
   await input.uncheck();
   assert.deepEqual(await input.evaluate(el=>new FormData(el.form).getAll(el.name)),['false']);
-  await page.locator('[name="github-token-clear"]').check();
+  const clear = page.locator('[name="github-token-clear"]');
+  await clear.check();
+  assert.deepEqual(await clear.evaluate(el=>new FormData(el.form).getAll(el.name)),['true']);
   await context.close();
   console.log('Real component state, validity, field order, native fallback and viewport checks passed');
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }

@@ -85,6 +85,14 @@ try {
             return text && badge && text.right > badge.left + 1;
           }).map(link => link.dataset.projectId));
         assert.deepEqual(overlaps, [], `${view} ${width}: project name overlaps badge`);
+        // The text owns the auto spacer so counts retain both 3px margins.
+        const misalignedCounts = await page.locator('[data-project-id] .nav-count').evaluateAll(badges =>
+          badges.filter(badge => {
+            const link = badge.closest('[data-project-id]');
+            const rightInset = link.getBoundingClientRect().right - badge.getBoundingClientRect().right;
+            return Math.abs(rightInset - (parseFloat(getComputedStyle(link).paddingRight) + 3)) > 1;
+          }).map(badge => badge.textContent.trim()));
+        assert.deepEqual(misalignedCounts, [], `${view} ${width}: counts must remain right aligned`);
         const overflow = await page.locator('.task-card').evaluateAll(cards =>
           cards.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.id));
         assert.deepEqual(overflow, [], `${view} ${width}: card overflow`);

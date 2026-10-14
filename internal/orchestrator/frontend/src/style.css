@@ -156,6 +156,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.012em; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item[aria-current="page"] { background: var(--surface-3); color: var(--text); }
 .nav-item[aria-current="page"] .ic { color: var(--amber); }
+/* Text owns the auto spacer: badge margins stay fixed without losing alignment. */
 .nav-item .nav-text { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-3); color: var(--text-3); font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .nav-count.live { background: var(--amber-dim); color: var(--amber); }
