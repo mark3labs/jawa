@@ -2532,7 +2532,11 @@ func dialogs(d pageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "<div class=\"field\">")
+		templ_7745c5c3_Err = autoMergeControls("new-card-merge", "inherit").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "<p class=\"muted small\">Use the live global default, or override for this card. Squash only; disabling cannot stop an in-flight write.</p><div class=\"field\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2759,7 +2763,7 @@ func dialogs(d pageData) templ.Component {
 		var templ_7745c5c3_Var112 string
 		templ_7745c5c3_Var112, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 631, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 633, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var112)
 		if templ_7745c5c3_Err != nil {
@@ -2924,7 +2928,7 @@ func dialogs(d pageData) templ.Component {
 		var templ_7745c5c3_Var119 string
 		templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 658, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 660, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var119)
 		if templ_7745c5c3_Err != nil {
@@ -3063,7 +3067,7 @@ func dialogs(d pageData) templ.Component {
 		var templ_7745c5c3_Var125 string
 		templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 681, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 683, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var125)
 		if templ_7745c5c3_Err != nil {
@@ -3228,7 +3232,7 @@ func dialogs(d pageData) templ.Component {
 		var templ_7745c5c3_Var132 string
 		templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 708, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 710, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var132)
 		if templ_7745c5c3_Err != nil {
@@ -3393,7 +3397,7 @@ func dialogs(d pageData) templ.Component {
 		var templ_7745c5c3_Var139 string
 		templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 736, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 738, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var139)
 		if templ_7745c5c3_Err != nil {
@@ -3503,7 +3507,7 @@ func auth(csrf, kind, msg string) templ.Component {
 					var templ_7745c5c3_Var143 string
 					templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 764, Col: 12}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 766, Col: 12}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 					if templ_7745c5c3_Err != nil {
@@ -3523,7 +3527,7 @@ func auth(csrf, kind, msg string) templ.Component {
 			var templ_7745c5c3_Var144 templ.SafeURL
 			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinURLErrs("/" + kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 767, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 769, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
 			if templ_7745c5c3_Err != nil {
@@ -3536,7 +3540,7 @@ func auth(csrf, kind, msg string) templ.Component {
 			var templ_7745c5c3_Var145 string
 			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.ResolveAttributeValue(csrf)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 768, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 770, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var145)
 			if templ_7745c5c3_Err != nil {
@@ -3672,7 +3676,7 @@ func acknowledgement(id, name, signal, required string) templ.Component {
 		var templ_7745c5c3_Var149 string
 		templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.ResolveAttributeValue("window.jawaSyncAcknowledgement(el, $" + signal + ", " + required + ")")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 803, Col: 116}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 805, Col: 116}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var149)
 		if templ_7745c5c3_Err != nil {
@@ -3685,7 +3689,7 @@ func acknowledgement(id, name, signal, required string) templ.Component {
 		var templ_7745c5c3_Var150 string
 		templ_7745c5c3_Var150, templ_7745c5c3_Err = templ.ResolveAttributeValue("$" + signal + " = evt.target.checked")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 803, Col: 174}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/layout.templ`, Line: 805, Col: 174}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var150)
 		if templ_7745c5c3_Err != nil {

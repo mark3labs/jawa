@@ -11,12 +11,13 @@ import (
 )
 
 type issueSubmission struct {
+	AutoMergeMode                                                       string
 	Token, Project, Provider, Repository, Title, Body, State, URL, Card string
 	Number                                                              int
 }
 
 func readIssueSubmission(tx *sql.Tx, token string) (s issueSubmission, err error) {
-	err = tx.QueryRow(`SELECT token,project_id,provider,repository,title,body,state,issue_url,issue_number,card_id FROM issue_submissions WHERE token=?`, token).Scan(&s.Token, &s.Project, &s.Provider, &s.Repository, &s.Title, &s.Body, &s.State, &s.URL, &s.Number, &s.Card)
+	err = tx.QueryRow(`SELECT token,project_id,provider,repository,title,body,state,issue_url,issue_number,card_id,auto_merge_mode FROM issue_submissions WHERE token=?`, token).Scan(&s.Token, &s.Project, &s.Provider, &s.Repository, &s.Title, &s.Body, &s.State, &s.URL, &s.Number, &s.Card, &s.AutoMergeMode)
 	return
 }
 func validSubmissionToken(token string) bool {
@@ -31,6 +32,12 @@ func (e uiError) Error() string { return string(e) }
 
 // Reserve before dispatch; only the inserting caller is allowed to send a POST.
 func (s *Store) reserveIssueSubmission(token string, p Project, title, body string) (issueSubmission, bool, error) {
+	return s.reserveIssueSubmissionOptions(token, p, title, body, "inherit")
+}
+func (s *Store) reserveIssueSubmissionOptions(token string, p Project, title, body, mode string) (issueSubmission, bool, error) {
+	if !validAutoMergeMode(mode) {
+		return issueSubmission{}, false, errors.New("invalid auto merge mode")
+	}
 	if !validSubmissionToken(token) {
 		return issueSubmission{}, false, uiError("Invalid submission token. Reopen New card.")
 	}
@@ -43,9 +50,9 @@ func (s *Store) reserveIssueSubmission(token string, p Project, title, body stri
 	fresh := errors.Is(err, sql.ErrNoRows)
 	if fresh {
 		now := time.Now().Unix()
-		_, err = tx.Exec(`INSERT INTO issue_submissions(token,project_id,provider,repository,title,body,state,created_at,updated_at) VALUES(?,?,?,?,?,?,'reserved',?,?)`, token, p.ID, p.Provider, p.Repo, title, body, now, now)
-		row = issueSubmission{Token: token, Project: p.ID, Provider: p.Provider, Repository: p.Repo, Title: title, Body: body, State: "reserved"}
-	} else if err == nil && (row.Project != p.ID || row.Provider != p.Provider || row.Repository != p.Repo || row.Title != title || row.Body != body) {
+		_, err = tx.Exec(`INSERT INTO issue_submissions(token,project_id,provider,repository,title,body,auto_merge_mode,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'reserved',?,?)`, token, p.ID, p.Provider, p.Repo, title, body, mode, now, now)
+		row = issueSubmission{AutoMergeMode: mode, Token: token, Project: p.ID, Provider: p.Provider, Repository: p.Repo, Title: title, Body: body, State: "reserved"}
+	} else if err == nil && (row.Project != p.ID || row.Provider != p.Provider || row.Repository != p.Repo || row.Title != title || row.Body != body || row.AutoMergeMode != mode) {
 		return row, false, uiError("This submission token belongs to a different draft. Restore the original draft to recover it; no issue was retried.")
 	}
 	if err != nil {
@@ -84,7 +91,7 @@ func (s *Store) finalizeIssueSubmission(token, recoveryURL string, recovery bool
 		}
 		issue = recoveryURL
 	}
-	card, err := insertCardDetails(tx, row.Project, row.Title, row.Body, issue)
+	card, err := insertCardOptions(tx, row.Project, row.Title, row.Body, issue, row.AutoMergeMode)
 	if err != nil {
 		return err
 	}
@@ -109,6 +116,10 @@ func canonicalRecoveryIssue(p Project, raw string) (string, error) {
 }
 
 func (a *app) submitIssueCard(r *http.Request) error {
+	mode, modeErr := submittedAutoMergeMode(r.FormValue("auto_merge_mode"))
+	if modeErr != nil {
+		return modeErr
+	}
 	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("description")
 	if title == "" {
 		return uiError("Title is required.")
@@ -187,7 +198,7 @@ func (a *app) submitIssueCard(r *http.Request) error {
 			return err
 		}
 	}
-	row, fresh, err := a.s.reserveIssueSubmission(token, p, title, body)
+	row, fresh, err := a.s.reserveIssueSubmissionOptions(token, p, title, body, mode)
 	if err != nil {
 		return uiError("Unable to reserve submission, or its token belongs to a different draft. Restore the original draft to recover; no issue was retried.")
 	}

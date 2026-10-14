@@ -28,6 +28,7 @@ type mutationContext struct {
 }
 
 var mutations = map[string]mutation{
+	"/cards/auto-merge":            {needsWorkflow: true, run: (*app).mutateCardAutoMerge},
 	"/cards/assign":                {needsWorkflow: true, run: (*app).mutateAssignment},
 	"/prs/refresh":                 {run: (*app).mutatePRsRefresh},
 	"/logout":                      {allowBeforeNATS: true, run: (*app).mutateLogout},
@@ -90,7 +91,10 @@ func (a *app) mutateProjects(w http.ResponseWriter, r *http.Request, ctx *mutati
 }
 
 func (a *app) mutateCards(w http.ResponseWriter, r *http.Request, ctx *mutationContext) error {
-	var err error
+	mode, err := submittedAutoMergeMode(r.FormValue("auto_merge_mode"))
+	if err != nil {
+		return err
+	}
 	if r.FormValue("create_issue") != "" || r.FormValue("issue_recovery") != "" || r.FormValue("issue_submission") != "" && a.hasIssueSubmission(r.FormValue("issue_submission")) {
 		err = a.submitIssueCard(r)
 		if err != nil {
@@ -100,7 +104,7 @@ func (a *app) mutateCards(w http.ResponseWriter, r *http.Request, ctx *mutationC
 		}
 		return err
 	}
-	_, err = a.s.CreateCardDetails(r.FormValue("project_id"), r.FormValue("title"), r.FormValue("description"), r.FormValue("issue_url"))
+	_, err = a.s.CreateCardOptions(r.FormValue("project_id"), r.FormValue("title"), r.FormValue("description"), r.FormValue("issue_url"), mode)
 
 	return err
 }
@@ -305,6 +309,14 @@ func (a *app) mutateSettingsOrchestrator(w http.ResponseWriter, r *http.Request,
 			values[pair[1]] = value
 		}
 	}
+	if err == nil && r.Form.Has("auto-merge") {
+		value := r.Form.Get("auto-merge")
+		if value != "true" && value != "false" {
+			err = errors.New("auto-merge must be true or false")
+		} else {
+			values["auto-merge"] = value
+		}
+	}
 	if err == nil && r.Form.Has("auto-resume-failed-runs") {
 		value := r.Form.Get("auto-resume-failed-runs")
 		if value != "true" && value != "false" {
@@ -399,4 +411,12 @@ func (a *app) serveMutation(w http.ResponseWriter, r *http.Request, route mutati
 		return
 	}
 	http.Redirect(w, r, back.Path(), http.StatusSeeOther)
+}
+
+func (a *app) mutateCardAutoMerge(w http.ResponseWriter, r *http.Request, ctx *mutationContext) error {
+	err := a.workflow.SetCardAutoMerge(r.FormValue("card_id"), r.FormValue("expected_mode"), r.FormValue("auto_merge_mode"))
+	if err == nil {
+		ctx.effects.goTo = parseViewParams(r, "").Path()
+	}
+	return err
 }

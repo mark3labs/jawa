@@ -109,11 +109,37 @@ export NATS_USERNAME=agent
 
 The orchestrator independently verifies PR identity, assigned branch, current-head
 CI and review feedback before moving a card to **Done**. Done means ready for human
-review/merge, not merged or automatically approved. Give the orchestrator
+review/merge, not automatically approved. Optional orchestrator auto-merge is
+described below. Give the orchestrator
 `JAWA_GITHUB_TOKEN` (or `GITHUB_TOKEN`) and/or `JAWA_FORGEJO_TOKEN` (or `FORGEJO_TOKEN`) with verification
 read access; agents need their own push/PR credentials. See [PROVIDERS.md](PROVIDERS.md)
 for supported API policy and required permissions. Missing credentials or incomplete
 evidence leaves the card blocked in Building rather than falsely completing it.
+
+### Optional squash auto-merge
+
+Settings **Auto merge Ready PRs** defaults **Off**. Cards default to **Use global**
+(live inheritance), or explicitly **On** / **Off**. Card On works even when global
+Off; this is not a master safety switch. Enabling applies to already-ready eligible
+cards as well as future completions. Save the preference in card detail; retries,
+repairs, archive/restore and Reset to Todo retain it. Reset dashboard settings
+returns the global default to Off, not explicit card preferences.
+
+Only latest normally verified Ready attempts on non-archived Done cards qualify.
+Force-ready audit and applicable manual-merged markers never authorize a merge.
+The orchestrator reruns ordinary readiness for the exact head before reserving a
+squash write. Agents and planning do not perform this action. Merge refusal leaves
+Ready intact; card detail shows sanitized status and timestamps. Provider-required
+approvals/protection remain the final merge gate; no merge queue or method fallback
+is supported. There is no branch deletion or provider-native deferred merge.
+
+Use a token with merge/write permissions **without branch-protection bypass
+rights** when relying on host protections. An administrator/bypass-capable token
+can weaken those gates. See [PROVIDERS.md](PROVIDERS.md). Read-only tokens continue
+working with auto-merge disabled. Disabling cannot undo a merge or reliably cancel
+an HTTP write already dispatched. Durable reservations survive restart and deletion;
+uncertain writes are reconciled read-only before retries, never blindly resent.
+Back up your database before upgrading; use one orchestrator per database.
 
 New branches use `jawa/<title-slug>-<6-char-card-id>-a<attempt>`, for example
 `jawa/update-ci-6780b3-a1`. Existing assignments are preserved.

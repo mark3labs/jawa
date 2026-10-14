@@ -581,6 +581,8 @@ templ dialogs(d pageData) {
 				@selectField("card-project", "project_id", projectSelectDefault(d.projects, d.v.Project), true, projectSelectItems(d.projects), nil)
 			</div>
 			@textField("card-title", "title", "Title", "", true)
+ @autoMergeControls("new-card-merge","inherit")
+ <p class="muted small">Use the live global default, or override for this card. Squash only; disabling cannot stop an in-flight write.</p>
 			<div class="field">
 				@label.Label(label.Props{For: "card-description"}) {
 					Description

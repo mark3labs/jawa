@@ -4,6 +4,7 @@
 // of truth and live SSE morphs keep working.
 // Datastar evaluates existing effects during module initialization, so their
 // global helpers must be registered by an earlier dependency.
+import {setupAutoMerge} from './auto-merge.js';
 import './acknowledgement.js';
 import './dialog-errors.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
@@ -11,6 +12,8 @@ import Sortable from 'sortablejs';
 import {setupAgentSelector} from './agent-selector.js';
 import {setupRunDetail} from './run-detail.js';
 import {setupIssueSelector} from './issue-selector.js';
+
+rocket('jawa-auto-merge', {mode:'light', setup:({host,cleanup}) => setupAutoMerge(host,cleanup)});
 
 rocket('jawa-agent-selector', {mode: 'light', setup: ({host, cleanup}) => setupAgentSelector(host, cleanup)});
 rocket('jawa-run-detail', {

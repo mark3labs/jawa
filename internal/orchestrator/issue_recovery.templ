@@ -48,7 +48,7 @@ templ issueRecoveryPage(r *http.Request, state, message string) {
 				@card.Card(card.Props{Class: "auth-card recovery-card"}) {
 					<h1>New card</h1>
 					<form method="post" action="/cards">
-						for _, name := range []string{"_csrf", "project_id", "view", "project"} {
+						for _, name := range []string{"_csrf", "project_id", "view", "project", "auto_merge_mode"} {
 							<input type="hidden" name={ name } value={ r.FormValue(name) }/>
 						}
 						@issueSubmissionToken(r.FormValue("issue_submission"))

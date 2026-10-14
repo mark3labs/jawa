@@ -566,6 +566,7 @@ func Command() *cobra.Command {
 			}
 		}()
 		workflow.SetProviderChecks(ProviderVerifier(s, nil), ProviderConflictChecker(s, nil))
+		workflow.SetAutoMerger(s)
 		workflow.SetProviderIdentity(ProviderIdentity(s, nil))
 		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)

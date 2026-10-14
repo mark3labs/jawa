@@ -392,3 +392,17 @@ replacement, keyboard submit, and 320/390/1440px overflow. Set
 Standalone fixture export from root:
 `JAWA_GUIDANCE_HTML=/tmp/guidance.html go test ./internal/orchestrator -run '^TestGuidanceBrowserFixture$' -count=1`.
 The `.pending`, `.queued` and `.next` suffixes are patch roots for this script.
+
+## Auto merge controls
+
+New card and all-status card detail share Use global and Auto merge switches. Only
+`auto_merge_mode=inherit|on|off` is named; explicit Save uses authenticated, CSRF/setup
+guarded `/cards/auto-merge` and expected-current-mode stale protection. Detail draft
+forms ignore unsolicited morphs; successful saves reload saved state. New card reset
+restores inherit; issue recovery retains the reserved preference. Merge evidence in
+card detail is sanitized and separate from historical Ready/provider Merged badges.
+
+Export `JAWA_AUTO_MERGE_HTML=$PWD/internal/orchestrator/frontend/node_modules/.auto-merge.html`
+with `go test ./internal/orchestrator -run TestAutoMergeBrowserFixture -count=1`,
+then run `npm run test:auto-merge` in frontend with the same absolute fixture path.
+`JAWA_AUTO_MERGE_SCREENSHOTS` writes real Chromium mobile/desktop screenshots.

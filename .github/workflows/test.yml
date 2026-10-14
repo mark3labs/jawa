@@ -55,6 +55,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Browser fixtures with bundled Chromium
         run: |
+          JAWA_AUTO_MERGE_HTML="$PWD/node_modules/.auto-merge.html" go test ../../../internal/orchestrator -run '^TestAutoMergeBrowserFixture$' -count=1
+          JAWA_AUTO_MERGE_HTML="$PWD/node_modules/.auto-merge.html" npm run test:auto-merge
           npm run test:fix
           npm run test:agents
           JAWA_ASSIGNMENT_HTML="$PWD/node_modules/.assignment.html" go test ../../../internal/orchestrator -run '^TestAssignmentUIFixture$' -count=1

@@ -29,7 +29,7 @@ func (s *Store) setCardArchived(ctx context.Context, id string, archived bool) (
 }
 
 func cardFromQuery(row sqlc.Card) Card {
-	return Card{ID: row.ID, ProjectID: row.ProjectID, Title: row.Title,
+	return Card{AutoMergeMode: row.AutoMergeMode, ID: row.ID, ProjectID: row.ProjectID, Title: row.Title,
 		Description: row.Description, Status: row.Status, Position: int(row.Position),
 		Archived:  row.Archived != 0,
 		CreatedAt: time.Unix(row.CreatedAt, 0).UTC(), IssueURL: row.IssueUrl}

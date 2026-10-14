@@ -107,3 +107,10 @@ Version `00019_target_agents.sql` adds desired `target_agent_id` to workflow
 attempts and planning turns. Empty defaults keep historical work shared without
 changing observed execution identity or history. Targets persist across publish
 retries/restart and are copied to fresh Retry tasks; they are not run ownership.
+
+Version `00020_auto_merge.sql` adds constrained live card/issue-draft mode
+(default inherit) and a non-cascading merge-operation ledger. Tombstones survive
+card/project deletion; no credentials/raw responses are persisted. Reserved/inflight
+rows fence card lane/delete/archive mutations and become uncertain on startup.
+Settings reset preserves card modes; absent global dashboard:auto-merge is false.
+Back up databases before migration and run only one orchestrator per database.

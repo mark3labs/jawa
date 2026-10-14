@@ -78,3 +78,19 @@ Run `npm run test:agents` in the frontend directory for selector race regression
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
+
+## Orchestrator-owned auto-merge
+
+The lifecycle-cancelled serialized recovery pass considers at most 16 oldest-due
+Ready candidates in 30 seconds after normal verification. Global `auto-merge`
+defaults off, with live card inherit/on/off overrides. Latest normally verified
+non-archived Done attempts only; active/pending-resume/conflicting authority,
+Force-ready audit and applicable manual-merged markers are excluded. Full fresh
+readiness binds the exact head to a durable reservation. No transaction spans
+provider I/O. Lane/delete/archive mutations are fenced while reserved/inflight;
+policy disabling remains allowed and invalidates undispatched reservations.
+Dispatched writes may still succeed after disabling. The ledger retains that
+outcome, separately from Ready. Interrupted reservations become uncertain on
+restart and reconcile read-only before safe fresh-verification retry. Persisted
+backoff is one minute exponentially up to 30 minutes (longer Retry-After honored).
+There is no cross-provider exactly-once guarantee; one orchestrator per database.

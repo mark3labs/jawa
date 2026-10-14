@@ -52,3 +52,10 @@ Only runtime configuration is covered. Frontend smoke-test/browser environment
 variables and `JAWA_CARD_VISUAL_HTML` are test tooling, not server CLI settings.
 The orchestrator does not consume a model environment variable: model selection
 belongs to the agent/root command, outside this change's scope.
+
+## Auto merge
+
+Auto merge is dashboard-only: no CLI/environment override. Global default Off is
+live for inherited cards; explicit card On overrides Off. Reset dashboard overrides
+restores global Off without resetting card preferences. See PROVIDERS.md and README
+for squash-only permissions, eligibility and in-flight-disable limitations.

@@ -31,7 +31,25 @@ templ planningContent(d pageData) {
 					}
 				</section>
 			}
-			<section class="planning-section" aria-label="Original description">
+			<section class="planning-section" aria-label="Auto merge">
+ @card.Card(card.Props{Class:"planning-surface"}) {
+ <h2>Auto merge</h2>
+ <p class="muted small">{ autoMergeSavedLabel(c.AutoMergeMode,d.dashboard["auto-merge"]=="true") }</p>
+ <form method="post" action="/cards/auto-merge" data-auto-merge-form data-ignore-morph data-on:submit__prevent="@post('/cards/auto-merge', {contentType:'form', retry:'never'})">
+ <input type="hidden" name="_csrf" value={d.csrf}/>
+ @viewFields(d.v)
+ <input type="hidden" name="card_id" value={c.ID}/>
+ <input type="hidden" name="expected_mode" value={c.AutoMergeMode}/>
+ @autoMergeControls("card-merge",c.AutoMergeMode)
+ <p class="muted small">Applies to existing eligible Ready PRs. Card On works even with global Off. Disabling cannot undo a merge or reliably stop an in-flight write.</p>
+ @submit("Save")
+ </form>
+ if status,ok:=d.autoMerges[c.ID]; ok {
+ <p class="muted small" role="status">{status.State} · {status.Category} · {status.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC")}</p>
+ }
+ }
+ </section>
+ <section class="planning-section" aria-label="Original description">
 				@card.Card(card.Props{Class: "planning-surface"}) {
 					<h2>Original description</h2>
 					if c.Description != "" {

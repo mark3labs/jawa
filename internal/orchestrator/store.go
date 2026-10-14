@@ -23,6 +23,7 @@ type Project struct {
 	CreatedAt                            time.Time
 }
 type Card struct {
+	AutoMergeMode                                       string
 	ID, ProjectID, Title, Description, Status, IssueURL string
 	Position                                            int
 	Archived                                            bool
@@ -96,6 +97,9 @@ func OpenStore(path string) (*Store, error) {
 	}
 	// A previous process cannot still own an in-flight reservation.
 	if _, err = db.Exec(`UPDATE issue_submissions SET state='uncertain',updated_at=? WHERE state='reserved'`, time.Now().Unix()); err != nil {
+		return fail(err)
+	}
+	if _, err = db.Exec(`UPDATE auto_merge_operations SET state='uncertain',category='interrupted' WHERE state IN ('reserved','inflight')`); err != nil {
 		return fail(err)
 	}
 	return &Store{db: db}, nil
@@ -210,12 +214,15 @@ func (s *Store) CreateCard(project, title, desc string) (Card, error) {
 	return s.CreateCardDetails(project, title, desc, "")
 }
 func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, error) {
+	return s.CreateCardOptions(project, title, desc, issue, "inherit")
+}
+func (s *Store) CreateCardOptions(project, title, desc, issue, mode string) (Card, error) {
 	tx, err := s.writeTx()
 	if err != nil {
 		return Card{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	c, err := insertCardDetails(tx, project, title, desc, issue)
+	c, err := insertCardOptions(tx, project, title, desc, issue, mode)
 	if err != nil {
 		return Card{}, err
 	}
@@ -226,7 +233,10 @@ func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, err
 }
 
 // Shared by ordinary creation and ledger finalization in the same write transaction.
-func insertCardDetails(tx *sql.Tx, project, title, desc, issue string) (Card, error) {
+func insertCardOptions(tx *sql.Tx, project, title, desc, issue, mode string) (Card, error) {
+	if !validAutoMergeMode(mode) {
+		return Card{}, errors.New("invalid auto merge mode")
+	}
 	title = strings.TrimSpace(title)
 	issue = strings.TrimSpace(issue)
 	if issue != "" {
@@ -245,7 +255,7 @@ func insertCardDetails(tx *sql.Tx, project, title, desc, issue string) (Card, er
 	if !exists {
 		return Card{}, errors.New("unknown project")
 	}
-	c := Card{ID: newID(), ProjectID: project, Title: title, Description: desc, IssueURL: issue, Status: "Todo", CreatedAt: time.Now().UTC().Truncate(time.Second)}
+	c := Card{AutoMergeMode: mode, ID: newID(), ProjectID: project, Title: title, Description: desc, IssueURL: issue, Status: "Todo", CreatedAt: time.Now().UTC().Truncate(time.Second)}
 	q := sqlc.New(tx)
 	ctx := context.Background()
 	position, err := q.NextCardPosition(ctx, sqlc.NextCardPositionParams{ProjectID: project, Status: c.Status})
@@ -255,7 +265,7 @@ func insertCardDetails(tx *sql.Tx, project, title, desc, issue string) (Card, er
 	c.Position = int(position)
 	err = q.InsertCard(ctx, sqlc.InsertCardParams{
 		ID: c.ID, ProjectID: c.ProjectID, Title: c.Title, Description: c.Description,
-		Status: c.Status, Position: position, CreatedAt: c.CreatedAt.Unix(), IssueUrl: c.IssueURL,
+		Status: c.Status, Position: position, CreatedAt: c.CreatedAt.Unix(), IssueUrl: c.IssueURL, AutoMergeMode: mode,
 	})
 	return c, err
 }
@@ -339,11 +349,16 @@ func (s *Store) SetDashboardOverrides(values map[string]string) error {
 			return err
 		}
 	}
+	if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES('auto-merge:generation','1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE auto_merge_operations SET state='deferred',category='policy_changed',next_check_at=0 WHERE state IN ('reserved','deferred','rejected')`); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 func (s *Store) ClearDashboardOverrides() error {
-	_, err := s.db.Exec(`DELETE FROM settings WHERE key LIKE 'dashboard:%'`)
-	return err
+	return s.ReplaceDashboardOverrides(map[string]string{})
 }
 
 func (s *Store) ReplaceDashboardOverrides(values map[string]string) error {
@@ -359,6 +374,12 @@ func (s *Store) ReplaceDashboardOverrides(values map[string]string) error {
 		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "dashboard:"+key, value); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES('auto-merge:generation','1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE auto_merge_operations SET state='deferred',category='policy_changed',next_check_at=0 WHERE state IN ('reserved','deferred','rejected')`); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
