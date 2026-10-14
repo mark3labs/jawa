@@ -2,6 +2,9 @@
 // API, bundled with Datastar in datastar-rocket.js) owns the behaviors below.
 // Components render in the light DOM so server-rendered markup stays the source
 // of truth and live SSE morphs keep working.
+// Datastar evaluates existing effects during module initialization, so their
+// global helpers must be registered by an earlier dependency.
+import './acknowledgement.js';
 import {rocket, mergePaths} from './datastar-rocket.js';
 import Sortable from 'sortablejs';
 import {setupIssueSelector} from './issue-selector.js';
@@ -19,17 +22,6 @@ rocket('jawa-issue-selector', {
   mode: 'light',
   setup: ({host, cleanup}) => setupIssueSelector(host, cleanup),
 });
-
-// Datastar effects supply the boolean state; only the native input owns values
-// and validity. The pinned runtime keeps ARIA and the indicator synchronized.
-window.jawaSyncAcknowledgement = (host, checked, required) => {
-  const root = host.querySelector('[data-slot="checkbox"]');
-  const input = root?.nextElementSibling;
-  if (!input) return;
-  input.required = !!required;
-  root.setAttribute('aria-required', String(!!required));
-  window.templ.checkbox.setChecked(root, !!checked);
-};
 
 // Native reset happens after its event; synchronize browser-owned controls once
 // defaults have been restored. Delegation also covers inserted SSE fragments.

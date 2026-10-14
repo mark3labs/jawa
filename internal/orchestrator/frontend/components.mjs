@@ -29,6 +29,13 @@ try {
     page.setDefaultTimeout(5000);
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(base);
+    // Initial effects run during Datastar import, before the app module body.
+    // Verify synchronization already happened without waiting for signal changes.
+    assert.deepEqual(errors, [], 'Initial Datastar effects must not throw');
+    assert.equal(await page.evaluate(() => typeof window.jawaSyncAcknowledgement), 'function');
+    for (const kind of ['force', 'ready']) {
+      assert.equal(await page.locator(`#${kind}-acknowledge`).evaluate(el => el.required), true);
+    }
     const assertBadges = async () => {
       const badges = await page.locator('[data-slot="badge"]').evaluateAll(elements =>
         elements.map(el => {
