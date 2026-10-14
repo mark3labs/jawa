@@ -44,9 +44,18 @@ try {
   assert.ok(await recoveryPage.locator('[name="title"]').inputValue());
   assert.equal(await recoveryPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
   if (screenshotDir) await recoveryPage.screenshot({path:`${screenshotDir}/native-recovery-320.png`});
+  let ordinaryPost;
+  await recoveryPage.route('**/cards', async route => {
+    ordinaryPost = new URLSearchParams(route.request().postData());
+    await route.fulfill({contentType:'text/html',body:'<p>Ordinary POST received</p>'});
+  });
+  await recoveryPage.getByRole('button',{name:'Create card',exact:true}).click();
+  await recoveryPage.getByText('Ordinary POST received').waitFor();
+  assert.deepEqual(ordinaryPost.getAll('issue_recovery'), ['link']);
+  assert.deepEqual(ordinaryPost.getAll('recovery_url'), ['https://github.com/acme/repo/issues/17']);
   await recoveryContext.close();
 
-  for (const width of [1440,390,320]) {
+  for (const width of [1440,1024,768,390,320]) {
     const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width<500,isMobile:width<500});
     const page = await context.newPage(); page.setDefaultTimeout(5000);
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -59,7 +68,14 @@ try {
     assert.equal(await page.locator('#project-forgejo-url').evaluate(el => el.required && !el.disabled), true);
     await chooseSelect(page, '#project-provider', 'github');
     assert.equal(await page.locator('#project-forgejo-url').isVisible(), false);
-    await chooseSelect(page, '#project-provider', 'forgejo');
+    await page.locator('#project-provider').focus();
+    await page.keyboard.press('ArrowDown');
+    await page.locator('#project-provider-content').waitFor({state:'visible'});
+    await page.locator('#project-provider-content [role="option"]').first().focus();
+    await page.keyboard.press('f');
+    await page.keyboard.press('Enter');
+    await page.locator('#project-provider-content').waitFor({state:'hidden'});
+    assert.equal(await page.locator('[name="provider"]').inputValue(),'forgejo');
     await page.locator('#project-dialog form').evaluate(el => el.reset());
     await page.waitForFunction(() => document.querySelector('#project-forgejo-url').disabled);
     assert.match(await page.locator('#project-provider').innerText(), /GitHub/);
@@ -91,7 +107,7 @@ try {
     await page.locator('#card-description').fill('  **Markdown**\nretained body  ');
     if (screenshotDir) await page.screenshot({path:`${screenshotDir}/create-${width}.png`});
     // Keyboard toggle (desktop) and tap (mobile) never submit.
-    if (width===1440) { await create.focus();await page.keyboard.press('Space'); } else await create.tap();
+    if (width>=500) { await create.focus();await page.keyboard.press('Space'); } else await create.tap();
     assert.equal(await create.isChecked(),false);
     assert.equal(await input.isChecked(),false);
     await chooseSelect(page, '#card-issue', 'https://github.com/acme/repo/issues/17');
@@ -144,5 +160,5 @@ try {
   assert.equal(await nativeCreate.isVisible(),true);
   await nativeCreate.uncheck();assert.equal(await nativeCreate.isChecked(),false);
   await nativeContext.close();
-  console.log('Real New card creation/recovery UI passed at 1440/390/320px; keyboard/touch and exact submit fields checked.');
+  console.log('Real New card creation/recovery UI passed at 1440/1024/768/390/320px; keyboard/touch and exact submit fields checked.');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve)); }
