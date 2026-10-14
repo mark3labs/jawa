@@ -18,8 +18,7 @@ import (
 	"jawa/internal/runapitoken"
 )
 
-// JetStream KV agent discovery is enabled by default; JAWA_NATS_PRESENCE=false
-// opts out. All agents
+// JetStream KV agent discovery is required. All agents
 // in a discovery scope must use the same JAWA_NATS_PRESENCE_BUCKET (default
 // jawa_agents). The bucket has a 30s TTL, refreshed by BONNIE every 10s.
 // JAWA_NATS_CREATE_STREAM also permits bucket creation; otherwise provision it
@@ -38,15 +37,13 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 		flag.Usage = "sandbox backend (local, microsandbox); default local"
 	}
 	apiEnabled := envOr("JAWA_NATS_API", "true") == "true"
-	presence := envOr("JAWA_NATS_PRESENCE", "true") == "true"
 	bucket := envOr("JAWA_NATS_PRESENCE_BUCKET", defaultPresenceBucket)
 	root := envOr("JAWA_SANDBOX_ROOT", defaultSandboxRoot)
 	image := envOr("JAWA_SANDBOX_IMAGE", defaultSandboxImage)
 	token := os.Getenv("GITHUB_TOKEN")
 	forgejo := forgejoToken()
 	apiKey, providerURL := "", ""
-	cmd.Flags().BoolVar(&apiEnabled, "nats-api", apiEnabled, "serve authenticated run API over NATS; requires presence (JAWA_NATS_API)")
-	cmd.Flags().BoolVar(&presence, "nats-presence", presence, "announce agent through JetStream KV (JAWA_NATS_PRESENCE)")
+	cmd.Flags().BoolVar(&apiEnabled, "nats-api", apiEnabled, "serve authenticated run API over NATS (JAWA_NATS_API)")
 	cmd.Flags().StringVar(&bucket, "nats-presence-bucket", bucket, "discovery bucket (JAWA_NATS_PRESENCE_BUCKET)")
 	cmd.Flags().StringVar(&root, "sandbox-root", root, "local workspace root (JAWA_SANDBOX_ROOT)")
 	cmd.Flags().StringVar(&image, "sandbox-image", image, "microsandbox guest image (JAWA_SANDBOX_IMAGE)")
@@ -57,6 +54,10 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	cmd.Flags().StringVar(&apiKey, "provider-api-key", "", "override model provider credential; prefer provider environment variables")
 	cmd.Flags().StringVar(&providerURL, "provider-url", "", "override model provider endpoint")
 	servingFlagsE(cmd, func(name string, cfg natschannel.Config) error {
+		model, provider, modelID, err := servingModel(cmd)
+		if err != nil {
+			return err
+		}
 		env := codingEnv()
 		delete(env, "GITHUB_TOKEN")
 		if token != "" {
@@ -66,18 +67,15 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 		if forgejo != "" {
 			env["FORGEJO_TOKEN"] = forgejo
 		}
-		agent.Configure(bonnie.WithSandboxes(codingSandboxesWith(root, image)...), bonnie.WithSandboxEnv(env), bonnie.WithKit(func(o *kit.Options) {
+		agent.Configure(bonnie.WithModel(model), bonnie.WithSandboxes(codingSandboxesWith(root, image)...), bonnie.WithSandboxEnv(env), bonnie.WithKit(func(o *kit.Options) {
 			o.ProviderAPIKey = apiKey
 			o.ProviderURL = providerURL
 		}))
-		if !presence {
-			agent.Configure(bonnie.WithName(name), trustedReports.Channel(cfg))
-			return nil
-		}
 		shared, pc, closeConn, err := openNATSPresenceWithBucket(cmd.Context(), cfg, bucket)
 		if err != nil {
 			return err
 		}
+		pc.Labels = map[string]string{"jawa.provider": provider, "jawa.model": modelID}
 		cleanup = closeConn
 		if apiEnabled {
 			subject, err := runapitoken.Subject(shared.RootSubject, shared.AgentID)
@@ -91,7 +89,7 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 				return err
 			}
 			cleanup = func() { stop(); closeConn() }
-			pc.Labels = map[string]string{"jawa.api_subject": subject}
+			pc.Labels["jawa.api_subject"] = subject
 			agent.Configure(bonnie.WithNATSAPI(natsapi.Config{Conn: shared.Conn, Subject: subject, Authenticator: auth}))
 		}
 		agent.Configure(bonnie.WithName(name), trustedReports.Channel(shared), bonnie.WithPresence(pc))
@@ -182,4 +180,18 @@ func openNATSPresenceWithBucket(ctx context.Context, cfg natschannel.Config, buc
 		return cfg, bonnie.PresenceConfig{}, nil, errors.New("jawa: could not open NATS presence bucket; check JetStream, permissions and 30s TTL")
 	}
 	return c, bonnie.PresenceConfig{Registry: store, AgentID: c.AgentID}, closeConn, nil
+}
+
+// Match BONNIE's nonempty --model override, including explicit-empty semantics.
+// Resolve before opening network resources; parser diagnostics may echo secrets.
+func servingModel(cmd *cobra.Command) (selection, provider, modelID string, err error) {
+	selection = startupModel()
+	if flag := cmd.Flags().Lookup("model"); flag != nil && flag.Value.String() != "" {
+		selection = flag.Value.String()
+	}
+	provider, modelID, err = kit.ParseModelString(selection)
+	if err != nil {
+		return "", "", "", errors.New("jawa: invalid model selection; expected provider/model")
+	}
+	return selection, provider, modelID, nil
 }

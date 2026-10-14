@@ -40,7 +40,7 @@ templ agentsContent(d pageData) {
 						No agents online
 					}
 					@empty.Description() {
-						Start a Jawa agent with presence enabled and it appears here within seconds. Use the credentials from Settings.
+						Start a Jawa agent and it appears here within seconds. Use the credentials from Settings.
 					}
 				}
 				@empty.Content() {
@@ -91,6 +91,10 @@ templ agentCard(d pageData, w presence.Record) {
 				}
 			}
 		</div>
+		<p class="meta">
+			Provider: <span>{ agentModelLabel(w, "jawa.provider") }</span>
+			 · Model: <span>{ agentModelLabel(w, "jawa.model") }</span>
+		</p>
 		<div class="agent-run">
 			if a, ok := agentCurrentRun(w, d.attempts); ok {
 				if c, found := cardByID(d.cards, a.CardID); found {

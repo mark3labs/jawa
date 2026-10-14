@@ -96,11 +96,10 @@ upgrading. Generated sqlc queries and regeneration instructions are documented i
 Moving a Todo card to **Building** atomically creates a durable execution attempt
 and outbox task. The orchestrator publishes it to `bonnie.tasks`, consumes BONNIE
 events/results, and shows agent assignment, PR links, blockers, and attempt history.
-Agents appear live through the BONNIE presence API, enabled by default. Set
-`JAWA_NATS_PRESENCE=false` only to opt out of discovery:
+Agents must register through the BONNIE presence API for both `jawa` and
+`jawa serve`, even with `--nats-api=false`:
 
 ```sh
-export JAWA_NATS_PRESENCE=true
 export JAWA_NATS_AGENT_ID=jawa-1
 export NATS_URL=nats://127.0.0.1:4222
 export NATS_USERNAME=agent
@@ -242,7 +241,6 @@ jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
 | `JAWA_NATS_ROOT_SUBJECT` | `--nats-root-subject` |
 | `JAWA_NATS_CONSUMER` | `--nats-consumer` |
 | `JAWA_NATS_CREATE_STREAM` | `--nats-create-stream` |
-| `JAWA_NATS_PRESENCE` | `--nats-presence` |
 | `JAWA_NATS_API` | `--nats-api` |
 | `JAWA_NATS_PRESENCE_BUCKET` | `--nats-presence-bucket` |
 | `JAWA_SANDBOX_ROOT` | `--sandbox-root` |
@@ -254,7 +252,8 @@ Use `--provider-api-key` to override the selected model provider's credential
 (e.g. `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) and
 `--provider-url` to override its endpoint. Provider-specific authentication
 settings such as cloud credential chains remain managed by the provider SDK.
-Use `--nats-presence=false` or `--nats-create-stream=false` to disable booleans.
+Use `--nats-api=false` to disable the run API, or `--nats-create-stream=false`
+to disable automatic stream/bucket provisioning (not presence).
 Explicit empty credential flags clear their environment defaults; when switching
 NATS authentication methods, clear any conflicting environment-sourced credentials.
 Prefer environment variables for secrets: CLI arguments can appear in shell
@@ -394,8 +393,28 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
 | `JAWA_NATS_CREATE_STREAM` | `true` |
 | `JAWA_NATS_CONSUMER` | Optional shared task consumer override |
-| `JAWA_NATS_PRESENCE` | `true`; set `false` to disable BONNIE JetStream KV agent discovery |
 | `JAWA_NATS_PRESENCE_BUCKET` | `jawa_agents`; use the same bucket for a discovery scope |
+
+**Presence migration:** `JAWA_NATS_PRESENCE` is no longer read; old `false`
+values cannot disable discovery. Remove `--nats-presence` from deployment commands:
+it now produces the normal unknown-flag error, for either `true` or `false`.
+
+Presence registration, connection, bucket and refresh failures stop serving rather
+than run an undiscovered agent. Accounts need JetStream KV read/write access and,
+with provisioning enabled, bucket creation permission. With
+`--nats-create-stream=false`, provision the configured presence bucket in advance
+with a **30-second TTL**. No new bucket format or privileges are required.
+Presence is advisory to the orchestrator; discovery outages do not change task
+scheduling or at-least-once delivery.
+
+Presence labels `jawa.provider` and `jawa.model` report the effective startup model
+selection (`--model` overrides `JAWA_MODEL`; an empty flag retains the default).
+For `custom/org/model`, they contain `custom` and `org/model`. The Agents cards,
+record inspection and authenticated activity JSON expose these values; older
+records show **Unknown** independently for missing values. These are advisory
+startup metadata, not provider health, authorization, or per-run model claims.
+Provider URLs and credentials are not published. With the run API enabled,
+`jawa.api_subject` is also retained.
 
 The compiled binary also accepts serving flags for the agent name and agent ID:
 

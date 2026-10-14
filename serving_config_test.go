@@ -38,10 +38,6 @@ func TestServingConfigurationFlags(t *testing.T) {
 	t.Setenv("JAWA_NATS_PRESENCE", "true")
 	cmd := &cobra.Command{Use: "jawa", RunE: func(*cobra.Command, []string) error { return nil }}
 	configureServing(cmd, bonnie.New())
-	cmd.SetArgs([]string{"--nats-presence=false", "--nats-agent-id=test-agent", "--sandbox-root=/tmp/custom", "--sandbox-image=custom:image", "--github-token=", "--forgejo-token=", "--provider-api-key=flag-key", "--provider-url=http://localhost:8000"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
 	for _, flag := range []string{"nats-presence-bucket", "sandbox-root", "sandbox-image", "github-token", "forgejo-token", "provider-api-key", "provider-url"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("missing flag %s", flag)
