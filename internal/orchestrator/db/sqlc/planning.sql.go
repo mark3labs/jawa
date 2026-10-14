@@ -10,6 +10,62 @@ import (
 	"database/sql"
 )
 
+const getPlanningRunHistory = `-- name: GetPlanningRunHistory :one
+SELECT t.id,t.session_id,t.number,t.state,t.agent_id,t.run_id,t.remote_attempt_id,
+ t.result,t.error,t.created_at,t.updated_at,s.card_id,s.state AS session_state,
+ EXISTS(SELECT 1 FROM planning_turns newer WHERE newer.session_id=t.session_id AND newer.number>t.number) AS superseded,
+ COALESCE(i.status,'') AS interaction_status,COALESCE(r.kind,'') AS interaction_kind,
+ EXISTS(SELECT 1 FROM failed_resumes f WHERE f.task_id=t.id AND f.status='pending') AS pending_resume
+FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id
+LEFT JOIN planning_interactions i ON i.report_id=(SELECT x.report_id FROM planning_interactions x WHERE x.task_id=t.id ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1)
+LEFT JOIN typed_reports r ON r.report_id=i.report_id WHERE t.id=?
+`
+
+type GetPlanningRunHistoryRow struct {
+	ID                string `json:"id"`
+	SessionID         string `json:"session_id"`
+	Number            int64  `json:"number"`
+	State             string `json:"state"`
+	AgentID           string `json:"agent_id"`
+	RunID             string `json:"run_id"`
+	RemoteAttemptID   string `json:"remote_attempt_id"`
+	Result            string `json:"result"`
+	Error             string `json:"error"`
+	CreatedAt         int64  `json:"created_at"`
+	UpdatedAt         int64  `json:"updated_at"`
+	CardID            string `json:"card_id"`
+	SessionState      string `json:"session_state"`
+	Superseded        int64  `json:"superseded"`
+	InteractionStatus string `json:"interaction_status"`
+	InteractionKind   string `json:"interaction_kind"`
+	PendingResume     int64  `json:"pending_resume"`
+}
+
+func (q *Queries) GetPlanningRunHistory(ctx context.Context, id string) (GetPlanningRunHistoryRow, error) {
+	row := q.db.QueryRowContext(ctx, getPlanningRunHistory, id)
+	var i GetPlanningRunHistoryRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Number,
+		&i.State,
+		&i.AgentID,
+		&i.RunID,
+		&i.RemoteAttemptID,
+		&i.Result,
+		&i.Error,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CardID,
+		&i.SessionState,
+		&i.Superseded,
+		&i.InteractionStatus,
+		&i.InteractionKind,
+		&i.PendingResume,
+	)
+	return i, err
+}
+
 const getPlanningSession = `-- name: GetPlanningSession :one
 SELECT id, card_id, state, repo, base_branch, provider, title, description, issue_url, repo_commit, spec, revision, approved_revision, approved_spec, error, created_at, updated_at FROM planning_sessions WHERE card_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1
 `
@@ -247,6 +303,111 @@ func (q *Queries) ListPlanningRevisions(ctx context.Context, sessionID string) (
 			&i.QuestionsJson,
 			&i.RepoCommit,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlanningRunDeliveries = `-- name: ListPlanningRunDeliveries :many
+SELECT kind,payload,received_at FROM planning_deliveries WHERE turn_id=? ORDER BY received_at DESC,id DESC LIMIT 256
+`
+
+type ListPlanningRunDeliveriesRow struct {
+	Kind       string `json:"kind"`
+	Payload    string `json:"payload"`
+	ReceivedAt int64  `json:"received_at"`
+}
+
+func (q *Queries) ListPlanningRunDeliveries(ctx context.Context, turnID string) ([]ListPlanningRunDeliveriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlanningRunDeliveries, turnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlanningRunDeliveriesRow{}
+	for rows.Next() {
+		var i ListPlanningRunDeliveriesRow
+		if err := rows.Scan(&i.Kind, &i.Payload, &i.ReceivedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlanningRunHistory = `-- name: ListPlanningRunHistory :many
+SELECT t.id,t.session_id,t.number,t.state,t.agent_id,t.run_id,t.remote_attempt_id,
+ t.result,t.error,t.created_at,t.updated_at,s.card_id,s.state AS session_state,
+ EXISTS(SELECT 1 FROM planning_turns newer WHERE newer.session_id=t.session_id AND newer.number>t.number) AS superseded,
+ COALESCE(i.status,'') AS interaction_status,COALESCE(r.kind,'') AS interaction_kind,
+ EXISTS(SELECT 1 FROM failed_resumes f WHERE f.task_id=t.id AND f.status='pending') AS pending_resume
+FROM planning_turns t JOIN planning_sessions s ON s.id=t.session_id
+LEFT JOIN planning_interactions i ON i.report_id=(SELECT x.report_id FROM planning_interactions x WHERE x.task_id=t.id ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1)
+LEFT JOIN typed_reports r ON r.report_id=i.report_id
+`
+
+type ListPlanningRunHistoryRow struct {
+	ID                string `json:"id"`
+	SessionID         string `json:"session_id"`
+	Number            int64  `json:"number"`
+	State             string `json:"state"`
+	AgentID           string `json:"agent_id"`
+	RunID             string `json:"run_id"`
+	RemoteAttemptID   string `json:"remote_attempt_id"`
+	Result            string `json:"result"`
+	Error             string `json:"error"`
+	CreatedAt         int64  `json:"created_at"`
+	UpdatedAt         int64  `json:"updated_at"`
+	CardID            string `json:"card_id"`
+	SessionState      string `json:"session_state"`
+	Superseded        int64  `json:"superseded"`
+	InteractionStatus string `json:"interaction_status"`
+	InteractionKind   string `json:"interaction_kind"`
+	PendingResume     int64  `json:"pending_resume"`
+}
+
+func (q *Queries) ListPlanningRunHistory(ctx context.Context) ([]ListPlanningRunHistoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlanningRunHistory)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlanningRunHistoryRow{}
+	for rows.Next() {
+		var i ListPlanningRunHistoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.Number,
+			&i.State,
+			&i.AgentID,
+			&i.RunID,
+			&i.RemoteAttemptID,
+			&i.Result,
+			&i.Error,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CardID,
+			&i.SessionState,
+			&i.Superseded,
+			&i.InteractionStatus,
+			&i.InteractionKind,
+			&i.PendingResume,
 		); err != nil {
 			return nil, err
 		}
