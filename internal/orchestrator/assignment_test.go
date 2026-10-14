@@ -206,7 +206,7 @@ func TestTargetedCancelledPlanningAndRetry(t *testing.T) {
 	if err := w.CancelPlanning(c.ID); err != nil {
 		t.Fatal(err)
 	}
-	ev := client.StatusEvent{Version: 1, Target: client.Target{TaskID: task, AgentID: "other", RunID: "run", AttemptID: "remote"}, Seq: 1, State: runtime.RunRunning}
+	ev := client.StatusEvent{Version: 1, TaskID: task, AgentID: "other", RunID: "run", AttemptID: "remote", Seq: 1, State: runtime.RunRunning}
 	if err := w.event(t.Context(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestTargetedReportsFenceAndReplay(t *testing.T) {
 	if err = planningDelivery(t, w, out); err == nil {
 		t.Fatal("wrong planning report accepted")
 	}
-	ev := client.StatusEvent{Version: 1, Target: client.Target{TaskID: d.Turns[0].ID, AgentID: "wrong", RunID: "run", AttemptID: "remote"}, Seq: 1, State: runtime.RunRunning}
+	ev := client.StatusEvent{Version: 1, TaskID: d.Turns[0].ID, AgentID: "wrong", RunID: "run", AttemptID: "remote", Seq: 1, State: runtime.RunRunning}
 	if err = w.event(t.Context(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestAssignmentRenderedMenusAndRevision(t *testing.T) {
 	for _, lane := range []string{"Todo", "Planning", "Building", "Fix", "Done"} {
 		t.Run(lane, func(t *testing.T) {
 			c := Card{ID: "card", Title: "Card", Status: lane}
-			d := pageData{uiSnapshot: uiSnapshot{cards: []Card{c}, planning: map[string]PlanningDetail{"card": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "# Reviewed plan"}}}, attempts: []Attempt{{ID: "a", CardID: "card", Number: 1, Ready: true, State: "ready", PRURL: "https://github.com/example/repo/pull/1"}}}}
+			d := pageData{cards: []Card{c}, planning: map[string]PlanningDetail{"card": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "# Reviewed plan"}}}, attempts: []Attempt{{ID: "a", CardID: "card", Number: 1, Ready: true, State: "ready", PRURL: "https://github.com/example/repo/pull/1"}}}
 			var out strings.Builder
 			if err := cardMenu(d, c).Render(t.Context(), &out); err != nil {
 				t.Fatal(err)
@@ -379,7 +379,7 @@ func TestAssignmentHTTPValidationAndSharedWithoutPresence(t *testing.T) {
 }
 
 func TestAssignmentUIFixture(t *testing.T) {
-	d := pageData{csrf: "fixture-csrf", v: viewParams{View: viewBoard, Project: "p"}, uiSnapshot: uiSnapshot{projects: []Project{{ID: "p", Name: "Assignment fixtures"}}, planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "# Reviewed specification\n\nImplement the approved change."}}}}}
+	d := pageData{csrf: "fixture-csrf", v: viewParams{View: viewBoard, Project: "p"}, projects: []Project{{ID: "p", Name: "Assignment fixtures"}}, planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "# Reviewed specification\n\nImplement the approved change."}}}}
 	for _, c := range []Card{{ID: "todo", Title: "Direct build without planning", Status: "Todo"}, {ID: "planning", Title: "Review one revision before building", Status: "Planning"}, {ID: "ready", Title: "Fix the existing PR", Status: "Done"}} {
 		c.ProjectID = "p"
 		d.cards = append(d.cards, c)
@@ -402,7 +402,7 @@ func TestTargetedReconciliationRejectsDifferentAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, _ := w.CardResult(c.ID)
-	if err := w.event(t.Context(), client.StatusEvent{Version: 1, Target: client.Target{TaskID: a.TaskID, AgentID: "selected", RunID: "original", AttemptID: "original"}, Seq: 1, State: runtime.RunRunning}); err != nil {
+	if err := w.event(t.Context(), client.StatusEvent{Version: 1, TaskID: a.TaskID, AgentID: "selected", RunID: "original", AttemptID: "original", Seq: 1, State: runtime.RunRunning}); err != nil {
 		t.Fatal(err)
 	}
 	for _, agent := range []string{"wrong", "selected"} {
@@ -513,10 +513,9 @@ func TestAgentSelectorFixture(t *testing.T) {
 	if path == "" {
 		t.Skip("set JAWA_AGENT_SELECTOR_HTML to export the fixture")
 	}
-	d := pageData{csrf: "token", uiSnapshot: uiSnapshot{
+	d := pageData{csrf: "token",
 		cards:    []Card{{ID: "todo", Title: "Todo", Status: "Todo"}, {ID: "planning", Title: "Planning", Status: "Planning"}},
-		planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "Current reviewed spec"}}},
-	}}
+		planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "Current reviewed spec"}}}}
 	var out strings.Builder
 	if err := assignmentDialog(d).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)

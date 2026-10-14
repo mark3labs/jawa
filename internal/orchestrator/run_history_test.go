@@ -156,6 +156,7 @@ func TestPlanningHistoryRetentionAndRendering(t *testing.T) {
 		}
 	}
 }
+
 // Superseded and PendingResume come from SQL EXISTS expressions; sqlc may type
 // them as bool or int64, so check the database scan, not just the mapping.
 func TestPlanningHistoryFlagsScanFromDatabase(t *testing.T) {
