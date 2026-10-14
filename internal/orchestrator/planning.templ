@@ -25,7 +25,7 @@ templ planningContent(d pageData) {
 				<section class="planning-section" aria-label="Latest run">
 					@card.Card(card.Props{Class: "planning-surface"}) {
 						<h2>Latest run</h2>
-						@cardChips(d, c)
+						<div class="card-meta">@cardChips(d, c)</div>
 						if r,ok := d.readyOverrides[la[0].ID]; ok {
 							<dl class="facts"><div><dt>Operator</dt><dd>{ r.Operator }</dd></div><div><dt>Reason</dt><dd>{ r.Reason }</dd></div></dl>
 						}
