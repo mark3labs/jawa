@@ -68,10 +68,16 @@ func (s *Store) runHistory(ctx context.Context, attempts []Attempt) ([]RunRecord
 func (w *Workflow) historyByID(ctx context.Context, mode, id string) (RunRecord, error) {
 	if mode == "Planning" {
 		t, err := sqlc.New(w.s.db).GetPlanningRunHistory(ctx, id)
-		return planningRun(sqlc.ListPlanningRunHistoryRow(t)), err
+		if err != nil {
+			return RunRecord{}, err
+		}
+		return planningRun(sqlc.ListPlanningRunHistoryRow(t)), nil
 	}
 	a, err := w.attemptByID(id)
-	return buildRun(a), err
+	if err != nil {
+		return RunRecord{}, err
+	}
+	return buildRun(a), nil
 }
 func (a RunRecord) pinned() bool {
 	_, err := runapitoken.Subject("bonnie", a.AgentID)

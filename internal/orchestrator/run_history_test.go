@@ -279,3 +279,13 @@ func TestPlanningDetailStreamIdentityFence(t *testing.T) {
 		})
 	}
 }
+
+func TestMissingRunLookupReturnsZeroRecord(t *testing.T) {
+	a := testApp(t)
+	for _, mode := range []string{"Planning", "Build"} {
+		r, err := a.workflow.historyByID(t.Context(), mode, uuid.NewString())
+		if err == nil || r.Mode != "" || r.ID != "" || !r.CreatedAt.IsZero() {
+			t.Fatal(mode, r, err)
+		}
+	}
+}
