@@ -458,13 +458,13 @@ try {
  await page.locator('#run-detail-content').waitFor();
  await page.getByRole('link', {name: 'Open card for recovery / guidance', exact: true}).click();
  await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor();
- const questionToken = await page.getByRole('region', {name: 'Planning discussion'}).locator('input[name="expected_interaction"]').inputValue();
+ const questionToken = await page.getByRole('region', {name: 'Discussion'}).locator('input[name="expected_interaction"]').inputValue();
  assert.ok(questionToken);
  await page.getByLabel('Reply or request a revision').fill('API v2');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Draft plan', exact: true}).first().waitFor();
  await page.locator('#planning-approve-form').waitFor();
- assert.notEqual(await page.getByRole('region', {name: 'Planning discussion'}).locator('input[name="expected_interaction"]').inputValue(), questionToken);
+ assert.notEqual(await page.getByRole('region', {name: 'Discussion'}).locator('input[name="expected_interaction"]').inputValue(), questionToken);
  await page.getByLabel('Reply or request a revision').fill('Use API v3 instead');
  await page.getByRole('button', {name: 'Send reply', exact: true}).click();
  await page.getByRole('heading', {name: 'Reviewed plan', exact: true}).first().waitFor();
