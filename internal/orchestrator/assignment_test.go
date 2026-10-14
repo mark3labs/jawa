@@ -137,10 +137,25 @@ func TestTargetedPlanningApprovalAndRepair(t *testing.T) {
 	defer func() { _ = w.Close() }()
 	registerChoice(t, w, "planner", true)
 	registerChoice(t, w, "builder", true)
+	sub, err := nc.SubscribeSync("bonnie.tasks.>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = nc.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	assertRoute := func(subject string) {
+		t.Helper()
+		msg, err := sub.NextMsg(3 * time.Second)
+		if err != nil || msg.Subject != subject {
+			t.Fatalf("route %v %v expected %s", msg, err, subject)
+		}
+	}
 	c := workflowCard(t, s)
 	if err = w.PlanWithAgent(t.Context(), c.ID, "planner"); err != nil {
 		t.Fatal(err)
 	}
+	assertRoute("bonnie.tasks.agent.planner")
 	d := planningDetails(t, w, c.ID)
 	if d.Turns[0].TargetAgentID != "planner" || d.Turns[0].AgentID != "" {
 		t.Fatalf("turn %+v", d.Turns)
@@ -154,6 +169,7 @@ func TestTargetedPlanningApprovalAndRepair(t *testing.T) {
 	if err = w.ApprovePlanningWithAgent(t.Context(), c.ID, 1, "builder"); err != nil {
 		t.Fatal(err)
 	}
+	assertRoute("bonnie.tasks.agent.builder")
 	a, _ := w.CardResult(c.ID)
 	if a.TargetAgentID != "builder" || !strings.Contains(a.TaskJSON, "Reviewed specification") {
 		t.Fatalf("approved %+v", a)
@@ -172,6 +188,7 @@ func TestTargetedPlanningApprovalAndRepair(t *testing.T) {
 	if err = w.FixWithAgent(t.Context(), c.ID, "Fix review feedback", "planner"); err != nil {
 		t.Fatal(err)
 	}
+	assertRoute("bonnie.tasks.agent.planner")
 	repair, _ := w.CardResult(c.ID)
 	branch, _ := assignedBranch(a)
 	if repair.TargetAgentID != "planner" || repair.RepairPRURL != a.PRURL || repair.Branch != branch {
@@ -411,5 +428,50 @@ func TestTargetedReconciliationRejectsDifferentAgent(t *testing.T) {
 	after, _ := w.CardResult(c.ID)
 	if after.TargetAgentID != "selected" || after.AgentID != "selected" {
 		t.Fatalf("reconciliation %+v", after)
+	}
+}
+
+func TestTargetedOutboxRestartRetainsRouteAndPayload(t *testing.T) {
+	s, nc := workflowFixture(t)
+	c := workflowCard(t, s)
+	local := &Workflow{s: s, ctx: t.Context()}
+	if err := local.moveCardTo(c.ID, "Building", 0, false, "offline"); err != nil {
+		t.Fatal(err)
+	}
+	original, err := local.CardResult(c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := ""
+	if err = s.db.QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	sub, err := nc.SubscribeSync("bonnie.tasks.>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = nc.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	w, err := NewWorkflow(t.Context(), reopened, nc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = w.Close() }()
+	msg, err := sub.NextMsg(3 * time.Second)
+	if err != nil || msg.Subject != "bonnie.tasks.agent.offline" || string(msg.Data) != original.TaskJSON {
+		t.Fatalf("restart route/payload %v %v", msg, err)
+	}
+	after, err := w.CardResult(c.ID)
+	if err != nil || after.TargetAgentID != "offline" || after.TaskID != original.TaskID || after.AgentID != "" {
+		t.Fatalf("restart identity %+v %v", after, err)
 	}
 }
