@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/runtime"
-	"jawa/internal/orchestrator/db/sqlc"
 	"jawa/internal/runapitoken"
 	"net/http"
 	"strings"
@@ -20,18 +19,7 @@ type runDetail struct {
 	Tab         string
 	Observation runObservation
 	Messages    []runMessage
-	Stored      []storedRunEvent
-	Groups      []runEventGroup
 	Policy      runPolicy
-}
-type storedRunEvent struct {
-	Kind, Raw string
-	Time      time.Time
-}
-type runEventGroup struct {
-	Turn   string
-	Events []runtime.Event
-	Live   bool
 }
 type runPolicy struct {
 	Send, Stop         bool
@@ -120,46 +108,12 @@ func (w *Workflow) runPolicy(a Attempt, snap *bonnieclient.Snapshot, online bool
 	}
 	return p
 }
-func (w *Workflow) storedRunEvents(a Attempt) ([]storedRunEvent, error) {
-	rows, err := w.s.db.Query(`SELECT event_type,event_json,received_at FROM workflow_execution_events WHERE task_id=? AND agent_id=? AND run_id=? AND remote_attempt_id=? ORDER BY received_at DESC LIMIT 256`, a.TaskID, a.AgentID, a.RunID, a.RemoteAttemptID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []storedRunEvent
-	for rows.Next() {
-		var ev storedRunEvent
-		var ms int64
-		if err = rows.Scan(&ev.Kind, &ev.Raw, &ms); err != nil {
-			return nil, err
-		}
-		ev.Time = time.UnixMilli(ms).UTC()
-		out = append(out, ev)
-	}
-	return out, rows.Err()
-}
-func groupRunEvents(events []runtime.Event, live bool) []runEventGroup {
-	var out []runEventGroup
-	indices := make(map[string]int)
-	for _, ev := range events {
-		i, ok := indices[ev.TurnID]
-		if !ok {
-			i = len(out)
-			indices[ev.TurnID] = i
-			out = append(out, runEventGroup{Turn: ev.TurnID, Live: live})
-		}
-		out[i].Events = append(out[i].Events, ev)
-	}
-	return out
-}
 func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, online bool) runDetail {
 	d := runDetail{Record: buildRun(attempt), Tab: detailTab(r), Observation: obs}
 	d.Policy = a.workflow.runPolicy(attempt, obs.Snapshot, online && !obs.Unreachable)
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
-	d.Stored, _ = a.workflow.storedRunEvents(attempt)
-	d.Groups = append(groupRunEvents(obs.Durable, false), groupRunEvents(obs.Live, true)...)
 	return d
 }
 
@@ -172,33 +126,7 @@ func (a *app) historyDetailModel(r *http.Request, record RunRecord, obs runObser
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
-	d.Stored, _ = a.workflow.storedPlanningRunEvents(r.Context(), record)
-	d.Groups = append(groupRunEvents(obs.Durable, false), groupRunEvents(obs.Live, true)...)
 	return d
-}
-func (w *Workflow) storedPlanningRunEvents(ctx context.Context, record RunRecord) ([]storedRunEvent, error) {
-	rows, err := sqlc.New(w.s.db).ListPlanningRunDeliveries(ctx, record.ID)
-	if err != nil {
-		return nil, err
-	}
-	var out []storedRunEvent
-	for _, row := range rows {
-		// Invalid retained JSON is safely ignored. Any supplied tuple must match.
-		var target struct {
-			AgentID   string `json:"agent_id"`
-			RunID     string `json:"run_id"`
-			AttemptID string `json:"attempt_id"`
-			TaskID    string `json:"task_id"`
-		}
-		if json.Unmarshal([]byte(row.Payload), &target) != nil {
-			continue
-		}
-		if (target.AgentID != "" && target.AgentID != record.AgentID) || (target.RunID != "" && target.RunID != record.RunID) || (target.AttemptID != "" && target.AttemptID != record.RemoteAttemptID) || (target.TaskID != "" && target.TaskID != record.TaskID) {
-			continue
-		}
-		out = append(out, storedRunEvent{Kind: "Planning " + row.Kind, Raw: row.Payload, Time: time.UnixMilli(row.ReceivedAt).UTC()})
-	}
-	return out, nil
 }
 
 // Exact dynamic routes pass the same authentication, body and setup guards as
@@ -431,7 +359,8 @@ func (a *app) runDetailAction(w http.ResponseWriter, r *http.Request, attempt At
 		return
 	}
 	if action == "chat" {
-		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"runDraft\":\"\"}\n\n")
+		payload, _ := json.Marshal(map[string]string{"runConfirmedDraft": r.FormValue("text")})
+		_ = stream.write("event: datastar-patch-signals\ndata: signals " + string(payload) + "\n\n")
 	}
 }
 

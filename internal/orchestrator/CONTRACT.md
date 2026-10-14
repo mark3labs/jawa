@@ -197,8 +197,9 @@ Enhanced actions disable retry and return finite notices; native actions redirec
 
 `run-detail-content` morphs status and history, `run-detail-controls` morphs
 eligibility and exact-turn Stop. Tabs, Trace filter and composer/draft stay
-outside both roots. Only confirmed send success clears `runDraft`; uncertain
-mutations preserve it. Assistant Markdown uses the existing sanitizer; other
+outside both roots. Only confirmed send success clears `runDraft` when it still equals the submitted
+text; newer drafts and uncertain mutations survive. Externally associated Send
+controls stay disabled while pending without overriding server policy. Assistant Markdown uses the existing sanitizer; other
 content is escaped and no remote media is loaded. BONNIE display adaptation
 attribution is retained in BONNIE-LICENSE.
 
@@ -208,15 +209,24 @@ Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
 See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
 
-Chat uses a centered conversation transcript, distinct explicit roles and native
-collapsed tool activity. Trace uses separate snapshot, durable/live turn activity
-and received-order delivery inspectors; it does not imply a global timeline.
-Raw diagnostics are Trace-only. Missing timestamps are explicitly unavailable.
-Every disclosure has a deterministic display ID and preserves `open` during
-morphs. Content/occurrence snapshot fallback IDs are not durable journal IDs;
-changed or truncated snapshot content may change them. Search matches each full
-entry (including collapsed raw content), hides nonmatching entries/groups, and
-shows a separate no-matches state. Status remains inside the content patch root.
+Chat adapts Bonnie’s ordered messages, individual tool disclosures and compact
+role markers within Jawa’s theme. Chat includes closed Message content and result
+Raw payload disclosures; nested tool sections start open within closed tool rows.
+All payloads are escaped (JSON syntax spans use fixed classes), and Markdown keeps
+the stricter no-remote-media sanitizer. The growing composer uses Ctrl+Enter and
+native validation, ignores IME submission and leaves plain Enter as a newline.
+The focusable transcript follows only at bottom and preserves scrolled-up readers.
+Rocket cleanup disconnects all observers/listeners.
+
+Trace uses separate snapshot (Role/Summary), durable and live event tables. Event
+columns are Sequence, Time (UTC), Kind, Role, State and Summary, omitting columns
+with no values in that source. No roles are inferred. Only supplied nonempty turn
+IDs get separator rows; source order and equal-sequence live events are preserved.
+No local workflow deliveries or outcomes are rendered. Empty sources, missing
+metadata and no-match filters have no explanatory placeholders or banners.
+Every disclosure has a deterministic content/occurrence display ID and preserves
+`open` during morphs. Snapshot keys are not journal IDs. Filtering includes full
+collapsed raw content. Draft/filter/tab elements stay outside both patch roots.
 
 Export real deterministic Chat/Trace and stale offline fixtures, then check them:
 
@@ -308,10 +318,10 @@ remain independent.
 no-store Chat/Trace viewer and shared BONNIE observation hubs. Unknown, unpinned
 or malformed identities return 404; browser fields never choose a remote target.
 The stream re-fetches planning storage and terminates if the pinned tuple changes
-or the task disappears. Trace shows at most 256 newest planning event/outcome
-receipts (received time then row ID), ignoring malformed JSON and foreign tuples.
-Stored execution/workflow state is distinct from a live snapshot. Offline reads
-show stored diagnostics, not a reconstructed conversation.
+or the task disappears. Trace uses the same separate snapshot/durable/live API
+source tables, not local planning receipts. Offline observations remain read-only;
+missing fields/history are silently omitted rather than reconstructed.
+
 
 Planning viewers are observation-only: no composer or Stop, and crafted chat/stop
 POSTs return 403 without sending agent commands. Replies, specification review,

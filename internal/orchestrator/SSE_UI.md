@@ -54,7 +54,7 @@ observation without blocking upstream. Initial replay starts at zero for bounded
 historical durable activity; subsequent reconnections use only the processed
 durable cursor. Live equal-sequence events are not deduplicated. Snapshot
 refreshes coalesce durable/StepFinish changes and replace covered live activity.
-Closure shows unreachable and retries reads only with 1–30 second backoff.
+Closure silently retains observations and retries reads only with 1–30 second backoff.
 Offline/capacity states do not authorize mutations. Notices/drafts are never
 cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
 
@@ -80,13 +80,21 @@ fetch loop or page reload is used for card actions.
 
 See CONTRACT.md for run-detail routes and build instructions.
 
+Run detail silently omits empty sources/optional fields. Trace tables use API-only
+snapshot/durable/live data, not local deliveries or inferred journal history.
+Chat payload disclosures preserve open state. A view-local Rocket controller
+resizes the composer, validates Ctrl+Enter (not IME/plain Enter), prevents duplicate
+pending sends and follows transcript updates only at bottom. Confirmed send SSE
+returns the submitted text as a signal; it clears only an unchanged draft. Newer
+and uncertain drafts survive. All controller listeners/observers are cleaned up.
+
 Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
 read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
 and resume keep the key, retries create another. Generic `/snapshot?view=runs`
 and `/events?view=runs` include queued/unpinned and retained planning history.
 Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with the
 same bounded writes, authentication rechecks and identity-change fencing as build
-details. Its controls root explains observation-only policy; no planning composer
+details. Its controls remain observation-only without passive policy text; no planning composer
 or Stop is rendered. Build authority collections and `/activity` are unchanged.
 Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
 and `guideMessage`; error notices and live snapshots do not clear them. The
