@@ -67,3 +67,12 @@ fetch loop or page reload is used for card actions.
 - `run_display.go`: ordered safe message/tool projection; BONNIE MIT attribution.
 
 See CONTRACT.md for run-detail routes and build instructions.
+
+Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
+read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
+and resume keep the key, retries create another. Generic `/snapshot?view=runs`
+and `/events?view=runs` include queued/unpinned and retained planning history.
+Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with the
+same bounded writes, authentication rechecks and identity-change fencing as build
+details. Its controls root explains observation-only policy; no planning composer
+or Stop is rendered. Build authority collections and `/activity` are unchanged.

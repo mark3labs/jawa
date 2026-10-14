@@ -32,6 +32,7 @@ type uiSnapshot struct {
 	agents         []presence.Record
 	planning       map[string]PlanningDetail
 	prChecks       map[string]PRCheck
+	runs           []RunRecord
 	attempts       []Attempt
 	nats           NATSConfig
 	natsConfigured bool
@@ -120,6 +121,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 		if snap.attempts, err = wf.Attempts(); err != nil {
 			return snap, fmt.Errorf("load attempt history: %w", err)
 		}
+	}
+	if snap.runs, err = s.runHistory(ctx, snap.attempts); err != nil {
+		return snap, err
 	}
 	return snap, nil
 }

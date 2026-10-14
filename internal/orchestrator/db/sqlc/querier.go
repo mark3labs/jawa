@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	GetCard(ctx context.Context, id string) (Card, error)
+	GetPlanningRunHistory(ctx context.Context, id string) (GetPlanningRunHistoryRow, error)
 	GetPlanningSession(ctx context.Context, cardID string) (PlanningSession, error)
 	GetPlanningSessionByID(ctx context.Context, id string) (PlanningSession, error)
 	GetPlanningTurn(ctx context.Context, id string) (PlanningTurn, error)
@@ -21,6 +22,8 @@ type Querier interface {
 	ListPlanningInteractions(ctx context.Context, sessionID string) ([]ListPlanningInteractionsRow, error)
 	ListPlanningMessages(ctx context.Context, sessionID string) ([]PlanningMessage, error)
 	ListPlanningRevisions(ctx context.Context, sessionID string) ([]PlanningRevision, error)
+	ListPlanningRunDeliveries(ctx context.Context, turnID string) ([]ListPlanningRunDeliveriesRow, error)
+	ListPlanningRunHistory(ctx context.Context) ([]ListPlanningRunHistoryRow, error)
 	ListPlanningTurns(ctx context.Context, sessionID string) ([]PlanningTurn, error)
 	ListQueuedPlanningReplies(ctx context.Context) ([]string, error)
 	ListQueuedPlanningTurns(ctx context.Context) ([]PlanningTurn, error)

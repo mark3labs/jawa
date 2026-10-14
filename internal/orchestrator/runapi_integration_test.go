@@ -65,7 +65,12 @@ func TestRunAPIRealSnapshotSharedReplayAndFollowup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	h2, release2, err := pool.observe(a)
+	// A pinned planner uses the same read-only snapshot and shared hub adapter.
+	planner := RunRecord{Mode: "Planning", AgentID: a.AgentID, RunID: a.RunID, RemoteAttemptID: "remote"}
+	if snap, err := pool.snapshot(t.Context(), planner); err != nil || len(snap.Messages) == 0 {
+		t.Fatal("planning snapshot", err)
+	}
+	h2, release2, err := pool.observe(planner)
 	if err != nil || h2 != h {
 		t.Fatal("observation not shared", err)
 	}

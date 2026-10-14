@@ -192,6 +192,25 @@ templ planningContent(d pageData) {
 }
 }</section>
 			}
+			if d.hasRuns(c.ID) {
+				<section class="planning-section" aria-label="Execution history">
+					@card.Card(card.Props{Class: "planning-surface"}) {
+						<h2>Execution history</h2>
+						for _, run := range filterHistory(d.runs, viewParams{Card: c.ID, State: "all"}) {
+							if run.Mode == "Planning" {
+								<div class="plan-actions">
+									<span>Planning #{ strconv.Itoa(run.Number) } · { run.label() }</span>
+									if run.pinned() {
+										@button.Button(button.Props{Href: run.path("chat"), Type: button.TypeButton, Variant: button.VariantOutline, Size: button.SizeSm, Attributes: templ.Attributes{"role": "link"}}) {
+											Open run
+										}
+									}
+								</div>
+							}
+						}
+					}
+				</section>
+			}
 		} else {
 			<h1>Card not found</h1>
 			<p class="meta">Choose a card from the board to review its plan.</p>@button.Button(button.Props{Class: "btn", Href: "/board", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantOutline, Attributes: templ.Attributes{"role": "link"}}) {

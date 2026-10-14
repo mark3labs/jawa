@@ -122,7 +122,7 @@ templ taskCard(d pageData, c Card) {
 
 templ cardChips(d pageData, c Card) {
 	if c.Status == "Planning" {
-		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}) {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline, Href: runsForCardPath(c.ID), Attributes: templ.Attributes{"title": "View runs"}, Class: templ.Classes("chip", "planning-badge", "tone-"+planningTone(planningState(d, c.ID))).String()}) {
 			@toneIcon(planningTone(planningState(d, c.ID)))
 			<span>{ planningLabel(planningState(d, c.ID)) }</span>
 		}
@@ -279,7 +279,7 @@ templ cardMenu(d pageData, c Card) {
 					<span>Force stop…</span>
 				}
 			}
-			if len(latestAttempt(c.ID, d.attempts)) > 0 {
+			if d.hasRuns(c.ID) {
 				@button.Button(button.Props{Class: "menu-item", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
 					@icon("runs")
 					<span>View runs</span>

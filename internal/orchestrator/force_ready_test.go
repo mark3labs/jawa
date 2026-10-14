@@ -703,6 +703,9 @@ func readyTestPage(t *testing.T, w *Workflow, v viewParams) (pageData, error) {
 		return d, err
 	}
 	d.attempts, err = w.Attempts()
+	if err == nil {
+		d.runs, err = w.s.runHistory(t.Context(), d.attempts)
+	}
 	if err != nil {
 		return d, err
 	}

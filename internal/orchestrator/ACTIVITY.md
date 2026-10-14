@@ -19,3 +19,17 @@ and accessible label break down these modes. Paused/input-waiting, reconciliatio
 blocked, and terminal work are excluded (a planning reply pending delivery counts
 again). This is advisory durable work state, not a count of live agent processes.
 At zero the sidebar badge is hidden; the board still shows `0 active`.
+
+Runs includes **Planning**, **Build**, and **Fix** executions from every retained
+session, newest first (creation time, then mode and local ID). A queued planner
+appears immediately without an Open link until its agent/run/remote-attempt tuple
+is pinned. Replies, revisions and resumes retain the same task row; retries add
+history. Approval queues a separate Build row. Cancellation and archiving retain
+history; deleting a card/project still cascades its execution history.
+
+Active includes queued/submitted/running work and pending resumes/queued replies,
+including unfinished post-approval planners. Blocked includes planning input,
+blocker guidance and specification review; Failed includes failed turns. Ready
+is implementation/PR readiness only, never specification readiness. Each planner
+uses its own interaction and execution evidence, not the card's newest session.
+`/activity` retains its existing build-only `attempts` JSON contract.
