@@ -116,9 +116,9 @@ func TestRunDetailEmptyOfflineAndErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		html := out.String()
-		for _, present := range []string{"Agent unreachable", "No conversation snapshot available", "Activity truncated", "&lt;script&gt;", "Timestamp unavailable", "run-trace-source", "Stored workflow", "not retained"} {
-			if strings.Contains(html, present) {
-				t.Errorf("%s missing %s", tab, present)
+		for _, absent := range []string{"Agent unreachable", "No conversation snapshot available", "Activity truncated", "&lt;script&gt;", "Timestamp unavailable", "run-trace-source", "Stored workflow", "not retained"} {
+			if strings.Contains(html, absent) {
+				t.Errorf("%s unexpectedly contains %s", tab, absent)
 			}
 		}
 		if strings.Contains(html, "<script>") {
