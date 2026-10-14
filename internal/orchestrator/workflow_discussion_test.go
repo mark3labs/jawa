@@ -91,7 +91,7 @@ func TestGuidanceCancellationPresentation(t *testing.T) {
 			t.Fatal(blockers, err)
 		}
 		a, _ := w.CardResult(c.ID)
-		d := pageData{uiSnapshot: uiSnapshot{blockers: blockers, attempts: []Attempt{a}}}
+		d := pageData{blockers: blockers, attempts: []Attempt{a}}
 		c.Status = "Building"
 		if d.canGuide(c) {
 			t.Fatal("cancellation still invites guidance")
@@ -124,11 +124,10 @@ func TestFixWorkflowDiscussion(t *testing.T) {
 
 func guidanceFixtureData(lane string) pageData {
 	c := Card{ID: "card", Title: "Blocked card", Description: "Original request", Status: lane}
-	return pageData{csrf: "test-csrf", v: viewParams{View: viewPlanning, Card: c.ID}, uiSnapshot: uiSnapshot{
+	return pageData{csrf: "test-csrf", v: viewParams{View: viewPlanning, Card: c.ID},
 		cards: []Card{c}, natsConfigured: true,
 		attempts: []Attempt{{ID: "attempt", CardID: c.ID, TaskID: "task", Number: 1, State: "blocked", RunState: "waiting"}},
-		blockers: map[string]BlockerGuidance{c.ID: {CardID: c.ID, TaskID: "task", Token: "report-token", Reason: "Need **help**"}},
-	}, workflowDiscussion: []WorkflowExchange{{CardID: c.ID, TaskID: "task", AttemptID: "attempt", Number: 1, ReportID: "report-token", Reason: "Need **help**\n\n<script>alert(1)</script>\n\n" + strings.Repeat("long-text", 100)}}}
+		blockers: map[string]BlockerGuidance{c.ID: {CardID: c.ID, TaskID: "task", Token: "report-token", Reason: "Need **help**"}}, workflowDiscussion: []WorkflowExchange{{CardID: c.ID, TaskID: "task", AttemptID: "attempt", Number: 1, ReportID: "report-token", Reason: "Need **help**\n\n<script>alert(1)</script>\n\n" + strings.Repeat("long-text", 100)}}}
 }
 
 func TestWorkflowDiscussionFullCard(t *testing.T) {

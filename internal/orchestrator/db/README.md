@@ -34,7 +34,7 @@ those references and reopen. Keep an operational backup before upgrades.
 From the repository root:
 
 ```sh
-go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
+go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
 ```
 
 `sqlc.yaml` reads `schema.sql`, a latest-schema snapshot, because legacy column

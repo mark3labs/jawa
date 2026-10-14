@@ -156,6 +156,44 @@ func TestPlanningHistoryRetentionAndRendering(t *testing.T) {
 		}
 	}
 }
+// Superseded and PendingResume come from SQL EXISTS expressions; sqlc may type
+// them as bool or int64, so check the database scan, not just the mapping.
+func TestPlanningHistoryFlagsScanFromDatabase(t *testing.T) {
+	a := testApp(t)
+	first := planningHistoryFixture(t, a)
+	if first.Superseded || first.PendingResume {
+		t.Fatal("fresh turn flagged", first)
+	}
+	if _, err := a.s.db.Exec(`UPDATE planning_turns SET state='failed' WHERE id=?`, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.s.db.Exec(`UPDATE planning_sessions SET state='failed' WHERE card_id=?`, first.CardID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.workflow.RetryPlanning(first.CardID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.s.db.Exec(`INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('flag-resume',?,?,1,'{}','failed',1)`, first.ID, first.CardID); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := a.s.runHistory(t.Context(), nil)
+	if err != nil || len(runs) != 2 {
+		t.Fatal(runs, err)
+	}
+	for _, r := range runs {
+		old := r.ID == first.ID
+		if r.Superseded != old || r.PendingResume != old {
+			t.Fatalf("list %s: superseded=%v pending=%v, want %v", r.ID, r.Superseded, r.PendingResume, old)
+		}
+		byID, err := a.workflow.historyByID(t.Context(), "Planning", r.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if byID.Superseded != old || byID.PendingResume != old {
+			t.Fatalf("get %s: superseded=%v pending=%v, want %v", r.ID, byID.Superseded, byID.PendingResume, old)
+		}
+	}
+}
 func TestPlanningRunDetailRoutesAndDeliveries(t *testing.T) {
 	a := testApp(t)
 	session, csrf := setupTest(t, a)

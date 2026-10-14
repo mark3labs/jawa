@@ -40,7 +40,7 @@ func buildRun(a Attempt) RunRecord {
 	return RunRecord{Mode: mode, ID: a.ID, CardID: a.CardID, TaskID: a.TaskID, Number: a.Number, AgentID: a.AgentID, RunID: a.RunID, RemoteAttemptID: a.RemoteAttemptID, State: a.State, RunState: a.RunState, Result: a.Result, Error: a.Error, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, Build: a}
 }
 func planningRun(t sqlc.ListPlanningRunHistoryRow) RunRecord {
-	return RunRecord{Mode: "Planning", ID: t.ID, CardID: t.CardID, TaskID: t.ID, Number: int(t.Number), AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, State: t.State, RunState: t.State, Result: t.Result, Error: t.Error, SessionState: t.SessionState, InteractionStatus: t.InteractionStatus, InteractionKind: t.InteractionKind, Superseded: t.Superseded != 0, PendingResume: t.PendingResume != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()}
+	return RunRecord{Mode: "Planning", ID: t.ID, CardID: t.CardID, TaskID: t.ID, Number: int(t.Number), AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, State: t.State, RunState: t.State, Result: t.Result, Error: t.Error, SessionState: t.SessionState, InteractionStatus: t.InteractionStatus, InteractionKind: t.InteractionKind, Superseded: t.Superseded, PendingResume: t.PendingResume, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()}
 }
 func (s *Store) runHistory(ctx context.Context, attempts []Attempt) ([]RunRecord, error) {
 	turns, err := sqlc.New(s.db).ListPlanningRunHistory(ctx)
