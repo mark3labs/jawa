@@ -29,6 +29,21 @@ try {
     page.setDefaultTimeout(5000);
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(base);
+    const assertBadges = async () => {
+      const badges = await page.locator('[data-slot="badge"]').evaluateAll(elements =>
+        elements.map(el => {
+          const style = getComputedStyle(el);
+          return {text: el.textContent.trim(), radius: style.borderRadius,
+            left: style.marginLeft, right: style.marginRight};
+        }));
+      assert.ok(badges.length > 0, 'Expected real component badges');
+      for (const badge of badges) {
+        assert.equal(badge.radius, '4px', `${width}: ${badge.text} radius`);
+        assert.equal(badge.left, '3px', `${width}: ${badge.text} left margin`);
+        assert.equal(badge.right, '3px', `${width}: ${badge.text} right margin`);
+      }
+    };
+    await assertBadges();
     const root = page.locator('#runtime-auto-resume').locator('xpath=preceding-sibling::span[1]');
     const input = page.locator('#runtime-auto-resume');
     assert.equal(await input.isChecked(),true);
@@ -97,6 +112,7 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
     assert.deepEqual(errors,[]);
     await page.goto(`${base}/planning`);
+    await assertBadges();
     const approval = page.locator('#planning-acknowledge');
     const check = approval.locator('xpath=preceding-sibling::span[1]');
     assert.equal(await approval.evaluate(el=>el.required && !el.validity.valid),true);

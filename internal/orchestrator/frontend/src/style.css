@@ -156,7 +156,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.012em; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item[aria-current="page"] { background: var(--surface-3); color: var(--text); }
 .nav-item[aria-current="page"] .ic { color: var(--amber); }
-.nav-item .nav-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item .nav-text { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-3); color: var(--text-3); font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .nav-count.live { background: var(--amber-dim); color: var(--amber); }
 .nav-count.online { color: var(--sage); background: var(--sage-dim); }
@@ -804,3 +804,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 label:has(> [data-slot="input"]), label:has(> [data-slot="textarea"]),
 label:has(> [data-slot="native-select-wrapper"]) { flex-direction: column; align-items: stretch; gap: 6px; }
 label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; }
+
+/* Shared badge geometry, including counts, linked metadata and run roles.
+   Keep vertical spacing, tone colors and compact/touch sizing independent. */
+[data-slot="badge"] { border-radius: 4px; margin-inline: 3px; }
