@@ -2,10 +2,17 @@
 export function setupRunDetail(host, mergePaths, cleanup) {
   const draft = host.querySelector('#run-draft');
   const form = host.querySelector('#run-composer');
+  const messageID = host.querySelector('#run-message-id');
+  let acceptedID = '';
+  let submittedID = '';
+  let retryText = null;
   let pending = false;
   let submitted = '';
   let confirmed = '';
-  const onSignals = event => { if (typeof event.detail.runConfirmedDraft === 'string') confirmed = event.detail.runConfirmedDraft; };
+  const onSignals = event => {
+    if (typeof event.detail.runConfirmedDraft === 'string') confirmed = event.detail.runConfirmedDraft;
+    if (typeof event.detail.runAcceptedMessage === 'string') acceptedID = event.detail.runAcceptedMessage;
+  };
   document.addEventListener('datastar-signal-patch', onSignals);
   let following = true;
   let scrollTop = 0;
@@ -24,7 +31,10 @@ export function setupRunDetail(host, mergePaths, cleanup) {
   };
   const onSubmit = event => {
     if (event.target !== form) return;
-    if (pending) { event.preventDefault(); event.stopImmediatePropagation(); }
+    if (pending) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+    if (messageID && retryText !== null && draft.value !== retryText) messageID.value = crypto.randomUUID();
+    submittedID = messageID?.value || '';
+    retryText = draft.value;
   };
   const onFetch = event => {
     const {type, el} = event.detail;
@@ -40,6 +50,7 @@ export function setupRunDetail(host, mergePaths, cleanup) {
         draft.value = '';
         draft.dispatchEvent(new Event('input', {bubbles: true}));
       }
+      if (messageID && acceptedID === submittedID) { messageID.value = crypto.randomUUID(); retryText = null; }
       pending = false;
       mergePaths([['runSending', false]]);
       resize();
@@ -52,6 +63,9 @@ export function setupRunDetail(host, mergePaths, cleanup) {
     following = el.scrollHeight - el.clientHeight - el.scrollTop < 32;
   };
   const restore = () => {
+    const interaction = host.querySelector('#run-interaction');
+    const controls = host.querySelector('#run-detail-controls');
+    if (interaction && controls && !draft?.value) interaction.value = controls.dataset.interaction || '';
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const el = transcript();

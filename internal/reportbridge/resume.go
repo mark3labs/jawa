@@ -61,6 +61,19 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		reply.Error = "journal unavailable"
 		return reply
 	}
+	if chatFollowup(records) {
+		reply.Error = "follow-up has no workflow authority"
+		return reply
+	}
+	for _, rec := range records {
+		if rec.ExtType == chatIntentType {
+			var chat reportprotocol.Chat
+			if json.Unmarshal(rec.Payload, &chat) == nil && b.chatInFlight[chat.ID] {
+				reply.Error = "chat execution active"
+				return reply
+			}
+		}
+	}
 	var old *reportprotocol.FailedResume
 	var receipt *reportprotocol.FailedResumeReply
 	// Completion and legacy terminal blockers end the task. A blocker committed

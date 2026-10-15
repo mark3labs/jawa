@@ -121,3 +121,8 @@ PR/configuration snapshot, expected head, method, operator, timestamps and safe
 outcome only. Pending reservations become uncertain at startup; reconciliation
 never replays a write. Back up before upgrading. Snapshot and pinned sqlc output
 must accompany this migration.
+
+Version `00022_run_chat.sql` adds the cascading per-retained-run message/outbox
+ledger and ordered queue index. Client identity uniqueness is scoped by mode and
+local record. Request/receipt JSON never includes short-lived bearer tokens.
+Back up before upgrade; deploy agent chat v1 support with the orchestrator.

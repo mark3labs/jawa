@@ -187,6 +187,27 @@ type Project struct {
 	BaseBranch string `json:"base_branch"`
 }
 
+type RunChat struct {
+	ID             string `json:"id"`
+	CardID         string `json:"card_id"`
+	Mode           string `json:"mode"`
+	LocalID        string `json:"local_id"`
+	ClientID       string `json:"client_id"`
+	TaskID         string `json:"task_id"`
+	AgentID        string `json:"agent_id"`
+	RunID          string `json:"run_id"`
+	AttemptID      string `json:"attempt_id"`
+	Text           string `json:"text"`
+	Classification string `json:"classification"`
+	Interaction    string `json:"interaction"`
+	Status         string `json:"status"`
+	Failure        string `json:"failure"`
+	RequestJson    string `json:"request_json"`
+	ReceiptJson    string `json:"receipt_json"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
+}
+
 type Session struct {
 	TokenHash string `json:"token_hash"`
 	ExpiresAt int64  `json:"expires_at"`

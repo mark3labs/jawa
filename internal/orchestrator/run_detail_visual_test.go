@@ -26,7 +26,7 @@ func runDetailFixture() runDetail {
 	projected := projectRunMessages(messages)
 	projected = append(projected, runMessage{Role: "unknown", Key: "unsupported-fixture", Raw: `{"unsupported":"preserved diagnostic payload"}`, Parts: []runPart{{Key: "unsupported-part", Unsupported: true}}})
 	live := []runtime.Event{{TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "First equal-sequence observation"}, {TurnID: "turn-2", Seq: 5, Type: "tool_delta", Text: "Second equal-sequence observation"}}
-	return runDetail{Record: buildRun(Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}), Messages: projected, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Durable: []runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, Live: live, Truncated: true}}
+	return runDetail{MessageID: "22222222-2222-4222-8222-222222222222", Chat: []RunChatMessage{{ID: "pending-message", Text: "Queued offline message", Status: "queued", Classification: "followup"}, {ID: "failed-message", Text: "Unavailable original conversation", Status: "failed", Failure: "retired", Classification: "followup"}}, Record: buildRun(Attempt{ID: "11111111-1111-4111-8111-111111111111", Number: 1, AgentID: "fixture-agent", RunID: strings.Repeat("run-", 20), RunState: "running", Result: `{"workflow":"stored outcome, separate from conversation"}`}), Messages: projected, Policy: runPolicy{Send: true, Stop: true, Turn: "turn-2", Mode: "steer", Reason: "Message the active turn."}, Observation: runObservation{Durable: []runtime.Event{{TurnID: "turn-1", Seq: 1, Type: "run_state", Time: now, Text: "Durable fixture event"}}, Live: live, Truncated: true}}
 }
 
 func TestRunDetailVisualFixture(t *testing.T) {
@@ -38,7 +38,7 @@ func TestRunDetailVisualFixture(t *testing.T) {
 		}
 		d.Observation.Unreachable = strings.HasPrefix(variant, "offline")
 		if d.Observation.Unreachable {
-			d.Policy = runPolicy{Reason: "Read-only. Use the card's authoritative Resume/Retry or guidance action."}
+			d.Policy = runPolicy{Send: true, Mode: "queue", Reason: "Messages queue while offline."}
 		}
 		p := pageData{v: viewParams{View: viewRuns}, detail: &d, now: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)}
 		var out bytes.Buffer
@@ -57,7 +57,7 @@ func TestRunDetailVisualFixture(t *testing.T) {
 	d.Record.State = "waiting"
 	d.Record.InteractionStatus = "pending"
 	d.Record.InteractionKind = "propose_spec"
-	d.Policy = runPolicy{Reason: "Planning is observation-only. Replies, review, guidance, recovery and cancellation live on the card."}
+	d.Policy = runPolicy{Send: true, Mode: "steer", Reason: "Reply without approving the specification."}
 	for _, tab := range []string{"chat", "trace"} {
 		d.Tab = tab
 		p := pageData{v: viewParams{View: viewRuns}, detail: &d}

@@ -8,7 +8,7 @@ import "github.com/nats-io/nats-server/v2/server"
 func workerPermissions() *server.Permissions {
 	return &server.Permissions{
 		Publish: &server.SubjectPermission{Allow: []string{">"}, Deny: []string{
-			"bonnie.api.>", "$KV.jawa_control.>",
+			"bonnie.api.>", "bonnie.run_chat.>", "$KV.jawa_control.>",
 			"$JS.API.STREAM.CREATE.>", "$JS.API.STREAM.UPDATE.>",
 			"$JS.API.STREAM.DELETE.KV_jawa_control", "$JS.API.STREAM.PURGE.KV_jawa_control", "$JS.API.STREAM.MSG.DELETE.KV_jawa_control",
 			"$JS.API.STREAM.SNAPSHOT.>", "$JS.API.STREAM.RESTORE.>",

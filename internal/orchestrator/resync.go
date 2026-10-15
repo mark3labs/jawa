@@ -76,6 +76,9 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if blocked, e := chatEvidenceBlocked(tx, observed.TaskID); e != nil || blocked {
+		return e
+	}
 	blocked, e := resumeDeliveryBlocked(tx, observed.TaskID, true)
 	if e != nil {
 		return e

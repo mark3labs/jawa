@@ -23,10 +23,12 @@ const server = createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     const text = new URLSearchParams(body).get('text');
+    const messageID = new URLSearchParams(body).get('message_id');
+    messageIDs.push(messageID);
     await new Promise(resolve => { releaseSend = resolve; });
     res.writeHead(200, {'Content-Type':'text/event-stream'});
     if (failSend) { res.end(': uncertain response\n\n'); return; }
-    res.end(`event: datastar-patch-signals\ndata: signals ${JSON.stringify({runConfirmedDraft:text})}\n\n`);
+    res.end(`event: datastar-patch-signals\ndata: signals ${JSON.stringify({runConfirmedDraft:text,runAcceptedMessage:messageID})}\n\n`);
     return;
   }
   const asset = /^\/assets\/([a-zA-Z0-9_.-]+)$/.exec(url.pathname);
@@ -42,6 +44,7 @@ let browser;
 let sends = 0;
 let releaseSend;
 let failSend = false;
+const messageIDs = [];
 const url = `http://127.0.0.1:${server.address().port}/runs/11111111-1111-4111-8111-111111111111`;
 try {
   browser = await launchBrowser();
@@ -151,6 +154,13 @@ try {
   releaseSend();
   await expect(send).toBeEnabled();
   await expect(draft).toHaveValue('uncertain draft');
+  const uncertainID = await page.locator('#run-message-id').inputValue();
+  await draft.press('Control+Enter');
+  await expect.poll(()=>sends).toBe(4);
+  assert.equal(messageIDs[3], uncertainID, 'Uncertain retry changed message identity');
+  releaseSend();
+  await expect(send).toBeEnabled();
+  assert.notEqual(messageIDs[0],messageIDs[1],'New draft reused accepted identity');
   await page.emulateMedia({reducedMotion:'reduce'});
   const transcript = page.locator('#run-transcript');
   await expect.poll(()=>transcript.evaluate(el => el.scrollHeight-el.clientHeight-el.scrollTop)).toBeLessThan(32);
@@ -179,7 +189,9 @@ try {
   await page.goto(`${url}?tab=chat&offline=1`);
   await page.locator('#run-draft').fill('offline draft');
   await page.locator('#run-draft').press('Control+Enter');
-  assert.equal(sends,3,'Disabled policy submitted');
+  await expect.poll(()=>sends).toBe(5);
+ releaseSend();
+ await expect(page.locator('button[form="run-composer"]')).toBeEnabled();
   const planningURL=url.replace('/runs/','/runs/planning/');
   for (const width of [320,390,768,1024,1440]) {
     await page.setViewportSize({width,height:1000});
@@ -187,8 +199,8 @@ try {
       await page.goto(`${planningURL}?tab=${tab}`);
       await page.locator('#run-detail-content').waitFor();
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1), `planning ${tab} overflow ${width}`);
-      await expect(page.locator('#run-composer')).toHaveCount(0);
-      await expect(page.getByRole('button',{name:/Send|Stop current turn/})).toHaveCount(0);
+      await expect(page.locator('#run-composer')).toHaveCount(tab==='chat' ? 1:0);
+      await expect(page.getByRole('button',{name:/Stop current turn/})).toHaveCount(0);
       await expect(page.getByText('Awaiting review',{exact:true})).toBeVisible();
       const link=page.getByRole('link',{name:tab==='chat' ? 'Trace':'Chat',exact:true});
       await link.focus(); await page.keyboard.press('Enter');

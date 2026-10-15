@@ -191,13 +191,13 @@ TLS/network controls; do not share the orchestrator's data or credentials with a
 Runs navigation and its own stream `GET /runs/{attemptID}/events?tab=...` (never
 the generic Board/Runs SSE). Unknown/unpinned attempts are 404. Session checks,
 no-store, setup guards and CSRF apply; unauthenticated detail streams are 401.
-`POST /runs/{attemptID}/chat` accepts bounded `text`; `POST .../stop` requires
+`POST /runs/{attemptID}/chat` accepts UTF-8 `text` of 1–64000 bytes, a UUID `message_id` and displayed `interaction` token; `POST .../stop` requires
 the displayed `turn_id`. Browser fields never select agent subject/run identity.
 Enhanced actions disable retry and return finite notices; native actions redirect.
 
 `run-detail-content` morphs status and history, `run-detail-controls` morphs
 eligibility and exact-turn Stop. Tabs, Trace filter and composer/draft stay
-outside both roots. Only confirmed send success clears `runDraft` when it still equals the submitted
+outside both roots. Only durable message acceptance clears `runDraft` when it still equals the submitted
 text; newer drafts and uncertain mutations survive. Externally associated Send
 controls stay disabled while pending without overriding server policy. Assistant Markdown uses the existing sanitizer; other
 content is escaped and no remote media is loaded. BONNIE display adaptation
@@ -364,14 +364,18 @@ no-store Chat/Trace viewer and shared BONNIE observation hubs. Unknown, unpinned
 or malformed identities return 404; browser fields never choose a remote target.
 The stream re-fetches planning storage and terminates if the pinned tuple changes
 or the task disappears. Trace uses the same separate snapshot/durable/live API
-source tables, not local planning receipts. Offline observations remain read-only;
+source tables, not local planning receipts. Offline observations do not prevent durable chat acceptance;
 missing fields/history are silently omitted rather than reconstructed.
 
 
-Planning viewers are observation-only: no composer or Stop, and crafted chat/stop
-POSTs return 403 without sending agent commands. Replies, specification review,
-guidance, recovery and cancellation remain on the authoritative card page.
-Existing implementation URLs and Send/Stop policies are unchanged. Board and
+Planning viewers have the same durable chat composer, including offline and
+historical runs. Chat POST uses the same CSRF/setup/auth guards as Build/Fix.
+Planning Stop remains a card cancellation action. Specification approval requires
+the explicit card control, not chat. Follow-ups cannot regain workflow authority.
+Delivery status is separate from stored workflow status; failed/ambiguous messages
+remain visible and never automatically acquire a new command ID. See README's
+Run detail section for the v0.29 interrupted-input deviation and host protocol.
+Board and
 Archive planning status badges and View runs menus are native filtered-history
 links; the card key/eye still opens the card. Planning execution history provides
 Open run for each valid pinned task, including older sessions.

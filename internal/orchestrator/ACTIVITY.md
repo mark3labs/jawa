@@ -33,3 +33,29 @@ blocker guidance and specification review; Failed includes failed turns. Ready
 is implementation/PR readiness only, never specification readiness. Each planner
 uses its own interaction and execution evidence, not the card's newest session.
 `/activity` retains its existing build-only `attempts` JSON contract.
+
+## Durable run chat
+
+All retained pinned Planning/Build/Fix run detail pages accept durable messages,
+regardless of lane or owner availability. Migration 00022 stores per-run client
+message identities, pinned command identity, classification and delivery status.
+Acceptance is not delivery. The bounded ordered dispatcher retries only the same
+command; unreachable/old agents remain visibly pending. Deploy updated owners and
+orchestrator together (BONNIE v0.29, `jawa.run_chat=1` capability).
+
+Current pending guidance/clarification/review shares the exact-interaction Answer
+outbox and CAS with card forms. Review chat is revision guidance, never approval.
+Already queued card replies win; chat waits and reclassifies, never overwrites.
+Current explicit chat excludes automatic/manual failed resume reservations.
+Historical/readied/abandoned/approved-planning messages are conversational follow-ups:
+host-journal provenance and orchestrator fences deny workflow evidence, including
+late reports, status, results and resume receipts. No new attempt or PR readiness.
+
+Explicit input on an idle interrupted run cancels only that observed old turn
+before Start, preserving conversation/sandbox but ending the old completion budget.
+This avoids silently recovering old completion work instead of consuming new text.
+Retired/missing conversations fail without replacement. Orphan host intent is
+ambiguous, not permission to run again; subsequent commands stay pending until
+safe operator reconciliation. No automatic new-ID replay or external exactly-once
+claim. Original failure evidence is retained until host-confirmed continuation.
+See README Run detail for compatibility, security and operational limitations.
