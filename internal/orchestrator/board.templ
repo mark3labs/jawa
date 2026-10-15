@@ -2,17 +2,18 @@ package orchestrator
 
 import (
 	"strconv"
+ "fmt"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
-	"github.com/axadrn/shadcn-templ/v2/components/separator"
+	"github.com/axadrn/shadcn-templ/v2/components/dropdownmenu"
 )
 
 templ boardContent(d pageData) {
-	<div id="board-content" class="view board-view">
+	<div id="board-content" class="view board-view" data-attr:data-ignore-morph="$_menuOpen || $_dragging">
 		if p, ok := selectedProject(d.projects, d.v.Project); ok {
 			<div class="view-head">
 				<div class="view-title project-heading">
@@ -39,7 +40,11 @@ templ boardContent(d pageData) {
 					<span class="stat"><strong>{ strconv.Itoa(len(cardsIn(d.cards, p.ID, "Done"))) }</strong> ready</span>
 				</div>
 			</div>
-			<jawa-board project={ p.ID }>
+			<div class="board" data-project={ p.ID } data-init="jawaBoard(el)"
+ data-on:board-drag="$_dragging = evt.detail.active"
+ data-on:board-fix={ "evt.detail.canFix ? @get('/dialogs/fix?card_id=' + encodeURIComponent(evt.detail.card), {filterSignals: {include: /^$/}}) : " + d.v.SnapshotAction() }
+ data-on:board-plan="$goto = '/planning?card=' + encodeURIComponent(evt.detail.card) + '#approve-plan'"
+ data-on:board-move="$moveCard = evt.detail.card; $moveStatus = evt.detail.status; $movePosition = String(evt.detail.position); @post('/cards/move', {contentType:'form', selector: '#move-form'})">
 				<div class="lanes">
 					for _, status := range []string{"Todo", "Planning", "Building", "Fix", "Done"} {
 						<section class={ "lane", "lane-" + status } aria-label={ laneName(status) }>
@@ -50,7 +55,7 @@ templ boardContent(d pageData) {
 									{ strconv.Itoa(len(cardsIn(d.cards, p.ID, status))) }
 								}
 								if status == "Todo" {
-									@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn lane-add", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "New card", "data-on:click": "$cardOpen = true"}}) {
+									@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn lane-add", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "New card", "data-on:click": dialogOpen("card", "", "")}}) {
 										@icon("plus")
 									}
 								}
@@ -71,7 +76,7 @@ templ boardContent(d pageData) {
 						</section>
 					}
 				</div>
-			</jawa-board>
+			</div>
 		} else {
 			@empty.Empty(empty.Props{Class: "page-empty"}) {
 				@empty.Header() {
@@ -86,7 +91,7 @@ templ boardContent(d pageData) {
 					}
 				}
 				@empty.Content() {
-					@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeButton, Class: "btn primary", Attributes: templ.Attributes{"data-on:click": "$projectOpen = true"}}) {
+					@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeButton, Class: "btn primary", Attributes: templ.Attributes{"data-on:click": dialogOpen("project", "", "")}}) {
 						@icon("plus")
 						New project
 					}
@@ -161,7 +166,7 @@ templ cardChips(d pageData, c Card) {
 	}
 	{{ updated := d.cardActivity(c) }}
 	<span class="chip-time">
-		<jawa-time datetime={ timeAttr(updated) }>{ relativeTime(updated, d.now) }</jawa-time>
+		@relTime(updated, d.now)
 	</span>
 }
 
@@ -200,14 +205,13 @@ templ cardNote(d pageData, c Card) {
 	}
 }
 
-// cardMenu is a Rocket-managed popover: the component positions the native
-// popover next to its trigger and closes it after an action is chosen.
+// Base UI owns menu placement, dismissal and keyboard navigation.
 templ cardMenu(d pageData, c Card) {
-	<jawa-menu>
-		@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"popovertarget": "menu-" + c.ID, "aria-label": "Actions for " + c.Title, "aria-haspopup": "menu"}}) {
+	@dropdownmenu.DropdownMenu(dropdownmenu.Props{ID: "menu-" + c.ID}) {
+		@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: menuTrigger(ctx, templ.Attributes{"aria-label": "Actions for " + c.Title})}) {
 			@icon("more")
 		}
-		<div id={ "menu-" + c.ID } class="menu" popover="auto" role="menu" data-preserve-attr="style">
+		@dropdownmenu.Content(dropdownmenu.ContentProps{Class: "menu w-auto min-w-48", Side: dropdownmenu.SideBottom, Align: dropdownmenu.AlignEnd, SideOffset: 6, Attributes: templ.Attributes{"data-on:click": "evt.target.closest('[data-slot=dropdown-menu-item]:not([data-disabled])') && ($_menuActed = true)"}}) {
 			if c.Status == "Done" {
 				if canAction(c, d.attempts, "fix") {
 					if d.prChecks[c.ID].State != "merged" {
@@ -215,7 +219,7 @@ templ cardMenu(d pageData, c Card) {
 						@menuPost(d, c, "/cards/mark-merged", "Mark as merged", "check", [][2]string{{"expected_attempt_id", attempt.ID}, {"expected_pr_url", attempt.PRURL}})
 					}
 					@assignmentMenu(c, "fix", "Fix with agent")
-					@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": fixDialogAction(c.ID, "")}}) {
+					@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Attributes: templ.Attributes{"data-on:click": fixDialogAction(c.ID, "")}}) {
 						@icon("retry")
 						<span>Send to Fix…</span>
 					}
@@ -241,8 +245,7 @@ templ cardMenu(d pageData, c Card) {
 				@menuPost(d, c, "/cards/resume", "Resume failed run", "play", [][2]string{{"expected_resume", resumeToken(latestAttempt(c.ID, d.attempts)[0])}})
 			}
 			if d.canGuide(c) {
-				{{ b, _ := d.blocker(c) }}
-				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": guideDialogAction(c.ID, b.Token)}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Attributes: templ.Attributes{"data-on:click": dialogOpen("guide", c.ID, "")}}) {
 					@icon("play")
 					<span>Reply with guidance…</span>
 				}
@@ -262,7 +265,7 @@ templ cardMenu(d pageData, c Card) {
 			}
 			if c.Status == "Building" || c.Status == "Fix" {
 				if canAction(c, d.attempts, "cancel") {
-					@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$cancelCard = " + strconv.Quote(c.ID) + "; $cancelOpen = true"}}) {
+					@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": dialogOpen("cancel", c.ID, "")}}) {
 						@icon("reset")
 						<span>Cancel run…</span>
 					}
@@ -271,71 +274,72 @@ templ cardMenu(d pageData, c Card) {
 				}
 			}
 			if d.canForceReady(c) {
-				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": d.readyDialogAction(c)}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": d.readyDialogAction(c)}}) {
 					@icon("check")
 					<span>Force ready…</span>
 				}
 			}
 			if canAction(c, d.attempts, "force-stop") {
-				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$forceCard = " + strconv.Quote(c.ID) + "; $forceAcknowledged = false; $forceOpen = true"}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": dialogOpen("force", c.ID, "")}}) {
 					@icon("reset")
 					<span>Force stop…</span>
 				}
 			}
 			if d.hasRuns(c.ID) {
-				@button.Button(button.Props{Class: "menu-item", Href: runsForCardPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Href: runsForCardPath(c.ID), Attributes: nil}) {
 					@icon("runs")
 					<span>View runs</span>
 				}
 			}
 			if iss := safeActivityURL(c.IssueURL); iss != "" {
-				@button.Button(button.Props{Class: "menu-item", Href: iss, Target: "_blank", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "rel": "noopener noreferrer"}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Href: iss, Target: "_blank", Attributes: templ.Attributes{"rel": "noopener noreferrer"}}) {
 					@icon("external")
 					<span>Open issue</span>
 				}
 			}
-			@button.Button(button.Props{Class: "menu-item", Href: planningPath(c.ID), Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
+			@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Href: planningPath(c.ID), Attributes: nil}) {
 				View card &amp; plan
 			}
-			@separator.Separator(separator.Props{Class: "menu-sep"})
+			@dropdownmenu.Separator()
 			if canAction(c, d.attempts, "delete") {
-				@button.Button(button.Props{Type: button.TypeButton, Class: "menu-item danger", Size: button.SizeSm, Variant: button.VariantDestructive, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true"}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true"}}) {
 					@icon("trash")
 					<span>Delete…</span>
 				}
 			} else {
 				@menuDisabled("Delete", "trash", actionReason(c, d.attempts, "delete"))
 			}
-		</div>
-	</jawa-menu>
+		}
+	}
 }
 
 templ menuPost(d pageData, c Card, route, label, ic string, extra [][2]string) {
-	<form method="post" action={ route } data-on:submit__prevent={ "@post('" + route + "', {contentType:'form'})" }>
-		<input type="hidden" name="_csrf" value={ d.csrf }/>
-		@viewFields(d.v)
-		<input type="hidden" name="card_id" value={ c.ID }/>
-		for _, kv := range extra {
-			<input type="hidden" name={ kv[0] } value={ kv[1] }/>
-		}
-		@button.Button(button.Props{Type: button.TypeSubmit, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem"}}) {
-			@icon(ic)
-			<span>{ label }</span>
-		}
-	</form>
+ {{ id := "menu-form-" + c.ID + "-" + routeSlug(route) }}
+ @dropdownmenu.Item(dropdownmenu.ItemProps{Attributes: templ.Attributes{"data-on:click": fmt.Sprintf("@post('%s', {contentType:'form', selector:'#%s'})", route, id)}}) {
+ <form id={ id } method="post" action={ templ.SafeURL(route) } hidden>
+ <input type="hidden" name="_csrf" value={ d.csrf }/>
+ @viewFields(d.v)
+ <input type="hidden" name="card_id" value={ c.ID }/>
+ for _, kv := range extra {
+ <input type="hidden" name={ kv[0] } value={ kv[1] }/>
+ }
+ </form>
+ @icon(ic)
+ <span>{ label }</span>
+ }
 }
 
 templ menuDisabled(label, ic, reason string) {
-	@button.Button(button.Props{Disabled: true, Class: "menu-item disabled", Type: button.TypeButton, Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "aria-disabled": "true", "title": reason}}) {
-		@icon(ic)
-		<span>{ label }</span>
-		<span class="menu-reason">{ reason }</span>
-	}
+ @dropdownmenu.Item(dropdownmenu.ItemProps{Disabled: true, Attributes: templ.Attributes{"title": reason}}) {
+ @icon(ic)
+ <span>{ label }</span>
+ <span class="menu-reason">{ reason }</span>
+ }
 }
 
 // Refresh forms work natively and use finite SSE when Datastar is available.
 templ prRefreshForm(d pageData, projectID, cardID, label string) {
-	<form class="pr-refresh-form" method="post" action="/prs/refresh" data-on:submit__prevent="@post('/prs/refresh', {contentType:'form'})">
+	<form class="pr-refresh-form" method="post" action="/prs/refresh" data-on:submit__prevent="!$prRefreshing && ($prRefreshing = true, @post('/prs/refresh', {contentType:'form'}))">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		<input type="hidden" name="project_id" value={ projectID }/>
 		<input type="hidden" name="card_id" value={ cardID }/>
@@ -370,9 +374,9 @@ templ cardPRStatus(d pageData, c Card) {
 			<p>{ prCheckLabel(check) }</p>
 		}
 		if check.Manual {
-			<p class="pr-checked-at">Marked as merged manually <jawa-time datetime={ timeAttr(check.MarkedAt) } title={ check.MarkedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.MarkedAt, d.now) }</jawa-time></p>
+			<p class="pr-checked-at">Marked as merged manually @relTime(check.MarkedAt, d.now)</p>
 		} else if !check.CheckedAt.IsZero() {
-			<p class="pr-checked-at">Last checked <jawa-time datetime={ timeAttr(check.CheckedAt) } title={ check.CheckedAt.UTC().Format("2006-01-02 15:04:05 UTC") }>{ relativeTime(check.CheckedAt, d.now) }</jawa-time></p>
+			<p class="pr-checked-at">Last checked @relTime(check.CheckedAt, d.now)</p>
 		} else if check.State == "checking" {
 			<p class="pr-checked-at">Awaiting a fresh check.</p>
 		} else {
@@ -400,11 +404,11 @@ templ cardPRStatus(d pageData, c Card) {
 
 // Archiving changes visibility only, including for cards with active work.
 templ archiveButton(d pageData, c Card) {
-	<form method="post" action={ archiveRoute(c) } data-on:submit__prevent={ "@post('" + archiveRoute(c) + "', {contentType:'form'})" }>
+	<form method="post" action={ archiveRoute(c) } { dsForm(archiveRoute(c), "archive" + c.ID)... }>
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
 		<input type="hidden" name="card_id" value={ c.ID }/>
-		@button.Button(button.Props{Type: button.TypeSubmit, Class: "archive-action", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"title": "Changes visibility only; work and history are preserved"}}) {
+		@button.Button(button.Props{Type: button.TypeSubmit, Class: "archive-action", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"title": "Changes visibility only; work and history are preserved", "data-attr:disabled": "$_archive" + c.ID}}) {
 			@icon("archive")
 			{ archiveLabel(c) }
 		}
@@ -461,7 +465,7 @@ templ manualReadyBadge(d pageData, a Attempt) {
 }
 
 templ assignmentMenu(c Card, mode, title string) {
- @button.Button(button.Props{Type: button.TypeButton, Class: "menu-item", Size: button.SizeSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"role": "menuitem", "data-on:click": assignmentAction(c, mode)}}) {
+ @dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item", Attributes: templ.Attributes{"data-on:click": assignmentAction(c, mode)}}) {
   @icon("agents")<span>{ title }</span>
  }
 }

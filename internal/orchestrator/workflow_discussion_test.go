@@ -170,7 +170,7 @@ func TestWorkflowDiscussionFullCard(t *testing.T) {
 					t.Fatal("unsafe Markdown", html)
 				}
 				if state == "pending" {
-					for _, want := range []string{`id="guidance-reply-form-report-token"`, `name="expected_interaction" value="report-token"`, `name="message"`, `data-ignore-morph`, `data-reset-on-success`, `maxlength="64000"`, `name="_csrf"`, `name="card_id"`, `name="card"`} {
+					for _, want := range []string{`id="guidance-reply-form-report-token"`, `name="expected_interaction" value="report-token"`, `name="message"`, `data-ignore-morph`, `data-bind:guidance-reply`, `maxlength="64000"`, `name="_csrf"`, `name="card_id"`, `name="card"`} {
 						if !strings.Contains(html, want) {
 							t.Fatal(want, html)
 						}

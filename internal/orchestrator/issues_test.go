@@ -154,42 +154,38 @@ func TestListProjectIssuesErrors(t *testing.T) {
 	}
 }
 
-func TestProjectIssuesEndpoint(t *testing.T) {
+func TestCardIssuesField(t *testing.T) {
 	t.Setenv("JAWA_GITHUB_TOKEN", "test-token")
 	a := testApp(t)
-	session, _ := setupTest(t, a)
+	session, csrf := sseCookies(t, a)
 	p, err := a.s.CreateProjectDetails("demo", "github", "https://github.com/acme/repo", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	calls := 0
-	body := `[]`
-	a.issueClient = &http.Client{Transport: providerTransport(func(r *http.Request) (*http.Response, error) { calls++; return issueResponse(body), nil })}
-	path := "/projects/issues?project_id=" + p.ID
-	status(t, request(a, "GET", path, nil), 401)
-	status(t, request(a, "GET", "/projects/issues?project_id=missing", nil, session), 404)
-	status(t, request(a, "GET", "/projects/issues", nil, session), 404)
-	w := request(a, "POST", path, nil, session)
-	status(t, w, 405)
-	if w.Header().Get("Allow") != "GET" || calls != 0 {
-		t.Fatal("invalid requests reached provider")
+	response := `[]`
+	a.issueClient = &http.Client{Transport: providerTransport(func(r *http.Request) (*http.Response, error) { return issueResponse(response), nil })}
+	for _, tc := range []struct{ project, response, want string }{
+		{"", `[]`, "Choose a project"}, {p.ID, `[]`, "No open issues found"}, {"missing", `[]`, "Unable to load issues"},
+		{p.ID, `[{"number":3,"title":"Issue","body":"private-body","state":"open"}]`, "#3 Issue"}, {p.ID, `private-test-token malformed`, "Unable to load issues"},
+	} {
+		response = tc.response
+		body := assertSSE(t, sseRequest(a, "GET", "/dialogs/card/issues?project_id="+tc.project, nil, session, csrf))
+		for _, want := range []string{tc.want, "data: mode replace", `name="issue_submission"`, `"_issues":`} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("missing %s", want)
+			}
+		}
+		if strings.Contains(body, "private-test-token") {
+			t.Fatal("provider error exposed")
+		}
 	}
-	w = request(a, "GET", path, nil, session)
-	status(t, w, 200)
-	if strings.TrimSpace(w.Body.String()) != `{"issues":[]}` || w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("response: %v %s", w.Header(), w.Body.String())
-	}
-	body = `[{"number":3,"title":"Issue","state":"open","html_url":"https://evil.example"}]`
-	w = request(a, "GET", path, nil, session)
-	status(t, w, 200)
-	if strings.TrimSpace(w.Body.String()) != `{"issues":[{"number":3,"title":"Issue","body":"","url":"https://github.com/acme/repo/issues/3"}]}` {
-		t.Fatalf("JSON contract: %s", w.Body.String())
-	}
-	body = `private-test-token malformed`
-	w = request(a, "GET", path, nil, session)
-	status(t, w, 502)
-	if strings.TrimSpace(w.Body.String()) != "Unable to load project issues." {
-		t.Fatalf("unsafe error: %s", w.Body.String())
+}
+
+func TestRemovedJSONEndpoints404(t *testing.T) {
+	a := testApp(t)
+	session, _ := sseCookies(t, a)
+	for _, path := range []string{"/projects/issues", "/agents/choices"} {
+		status(t, request(a, "GET", path, nil, session), 404)
 	}
 }
 

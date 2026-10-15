@@ -123,10 +123,6 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.responseError(w, r, "Unable to check NATS setup. Please try again.", http.StatusServiceUnavailable)
 		return
 	}
-	if r.URL.Path == "/agents/choices" {
-		a.agentChoices(w, r, ready)
-		return
-	}
 	if !ready && r.Method == http.MethodGet && r.URL.Path != "/settings" && r.URL.Path != "/events" && r.URL.Path != "/snapshot" {
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 		return
@@ -162,8 +158,8 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if r.URL.Path == "/projects/issues" {
-		a.projectIssues(w, r)
+	if strings.HasPrefix(r.URL.Path, "/dialogs/") {
+		a.dialogBody(w, r)
 		return
 	}
 	route, ok := mutations[r.URL.Path]
@@ -176,7 +172,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Streaming and enhanced clients need an error rather than an HTML login redirect.
 func requiresAuthenticatedResponse(r *http.Request) bool {
-	return r.URL.Path == "/agents/choices" || r.URL.Path == "/events" || r.URL.Path == "/snapshot" || r.URL.Path == "/projects/issues" || (strings.HasPrefix(r.URL.Path, "/runs/") && strings.HasSuffix(r.URL.Path, "/events")) || datastarRequest(r)
+	return r.URL.Path == "/events" || r.URL.Path == "/snapshot" || (strings.HasPrefix(r.URL.Path, "/runs/") && strings.HasSuffix(r.URL.Path, "/events")) || datastarRequest(r)
 }
 
 const sessionLifetime = 30 * 24 * time.Hour

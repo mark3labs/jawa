@@ -175,7 +175,7 @@ func TestSelectDefaults(t *testing.T) {
 	}
 	for _, state := range []string{"uncertain", "rejected"} {
 		var out bytes.Buffer
-		if err := selectField("recovery", "issue_recovery", "", false, recoverySelectItems(state), nil).Render(t.Context(), &out); err != nil {
+		if err := selectField("recovery", "", "issue_recovery", "", false, false, recoverySelectItems(state), nil).Render(t.Context(), &out); err != nil {
 			t.Fatal(err)
 		}
 		for _, want := range []string{`role="combobox"`, `id="recovery"`, `data-templ-controls="recovery-content"`, `id="recovery-content-list" role="listbox"`, `name="issue_recovery" value=""`, `No recovery selected`, `data-templ-value="unlinked"`} {
@@ -188,7 +188,7 @@ func TestSelectDefaults(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	if err := selectField("project", "project_id", "second", true, projectSelectItems(projects), nil).Render(t.Context(), &out); err != nil {
+	if err := selectField("project", "", "project_id", "second", true, false, projectSelectItems(projects), nil).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`name="project_id" value="second" required`, `aria-required`, `Second &lt;project&gt;`} {

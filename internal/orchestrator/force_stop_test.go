@@ -256,7 +256,7 @@ func TestForceStopHTTPRequiresAcknowledgement(t *testing.T) {
 	}
 	form.Set("acknowledge", "yes")
 	body = assertSSE(t, sseRequest(a, "POST", "/cards/force-stop", form, session, csrf))
-	if !strings.Contains(body, "force-stopped") || !strings.Contains(body, `"forceOpen":false`) {
+	if !strings.Contains(body, "force-stopped") {
 		t.Fatal(body)
 	}
 	if latest, _ := a.workflow.CardResult(c.ID); latest.RunState != abandonedRunState {

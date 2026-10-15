@@ -247,8 +247,6 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.012em; }
 .stat strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 3px; }
 
 /* Board ------------------------------------------------------------------- */
-jawa-board, jawa-menu, jawa-time, jawa-copy { display: block; }
-jawa-menu, jawa-time, jawa-copy { display: inline-block; }
 .lanes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .lane { display: flex; flex-direction: column; min-width: 0; }
 .lane-head { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 2px; }
@@ -284,7 +282,7 @@ jawa-menu, jawa-time, jawa-copy { display: inline-block; }
 .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
 .card-key { color: var(--text-3); font: 500 11.5px var(--mono); letter-spacing: 0; }
 .card-top .icon-btn { opacity: 0; }
-.task-card:hover .card-top .icon-btn, .card-top .icon-btn:focus-visible, .card-top .icon-btn:has(+ .menu:popover-open), jawa-menu:has(.menu:popover-open) .icon-btn { opacity: 1; }
+.task-card:hover .card-top .icon-btn, .card-top .icon-btn:focus-visible, .card-top .icon-btn[aria-expanded="true"] { opacity: 1; }
 .card-top .card-view-action { opacity: 1; }
 .card-title { margin: 10px 0 0; font-size: 13.5px; font-weight: 500; line-height: 1.4; letter-spacing: -.008em; }
 .card-desc { margin-top: 8px; color: var(--text-3); font-size: 12px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -319,25 +317,19 @@ a.chip:hover { border-color: var(--robe); color: var(--text); }
 .spin { transform-origin: 12px 12px; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Card actions menu (native popover, placed by jawa-menu) ------------------ */
-.menu {
-  position: fixed; margin: 0; inset: auto; min-width: 214px; max-width: 280px; padding: 4px;
-  background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--line-strong); border-radius: 9px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 0 0 1px rgba(0, 0, 0, .3);
-}
-.menu:not(:popover-open) { display: none; }
+/* Card actions menu: placement and keyboard state belong to Base UI. */
+.menu { min-width: 208px; max-width: min(320px, calc(100vw - 16px)); max-height: min(70dvh, var(--available-height)); overflow-y: auto; padding: 5px; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 .menu form { margin: 0; }
-.menu-item {
+[data-slot="dropdown-menu-item"] {
   display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
   width: 100%; min-height: 28px; padding: 5px 8px; border: 0; border-radius: 5px; background: none;
   color: var(--text-2); font-size: 12.5px; text-align: left; cursor: pointer;
 }
-.menu-item:hover, .menu-item:focus-visible { background: var(--surface-3); color: var(--text); outline: none; }
-.menu-item.danger { color: #f1907e; }
-.menu-item.danger:hover { background: var(--red-dim); color: #ff9a88; }
-.menu-item.disabled { cursor: not-allowed; opacity: .5; }
-.menu-item.disabled:hover { background: none; color: var(--text-2); }
+[data-slot="dropdown-menu-item"]:hover, [data-slot="dropdown-menu-item"]:focus-visible { background: var(--surface-3); color: var(--text); outline: none; }
+[data-slot="dropdown-menu-item"][data-variant="destructive"] { color: #f1907e; }
+[data-slot="dropdown-menu-item"][data-variant="destructive"]:hover { background: var(--red-dim); color: #ff9a88; }
+[data-slot="dropdown-menu-item"][data-disabled] { cursor: not-allowed; opacity: .5; }
+[data-slot="dropdown-menu-item"][data-disabled]:hover { background: none; color: var(--text-2); }
 .menu-reason { flex-basis: 100%; padding-left: 25px; margin-top: -2px; color: var(--text-3); font-size: 11px; }
 .menu-sep { height: 1px; margin: 4px -4px; background: var(--line-strong); }
 
@@ -387,7 +379,7 @@ pre.result, pre.snippet { padding: 12px 14px; max-height: 320px; overflow: auto;
 .agent-run a { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-run a:hover { color: var(--amber); }
 .agent-run .run-key { margin-right: 6px; }
-.agent-run jawa-time { white-space: nowrap; flex-shrink: 0; color: var(--text-4); font-size: 11.5px; }
+.agent-run time { white-space: nowrap; flex-shrink: 0; color: var(--text-4); font-size: 11.5px; }
 .endpoints { font-size: 12px; }
 .endpoints th { height: 28px; color: var(--text-4); font-weight: 550; }
 .endpoints td { padding-top: 6px; padding-bottom: 6px; color: var(--text-2); }
@@ -447,20 +439,20 @@ details pre { margin-top: 10px; }
   min-height: 34px; font-size: 13px; background-color: #0f0c09;
 }
 .field textarea, [data-slot="textarea"] { min-height: 96px; resize: vertical; line-height: 1.5; }
-dialog {
-  /* Tailwind preflight resets margin: auto from the browser's dialog styles. */
-  position: fixed; inset: 0; margin: auto;
+.jawa-dialog {
+  /* Base UI provides centering through its popup classes. */
+  position: fixed; margin: 0;
   width: 480px; max-width: calc(100vw - 32px); max-height: 90vh; padding: 22px; overflow: auto;
   background: var(--surface-2); color: var(--text);
   border: 1px solid var(--line-strong); border-radius: 12px;
   box-shadow: 0 30px 90px rgba(0, 0, 0, .65);
 }
-dialog[open] { animation: pop .14s ease-out; }
+
 @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.985); } }
-dialog::backdrop { background: rgba(8, 6, 4, .66); backdrop-filter: blur(3px); }
-dialog [data-slot="dialog-title"] { font-size: 16px; font-weight: 600; color: var(--text); }
-dialog > p, dialog form > p { margin: 4px 0 18px; font-size: 12.5px; }
-dialog [data-slot="dialog-description"] { margin: 4px 0 16px; color: var(--text-3); font-size: 12.5px; }
+[data-slot="dialog-overlay"] { background: rgba(8, 6, 4, .66); backdrop-filter: blur(3px); }
+.jawa-dialog [data-slot="dialog-title"] { font-size: 16px; font-weight: 600; color: var(--text); }
+.jawa-dialog > p, .jawa-dialog form > p { margin: 4px 0 18px; font-size: 12.5px; }
+.jawa-dialog [data-slot="dialog-description"] { margin: 4px 0 16px; color: var(--text-3); font-size: 12.5px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .notice {
   padding: 9px 12px; border: 1px solid rgba(216, 100, 44, .4); border-radius: 8px;
@@ -468,7 +460,7 @@ dialog [data-slot="dialog-description"] { margin: 4px 0 16px; color: var(--text-
 }
 .notice.info { border-color: rgba(163, 184, 108, .4); background: var(--sage-dim); color: #c3d49a; }
 .content > .notice { margin-bottom: 14px; }
-dialog > .dialog-error:not([hidden]) { margin-bottom: 14px; }
+.jawa-dialog > .dialog-error:not([hidden]) { margin-bottom: 14px; }
 [data-slot="separator"] { background: var(--line) !important; }
 
 /* Empty states ------------------------------------------------------------ */
@@ -601,14 +593,14 @@ dialog > .dialog-error:not([hidden]) { margin-bottom: 14px; }
 .facts dd { flex-wrap: wrap; }
 .chip { height: auto; min-height: 20px; white-space: normal; overflow-wrap: anywhere; }
 .dialog-actions, .form-actions { flex-wrap: wrap; }
-dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
+.jawa-dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .menu { max-width: min(280px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
 
 /* Touch affordances apply on small desktops as well as coarse-pointer tablets.
    Expand the actual controls (not overlapping invisible hit areas). */
 @media (pointer: coarse), (max-width: 860px) {
-  .btn, .nav-item, .tab, .agent-chip, .menu-item,
-  .brand, .meta-link, .card-key, a.chip, details > summary, jawa-copy {
+  .btn, .nav-item, .tab, .agent-chip, [data-slot="dropdown-menu-item"],
+  .brand, .meta-link, .card-key, a.chip, details > summary {
     min-width: 44px; min-height: 44px; height: auto;
   }
   .btn { padding-block: 8px; white-space: normal; text-align: center; }
@@ -650,7 +642,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
   .settings-reset { flex-direction: column; align-items: stretch; }
   .panel { padding: 14px !important; }
   .field-grid, .facts { grid-template-columns: minmax(0, 1fr); }
-  dialog { padding: 16px; }
+  .jawa-dialog { padding: 16px; }
   .dialog-actions > .btn { flex: 1 1 100%; }
   .auth-wrap { padding: 16px; }
   .auth-card { padding: 20px !important; }
@@ -722,7 +714,7 @@ dialog { max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
 .archive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
 .archive-grid .task-card { margin: 0; }
 
-/* Keep the issue action adjacent without overflowing narrow dialogs. */
+/* Keep the issue action adjacent without overflowing narrow .jawa-dialogs. */
 .issue-autofill-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 .issue-autofill-row [data-select-field] { flex: 1 1 12rem; min-width: 0; }
 .issue-autofill-row .btn { flex: 0 0 auto; }
@@ -758,7 +750,7 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 .run-tool-section { margin-left: .5rem; }
 .run-message-payload > summary { font-size: .75rem; }
 .run-composer-surface { padding: .75rem; gap: .25rem; }
-.run-composer-surface textarea { width: 100%; background: var(--bg); line-height: 1.5; min-height: 44px; max-height: 200px; resize: none; field-sizing: fixed; }
+.run-composer-surface textarea { width: 100%; background: var(--bg); line-height: 1.5; min-height: 44px; max-height: 200px; resize: none; field-sizing: content; }
 .run-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .5rem; }
 .run-controls .meta { margin-right: auto; font-size: .75rem; }
 .run-trace-search { margin-top: .75rem; max-width: 40rem; display: grid; gap: .5rem; }
@@ -790,7 +782,7 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 #card-issue-recovery { overflow-wrap: anywhere; }
 #card-issue-recovery label { display: block; margin-block: .5rem; }
 #card-issue-recovery [data-slot="input"], #card-issue-recovery [data-slot="select-trigger"] { width: 100%; min-height: 44px; }
-#card-dialog form[data-pending]::after { content: 'Creating card… Please wait.'; display: block; }
+#card-dialog form.pending::after { content: 'Creating card… Please wait.'; display: block; }
 
 /* Preserve an operable native control when component enhancement is unavailable. */
 @media (scripting: none) {
@@ -804,7 +796,7 @@ jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
 .acknowledgement { display: inline-flex; position: relative; flex: none; }
 .check, label:has(.acknowledgement) { gap: 8px; min-height: 44px; cursor: pointer; white-space: normal; }
 .recovery-card { width: 100%; max-width: 640px; }
-.menu-item.cn-button { justify-content: flex-start; white-space: normal; height: auto; }
+[data-slot="dropdown-menu-item"].cn-button { justify-content: flex-start; white-space: normal; height: auto; }
 
 /* Stacked field labels must not inherit the inline-control label layout. */
 label:has(> [data-slot="input"]), label:has(> [data-slot="textarea"]),
@@ -815,7 +807,7 @@ label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; 
    Keep vertical spacing, tone colors and compact/touch sizing independent. */
 [data-slot="badge"] { border-radius: 4px; margin-inline: 3px; }
 
-/* Select labels remain bounded in both dialogs and standalone forms. */
+/* Select labels remain bounded in both .jawa-dialogs and standalone forms. */
 [data-select-field] { min-width: 0; width: 100%; }
 [data-slot="select-value"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; }
 [data-slot="select-content"] { max-width: calc(100vw - 24px); max-height: min(var(--available-height), 320px); }
@@ -823,3 +815,5 @@ label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; 
 @media (max-width: 640px) {
   [data-slot="select-trigger"], [data-slot="select-item"] { min-height: 44px; font-size: 16px; }
 }
+
+#run-message-scroller { height: auto; }

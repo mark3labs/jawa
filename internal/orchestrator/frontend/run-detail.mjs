@@ -164,7 +164,7 @@ try {
   await page.locator('#run-transcript').evaluate(el => {
     const article = document.createElement('article');
     article.textContent = 'new message '.repeat(300);
-    el.append(article);
+    el.querySelector('[data-slot=message-scroller-content]').append(article);
   });
   await expect.poll(()=>transcript.evaluate(el => el.scrollHeight-el.clientHeight-el.scrollTop)).toBeLessThan(32);
   // Expanded JSON/code stays within the transcript and short viewports remain

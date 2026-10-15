@@ -248,7 +248,7 @@ func TestRejectedRetryIsReplaySafe(t *testing.T) {
 func TestNewCardUsesShadcnCreateIssue(t *testing.T) {
 	a := testApp(t)
 	session, csrf := setupTest(t, a)
-	page := request(a, "GET", "/board", nil, session, csrf)
+	page := sseRequest(a, "GET", "/dialogs/card", nil, session, csrf)
 	for _, markup := range []string{`data-slot="checkbox"`, `role="checkbox"`, `aria-labelledby="card-create-issue-label"`, `aria-describedby="card-create-issue-help"`, `name="create_issue"`, `value="yes"`} {
 		if !strings.Contains(page.Body.String(), markup) {
 			t.Errorf("New card missing shadcn checkbox markup %s", markup)
