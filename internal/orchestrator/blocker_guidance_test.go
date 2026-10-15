@@ -216,7 +216,7 @@ func TestBlockerGuidanceCardUI(t *testing.T) {
 			if tc.reply != (replies == 2) || (!tc.reply && replies != 0) {
 				t.Fatalf("reply actions = %d\n%s", replies, out)
 			}
-			if tc.reply && !strings.Contains(out, `$guideToken = &#34;report-token&#34;`) && !strings.Contains(out, `$guideToken = "report-token"`) {
+			if tc.reply && !strings.Contains(out, `/dialogs/guide?card_id=`) {
 				t.Fatal("guidance action not bound to the blocker", out)
 			}
 			if tc.lane != "Done" && !strings.Contains(out, "Need credentials") {
@@ -259,7 +259,7 @@ func TestBlockerGuidanceHTTP(t *testing.T) {
 	}
 	form.Set("expected_interaction", r.ReportID)
 	body := assertSSE(t, sseRequest(app, "POST", "/cards/guide", form, session, csrf))
-	for _, want := range []string{`"guideOpen":false`, `"guideCard":""`, `"guideToken":""`, `"guideMessage":""`, `id="planning-content"`, "Use the vault"} {
+	for _, want := range []string{`"guidanceReply":""`, `id="planning-content"`, "Use the vault"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %s: %s", want, body)
 		}

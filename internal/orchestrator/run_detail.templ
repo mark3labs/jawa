@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"strconv"
+ "github.com/axadrn/shadcn-templ/v2/components/messagescroller"
 
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
@@ -78,20 +79,20 @@ templ runDetailPage(d runDetail, csrf string) {
 		}
 		@runDetailContent(d)
 		if d.Tab=="chat" && d.Record.Mode!="Planning" {
-			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface"}) {
-				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-on:submit={ "@post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
+			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface", Attributes: templ.Attributes{"data-signals:_can-send": strconv.FormatBool(d.Policy.Send)}}) {
+				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-indicator:run-sending data-on:submit__prevent={ "!$runSending && @post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
 					<input type="hidden" name="_csrf" value={ csrf }/>
 					@label.Label(label.Props{For: "run-draft", Class: "sr-only"}) {
 						Message / follow-up
 					}
-					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 1, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "65536", "required": true}})
+					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 1, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "65536", "required": true, "data-on:keydown": "evt.key === 'Enter' && evt.ctrlKey && !evt.isComposing && (evt.preventDefault(), $_canSend && !$runSending && el.form.requestSubmit())"}})
 				</form>
 				@runDetailControls(d, csrf)
 			}
 		} else {
 			@runDetailControls(d, csrf)
 		}
-		<jawa-run-detail></jawa-run-detail>
+		<div hidden data-effect="$runConfirmedDraft !== '' && ($runDraft === $runConfirmedDraft && ($runDraft = ''), $runConfirmedDraft = '')"></div>
 	</div>
 }
 
@@ -101,7 +102,7 @@ templ runDetailControls(d runDetail, csrf string) {
 			<span class="meta">Ctrl+Enter to send</span>
 		}
 		if d.Tab=="chat" && d.Record.Mode != "Planning" {
-			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!" + strconv.FormatBool(d.Policy.Send) + " || $runSending"}}) {
+			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!$_canSend || $runSending"}}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
 				} else {
@@ -188,7 +189,10 @@ templ runParts(m runMessage) {
 }
 
 templ runChat(d runDetail) {
-	<section id="run-transcript" class="run-chat-transcript" role="region" aria-label="Conversation" tabindex="0">
+	@messagescroller.Provider(messagescroller.ProviderProps{AutoScroll: true}) {
+ @messagescroller.MessageScroller(messagescroller.Props{ID: "run-message-scroller", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
+ @messagescroller.Viewport(messagescroller.ViewportProps{ID: "run-transcript", Class: "run-chat-transcript", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
+ @messagescroller.Content(messagescroller.ContentProps{ID: "run-messages"}) {
 		for _, m := range d.Messages {
 			<article id={ m.Key } class={ "run-chat-message run-role-" + m.Role }>
 				if m.Role != "tool" && m.Role != "" {
@@ -200,12 +204,15 @@ templ runChat(d runDetail) {
 				<details id={ m.Key + "-content" } class="run-message-payload" data-preserve-attr="open"><summary>Message content</summary>@runPayload(m.Raw)</details>
 			</article>
 		}
-	</section>
+        }
+ }
+ }
+ }
 }
 
 templ runTraceTableView(t runTraceTable) {
 	if len(t.Rows) > 0 {
-		<section class="run-trace-source" data-show="$traceFilter === '' || Array.from(el.querySelectorAll('[data-trace-entry]')).some(e => e.textContent.toLowerCase().includes($traceFilter.toLowerCase()))">
+		<section class="run-trace-source" data-show={ traceSourceExpr(t) }>
 			<h2>
 				{ t.Title }
 			</h2>

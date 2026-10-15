@@ -1,6 +1,10 @@
 package orchestrator
 
-import "net/http"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
+)
 
 // Only server-owned routes select a dialog; the opaque operation suffix is
 // validated and never interpreted as a browser-supplied selector.
@@ -13,6 +17,8 @@ func mutationDialog(r *http.Request) string {
 		return "project"
 	case "/cards":
 		return "card"
+	case "/cards/assign":
+		return "assign"
 	case "/cards/delete":
 		return "delete"
 	case "/cards/merge":
@@ -37,18 +43,27 @@ func mutationDialog(r *http.Request) string {
 	return ""
 }
 
+func newOperationID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func validOperation(operation string) bool {
+	if len(operation) != 32 {
+		return false
+	}
+	for _, c := range operation {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func dialogErrorID(name, operation string) string {
-	if len(operation) == 32 {
-		valid := true
-		for _, c := range operation {
-			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-				valid = false
-				break
-			}
-		}
-		if valid {
-			return name + "-error-" + operation
-		}
+	if validOperation(operation) {
+		return name + "-error-" + operation
 	}
 	return name + "-error"
 }

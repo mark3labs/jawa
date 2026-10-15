@@ -47,6 +47,7 @@ try {
     await page.locator('.topbar').getByRole('button', { name: 'New card', exact: true }).click();
     await page.getByLabel('Title', { exact: true }).fill(`Responsive ${'long-title-'.repeat(15)}`);
     await page.getByLabel('Description', {exact: true}).fill('Long description for responsive layout');
+    await page.locator('#card-issue-status').filter({hasNotText: 'Loading issues…'}).waitFor();
     await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
     await page.getByRole('button', { name: 'Create card', exact: true }).click();
     await page.locator('.task-card').waitFor();
@@ -72,20 +73,22 @@ try {
           const columns = await page.locator('.lanes').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
           assert.equal(columns, width <= 600 ? 1 : width < 1400 ? 2 : 5);
         }
-        for (const id of ['project-dialog', 'card-dialog', 'delete-dialog', 'cancel-dialog']) {
-          await page.evaluate(id => document.getElementById(id).showModal(), id);
+        for (const name of ['project', 'card']) {
+          const id = name + '-dialog';
+          await page.getByRole('button', {name: name === 'project' ? 'New project' : 'New card', exact: true}).first().click();
           // Reduced motion avoids timing-dependent dialog bounds checks.
           await page.emulateMedia({ reducedMotion: 'reduce' });
-          const dialog = page.locator(`#${id}`);
+          const dialog = page.getByRole('dialog');
           await dialog.waitFor({ state: 'visible' });
           await page.waitForTimeout(160);
           const bounds = await dialog.boundingBox();
           assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width && bounds.y + bounds.height <= height, `${id}/${width}: outside viewport`);
-          assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth), `${id}: horizontal overflow`);
+          assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth), `${id}/${width}: horizontal overflow`);
           for (const input of await dialog.locator('input:not([type="hidden"]):not([type="checkbox"]), select, textarea').all()) {
             if (await input.isVisible()) assert.ok(await input.evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16), 'input below 16px');
           }
-          await page.evaluate(id => document.getElementById(id).close(), id);
+          await page.keyboard.press('Escape');
+          await page.locator('[data-dialog]').waitFor({state: 'detached'});
         }
         for (const button of await page.locator('.task-card .icon-btn').all()) {
           assert.equal(await button.evaluate(el => getComputedStyle(el).opacity), '1');
@@ -93,9 +96,9 @@ try {
         }
         if (await page.locator('.task-card').count()) {
           await page.locator('.task-card button[aria-haspopup="menu"]').first().click();
-          const menu = page.locator('.menu:popover-open');
+          const menu = page.getByRole('menu');
           await menu.waitFor();
-          const sizes = await menu.evaluate(el => [...el.querySelectorAll('.menu-item')]
+          const sizes = await menu.evaluate(el => [...el.querySelectorAll('[role=menuitem]')]
             .map(item => item.getBoundingClientRect()).filter(rect => rect.width)
             .map(rect => ({width: rect.width, height: rect.height})));
           assert.ok(sizes.length > 0);

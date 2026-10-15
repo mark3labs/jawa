@@ -375,8 +375,7 @@ func cardsIn(cards []Card, projectID, status string) []Card {
 	return out
 }
 
-// relativeTime is the server-rendered text. The jawa-time component keeps it
-// fresh between live patches; it is already correct without scripts.
+// relativeTime is the server-rendered text; relTimeExpr mirrors its thresholds.
 func relativeTime(t, now time.Time) string {
 	if t.IsZero() {
 		return "—"
@@ -395,6 +394,11 @@ func relativeTime(t, now time.Time) string {
 		return strconv.Itoa(int(d.Hours())) + "h ago"
 	}
 	return strconv.Itoa(int(d.Hours()/24)) + "d ago"
+}
+
+// relTimeExpr is the client mirror of relativeTime; thresholds must match.
+func relTimeExpr(t time.Time) string {
+	return fmt.Sprintf(`(s => s<45?'just now':s<90?'1m ago':s<2700?Math.floor(s/60)+'m ago':s<5400?'1h ago':s<129600?Math.floor(s/3600)+'h ago':Math.floor(s/86400)+'d ago')(($_now-%d)/1000)`, t.UnixMilli())
 }
 
 func timeAttr(t time.Time) string { return t.UTC().Format(time.RFC3339) }

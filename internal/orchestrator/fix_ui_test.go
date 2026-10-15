@@ -20,7 +20,7 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := request(a, "GET", boardPath(c.ProjectID), nil, session, csrf).Body.String()
-	for _, want := range []string{`data-status="Fix"`, "Pull request has merge conflicts.", "Fix Merge Conflict", "Send to Fix…", conflictFixMessage, `id="fix-dialog"`, `name="message"`, `required`, `data-can-fix="true"`} {
+	for _, want := range []string{`data-status="Fix"`, "Pull request has merge conflicts.", "Fix Merge Conflict", "Send to Fix…", `data-can-fix="true"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("board missing %q", want)
 		}
@@ -38,7 +38,7 @@ func TestFixEndpointAndSnapshot(t *testing.T) {
 	assertActionLane(t, a.workflow, c.ProjectID, "Done", c.ID)
 	form.Set("message", "Repair review feedback")
 	body = assertSSE(t, sseRequest(a, "POST", "/cards/fix", form, session, csrf))
-	for _, want := range []string{`"fixOpen":false`, `"fixMessage":""`, `"fixCard":""`} {
+	for _, want := range []string{`id="board-content"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("success missing %s", want)
 		}

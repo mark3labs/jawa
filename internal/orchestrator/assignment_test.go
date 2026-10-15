@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -239,43 +238,14 @@ func TestTargetedCancelledPlanningAndRetry(t *testing.T) {
 	}
 }
 
-func TestAgentChoicesProjectionAndHTTP(t *testing.T) {
-	records := []presence.Record{{Identity: presence.Identity{Agent: "busy", Instance: "one"}, Labels: map[string]string{"jawa.provider": "fixture", "secret": "hidden"}, Endpoints: []presence.Endpoint{{Channel: "nats", Address: "bonnie.tasks", Input: true}}}, {Identity: presence.Identity{Agent: "busy", Instance: "two"}}, {Identity: presence.Identity{Agent: "a"}}}
-	choices := agentChoices(records)
-	if len(choices) != 2 || choices[0].ID != "a" || !choices[1].Selectable || choices[1].Availability != "Busy / not ready" {
-		t.Fatalf("choices %+v", choices)
-	}
-	if !reflect.DeepEqual(choices, agentChoices(records)) {
-		t.Fatal("unstable choices")
-	}
-	s, nc := workflowFixture(t)
-	w, err := NewWorkflow(t.Context(), s, nc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = w.Close() }()
-	registerChoice(t, w, "busy", true)
-	a := &app{s: s, workflow: w}
-	r := httptest.NewRequest(http.MethodGet, "/agents/choices", nil)
-	response := httptest.NewRecorder()
-	a.ServeHTTP(response, r)
-	if response.Code != http.StatusUnauthorized || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("auth %d", response.Code)
-	}
-	for _, tc := range []struct {
-		method string
-		ready  bool
-		code   int
-	}{{"POST", true, 405}, {"GET", false, 409}, {"GET", true, 200}} {
-		response = httptest.NewRecorder()
-		a.agentChoices(response, httptest.NewRequest(tc.method, "/agents/choices", nil), tc.ready)
-		if response.Code != tc.code {
-			t.Fatalf("%+v: %d", tc, response.Code)
-		}
-		if tc.code == 200 && (strings.Contains(response.Body.String(), "secret") || strings.Contains(response.Body.String(), "bonnie.tasks") || !strings.Contains(response.Body.String(), `"selectable":true`)) {
-			t.Fatalf("unsafe projection %s", response.Body)
-		}
-	}
+func TestRemovedAssignmentJSONEndpoint(t *testing.T) {
+	a := testApp(t)
+	session, _ := sseCookies(t, a)
+	r := httptest.NewRequest("GET", "/agents/choices", nil)
+	r.AddCookie(session)
+	w := httptest.NewRecorder()
+	a.ServeHTTP(w, r)
+	status(t, w, http.StatusNotFound)
 }
 
 func TestTargetedReportsFenceAndReplay(t *testing.T) {
@@ -344,7 +314,7 @@ func TestAssignmentRenderedMenusAndRevision(t *testing.T) {
 				}
 			}
 			out.Reset()
-			if err := assignmentDialog(d).Render(t.Context(), &out); err != nil {
+			if err := assignDialog(d, newOperationID(), d.cards[0], "build", nil, nil).Render(t.Context(), &out); err != nil {
 				t.Fatal(err)
 			}
 			html := out.String()
@@ -374,7 +344,7 @@ func TestAssignmentHTTPValidationAndSharedWithoutPresence(t *testing.T) {
 		status(t, request(a, http.MethodPost, "/cards/assign", form, session, csrf), http.StatusBadRequest)
 	}
 	assertActionLane(t, a.workflow, c.ProjectID, "Todo", c.ID)
-	status(t, request(a, http.MethodGet, "/agents/choices", nil, session, csrf), http.StatusServiceUnavailable)
+	status(t, request(a, http.MethodGet, "/agents/choices", nil, session, csrf), http.StatusNotFound)
 	status(t, request(a, http.MethodPost, "/cards/move", url.Values{"_csrf": {csrf.Value}, "card_id": {c.ID}, "status": {"Building"}}, session, csrf), http.StatusSeeOther)
 }
 
@@ -517,7 +487,7 @@ func TestAgentSelectorFixture(t *testing.T) {
 		cards:    []Card{{ID: "todo", Title: "Todo", Status: "Todo"}, {ID: "planning", Title: "Planning", Status: "Planning"}},
 		planning: map[string]PlanningDetail{"planning": {CanApprove: true, Session: PlanningSession{Revision: 2, Spec: "Current reviewed spec"}}}}
 	var out strings.Builder
-	if err := assignmentDialog(d).Render(t.Context(), &out); err != nil {
+	if err := assignDialog(d, newOperationID(), d.cards[0], "build", nil, nil).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(out.String()), 0600); err != nil {

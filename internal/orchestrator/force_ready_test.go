@@ -368,7 +368,7 @@ func TestForceReadyHTTPAndProvenance(t *testing.T) {
 	}
 	form.Set("acknowledge", "yes")
 	body = assertSSE(t, sseRequest(a, "POST", "/cards/force-ready", form, session, csrf))
-	for _, text := range []string{"Card moved to Done. Readiness checks were bypassed; the PR was not merged.", `"readyReason":""`, `"readyOpen":false`, "Manually readied"} {
+	for _, text := range []string{"Card moved to Done. Readiness checks were bypassed; the PR was not merged.", "Manually readied"} {
 		if !strings.Contains(body, text) {
 			t.Fatal("missing", text)
 		}
