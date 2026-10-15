@@ -102,11 +102,11 @@ async function drag(title, lane, accepted = true) {
  await page.mouse.up();
  if (accepted) await laneCard(lane, title).waitFor();
 }
-// Actions are native popover menuitems, not always-visible buttons.
+// Base UI portals action menus outside the card declaration.
 async function menu(title) {
  await card(title).getByRole('button', {name: `Actions for ${title}`, exact: true}).click();
- await card(title).locator('[popover]').waitFor({state: 'visible'});
- return card(title).locator('[popover]');
+ await page.getByRole('menu').waitFor({state: 'visible'});
+ return page.getByRole('menu');
 }
 async function action(title, name) {
  await (await menu(title)).getByRole('menuitem', {name, exact: true}).click();
@@ -125,7 +125,7 @@ async function screen(path, view) {
  for (const other of ['board', 'runs', 'agents', 'settings'].filter(v => v !== view)) {
   assert.equal(await page.locator(`#${other}-content`).count(), 0, `${other} must not appear on ${view}`);
  }
- await page.waitForFunction(() => customElements.get('jawa-shortcuts') && customElements.get('jawa-copy') && customElements.get('jawa-time') && customElements.get('jawa-menu') && customElements.get('jawa-board'));
+ await page.waitForFunction(() => typeof window.jawaBoard === 'function');
 }
 async function stableDocument() {
  const state = await page.evaluate(() => {
@@ -205,6 +205,7 @@ try {
  await expect(page.getByLabel('Title', {exact: true})).toHaveValue('c/g r');
  assert.equal(new URL(page.url()).pathname, '/board');
  await page.locator('#card-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await page.locator('h1').click();
  await page.keyboard.press('/');
  assert.equal(await page.getByLabel('Filter cards').evaluate(el => el === document.activeElement), true);
@@ -234,6 +235,7 @@ try {
  await expect(page.getByLabel('Title', {exact: true})).toHaveValue('Preserved draft');
  await expect(page.getByLabel('Description', {exact: true})).toHaveValue('Keep this while results arrive');
  await page.locator('#card-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await sameDocument();
  for (const attempt of data.attempts) {
   assert.equal(attempt.Published, true);
