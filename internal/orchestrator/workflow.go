@@ -48,6 +48,7 @@ type Workflow struct {
 	verifier         Verifier
 	identity         IdentityChecker
 	conflicts        *conflictMonitor
+	merger           ProviderMerger
 	reports          *nats.Subscription
 	observeReport    func(context.Context, client.Target) (client.Status, error)
 	resumeConn       *nats.Conn
@@ -411,6 +412,9 @@ func resetReason(c Card, attempts []Attempt, pending bool) string {
 
 // Check all history, not just the latest attempt: these actions never cancel work.
 func noActiveAttempts(tx *sql.Tx, id string) error {
+	if err := noUnresolvedMerge(tx, id); err != nil {
+		return err
+	}
 	if err := noPendingResume(tx, id); err != nil {
 		return err
 	}
@@ -450,6 +454,9 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 	var project, source string
 	if err = tx.QueryRow(`SELECT project_id,status FROM cards WHERE id=?`, id).Scan(&project, &source); err != nil {
 		return workflowCardError(err)
+	}
+	if err = noUnresolvedMerge(tx, id); err != nil {
+		return err
 	}
 	if !deleteCard {
 		c, _, attempts, pending, readErr := readySnapshot(tx, id)

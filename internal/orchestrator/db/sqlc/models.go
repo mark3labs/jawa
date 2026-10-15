@@ -141,6 +141,23 @@ type PlanningTurn struct {
 	UpdatedAt       int64  `json:"updated_at"`
 }
 
+type PrMerge struct {
+	ID         string `json:"id"`
+	CardID     string `json:"card_id"`
+	AttemptID  string `json:"attempt_id"`
+	PrUrl      string `json:"pr_url"`
+	Snapshot   string `json:"snapshot"`
+	Provider   string `json:"provider"`
+	Repo       string `json:"repo"`
+	BaseBranch string `json:"base_branch"`
+	HeadSha    string `json:"head_sha"`
+	Method     string `json:"method"`
+	Operator   string `json:"operator"`
+	State      string `json:"state"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
+}
+
 type Project struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`

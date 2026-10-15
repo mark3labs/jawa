@@ -11,7 +11,13 @@ window.jawaDialog = (dialog, open) => {
   error.hidden = true;
   if (open) {
     dialog.jawaRequest = new AbortController();
+    if (dialog.id === 'merge-dialog') {
+      const input = dialog.querySelector('[name="method"]');
+      const trigger = input.closest('[data-select-field]').querySelector('[data-slot="select-trigger"]');
+      window.templ.select.setValue(trigger, 'merge');
+    }
     operation.value = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (dialog.id === 'merge-dialog') dialog.querySelector('[name="operation"]').value = operation.value;
     error.id = `${dialog.id.replace('-dialog', '')}-error-${operation.value}`;
     dialog.showModal();
   } else {
@@ -22,3 +28,12 @@ window.jawaDialog = (dialog, open) => {
     dialog.close();
   }
 };
+
+// A delayed merge response can only close the opening whose keyed alert it
+// patched. Global signals would close an unrelated, newly opened confirmation.
+new MutationObserver(() => {
+  const dialog = document.getElementById('merge-dialog');
+  if (dialog?.open && dialog.querySelector('.dialog-error[data-succeeded]')) {
+    dialog.dispatchEvent(new Event('cancel'));
+  }
+}).observe(document.documentElement, {subtree:true,childList:true,attributes:true,attributeFilter:['data-succeeded']});

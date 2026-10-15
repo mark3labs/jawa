@@ -392,3 +392,28 @@ replacement, keyboard submit, and 320/390/1440px overflow. Set
 Standalone fixture export from root:
 `JAWA_GUIDANCE_HTML=/tmp/guidance.html go test ./internal/orchestrator -run '^TestGuidanceBrowserFixture$' -count=1`.
 The `.pending`, `.queued` and `.next` suffixes are patch roots for this script.
+
+## Explicit merge browser fixture
+
+Merge… appears only beside conflict-free non-archived Ready PR evidence; Archive,
+unknown/checking/error/conflict/closed/merged/manual-merged/unresolved operations
+have no enabled action. Dialog shows PR/base/head, offers Merge commit/Squash/Rebase,
+and warns that dismissal cannot undo remote work. Cancel sends no mutation.
+
+Export real templ fixtures and run scripted local responses (never a live PR):
+
+```sh
+JAWA_MERGE_HTML="$PWD/internal/orchestrator/frontend/node_modules/.merge.html" \
+  go test ./internal/orchestrator -run '^TestMergeUIFixture$' -count=1
+cd internal/orchestrator/frontend
+npm ci && npm run build
+npx playwright install chromium
+npm run test:merge
+```
+
+The script checks strategy reset/retention, keyboard cancellation, duplicate
+pending suppression, old-response isolation, no automatic retries, success
+replacement and overflow at 320/390/768/1440px. Real Chromium screenshots are
+written to `frontend/node_modules/.merge-screenshots/` (not committed).
+Related regressions: `npm run test:pr-refresh`, `npm run test:fix`, `npm run test:ui`
+(the latter requires the component/card fixtures documented above).

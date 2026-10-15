@@ -140,3 +140,15 @@ A new report replaces the old composer; queued replies render immediately with
 no further composer. History is loaded only for the selected full card through
 shared full-page/SSE loading. Run `npm run test:guidance` for production Go-markup
 and embedded Datastar bundle regression checks.
+
+## Merge confirmation
+
+`POST /cards/merge` follows authenticated POST/CSRF/setup/operator admission and
+native 303 view-preserving redirects. Enhanced requests use finite SSE, a keyed
+`merge-error-{dialog_operation}` alert and `retry:'never'`. The shared merge dialog
+lives outside live patch roots, resets its Select to Merge commit per opening,
+locks pending submit and retains method/errors on refusal. Merge success closes
+only the opening with its correlated success alert (not a global close signal).
+Closing an in-flight dialog aborts waiting, not remote work; uncertain outcomes
+instruct Refresh ready PRs instead of claiming success. Live PR evidence patches
+remove eligibility and the visible card Merge button when no longer clear.

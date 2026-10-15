@@ -95,6 +95,10 @@ func OpenStore(path string) (*Store, error) {
 		}
 	}
 	// A previous process cannot still own an in-flight reservation.
+	if _, err = db.Exec(`UPDATE pr_merges SET state='uncertain' WHERE state='pending'`); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if _, err = db.Exec(`UPDATE issue_submissions SET state='uncertain',updated_at=? WHERE state='reserved'`, time.Now().Unix()); err != nil {
 		return fail(err)
 	}

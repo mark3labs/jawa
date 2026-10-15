@@ -1,11 +1,13 @@
 package orchestrator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/log"
 )
@@ -41,6 +43,7 @@ var mutations = map[string]mutation{
 	"/cards/planning/approve":      {needsWorkflow: true, run: (*app).mutatePlanningApprove},
 	"/cards/planning/cancel":       {needsWorkflow: true, run: (*app).mutatePlanningCancel},
 	"/cards/resume":                {needsWorkflow: true, run: (*app).mutateCardsResume},
+	"/cards/merge":                 {needsWorkflow: true, preflight: (*app).mutateCardsForceReadyPreflight, run: (*app).mutateCardsMerge},
 	"/cards/mark-merged":           {needsWorkflow: true, run: (*app).mutateCardsMarkMerged},
 	"/cards/fix":                   {needsWorkflow: true, run: (*app).mutateCardsFix},
 	"/cards/guide":                 {needsWorkflow: true, run: (*app).mutateCardsGuide},
@@ -399,4 +402,19 @@ func (a *app) serveMutation(w http.ResponseWriter, r *http.Request, route mutati
 		return
 	}
 	http.Redirect(w, r, back.Path(), http.StatusSeeOther)
+}
+
+func (a *app) mutateCardsMerge(w http.ResponseWriter, r *http.Request, ctx *mutationContext) error {
+	bounded, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	err := a.workflow.MergePR(bounded, r.FormValue("card_id"), r.FormValue("operation"), r.FormValue("snapshot"), r.FormValue("method"), ctx.operator)
+	if err != nil {
+		message := errMergeRejected.Error()
+		if errors.Is(err, errMergeLocked) {
+			message = errMergeLocked.Error()
+		}
+		a.responseError(w, r, message, http.StatusConflict)
+		ctx.handled = true
+	}
+	return nil
 }
