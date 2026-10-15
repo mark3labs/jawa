@@ -63,7 +63,17 @@ func (a *app) dialogBody(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	d, err := loadPageData(ctx, a.s, a.workflow, CSRFToken(r), parseViewParams(r, ""), a.runtimeDefaults)
+	// Openers send no application signals. Carry the originating view through
+	// the same-origin Referer so card defaults and mutation snapshots stay scoped.
+	viewRequest := r
+	var kind viewKind
+	if source, err := url.Parse(r.Referer()); err == nil && source.Host == r.Host {
+		viewRequest = r.Clone(ctx)
+		viewRequest.URL = source
+		viewRequest.Form = nil
+		kind, _ = viewFromPath(source.Path)
+	}
+	d, err := loadPageData(ctx, a.s, a.workflow, CSRFToken(r), parseViewParams(viewRequest, kind), a.runtimeDefaults)
 	if err != nil {
 		a.responseError(w, r, "Unable to open this dialog. Please try again.", http.StatusServiceUnavailable)
 		return

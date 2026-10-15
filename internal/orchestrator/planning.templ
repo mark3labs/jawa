@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+ "strings"
 	"strconv"
 
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
@@ -267,9 +268,9 @@ templ planningFields(d pageData, c Card) {
 }
 
 templ planningAction(d pageData, c Card, route, title string) {
-	<form method="post" action={ route } { dsForm(route, routeSlug(route))... }>
+	<form method="post" action={ route } { dsForm(route, strings.ReplaceAll(routeSlug(route), "-", ""))... }>
 		@planningFields(d, c)
-		@pendingSubmit(title, routeSlug(route))
+		@pendingSubmit(title, strings.ReplaceAll(routeSlug(route), "-", ""))
 	</form>
 }
 

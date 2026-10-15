@@ -147,6 +147,7 @@ async function createCard(title) {
  await newCard().click();
  await page.getByLabel('Title', {exact: true}).fill(title);
  await page.getByLabel('Description', {exact: true}).fill('Offline browser orchestration test');
+ await page.locator('#card-issue-status').filter({hasNotText: 'Loading issues…'}).waitFor();
  await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
  await page.getByRole('button', {name: 'Create card', exact: true}).click();
  await card(title).waitFor();
@@ -477,7 +478,7 @@ try {
  await expect(page.locator('#runs-content details[id^="run-planning-"]')).toHaveCount(1);
  assert.equal(await page.locator('#runs-content details[id^="run-planning-"]').getAttribute('id'), planningEntryID);
  await screen(`/planning?card=${resumableID}`, 'planning');
- await chooseSelect(page, '#plan-revision', '2', true);
+ await chooseSelect(page, '[id^=plan-revision-][role=combobox]', '2', true);
  await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
@@ -597,8 +598,9 @@ try {
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {
   await page.setViewportSize(viewport);
-  for (const id of ['project-dialog','card-dialog','delete-dialog']) {
-   await page.evaluate(id => document.getElementById(id).showModal(), id);
+  for (const id of ['project-dialog','card-dialog']) {
+   await page.getByRole('button', {name: id === 'project-dialog' ? 'New project' : 'New card', exact: true}).first().click();
+   await page.getByRole('dialog').waitFor();
    await page.waitForTimeout(200); // Let the entrance animation finish before measuring.
    const bounds = await page.locator(`#${id}`).evaluate(el => {
     const r=el.getBoundingClientRect();
@@ -607,7 +609,8 @@ try {
    assert.ok(Math.abs(bounds.cx-bounds.vw/2)<2, `${id}: not horizontally centered`);
    assert.ok(Math.abs(bounds.cy-bounds.vh/2)<2, `${id}: not vertically centered`);
    assert.ok(bounds.left>=0 && bounds.top>=0 && bounds.right<=bounds.vw && bounds.bottom<=bounds.vh, `${id}: outside viewport`);
-   await page.evaluate(id => document.getElementById(id).close(), id);
+   await page.keyboard.press('Escape');
+   await page.locator('[data-dialog]').waitFor({state: 'detached'});
   }
  }
  await page.setViewportSize({width:1440,height:1000});

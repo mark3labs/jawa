@@ -6,6 +6,7 @@ import (
 	"github.com/a-h/templ"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -212,5 +213,34 @@ func TestBoardDialogAndDragBindings(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "$deleteOpen") {
 		t.Fatal("obsolete dialog state")
+	}
+}
+
+func TestDialogRetainsOriginatingProject(t *testing.T) {
+	a := testApp(t)
+	session, csrf := sseCookies(t, a)
+	first, err := a.s.CreateProjectDetails("first", "github", "https://github.com/acme/first", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := a.s.CreateProjectDetails("second", "github", "https://github.com/acme/second", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ ref, want string }{
+		{"http://example.com/board?project=" + second.ID, second.ID},
+		{"https://untrusted.example/board?project=" + second.ID, first.ID},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/dialogs/card", nil)
+		r.Header.Set("Referer", tc.ref)
+		r.Header.Set("Datastar-Request", "true")
+		r.AddCookie(session)
+		r.AddCookie(csrf)
+		w := httptest.NewRecorder()
+		a.ServeHTTP(w, r)
+		body := assertSSE(t, w)
+		if !strings.Contains(body, `name="project" value="`+tc.want+`"`) {
+			t.Fatal("dialog lost project context")
+		}
 	}
 }

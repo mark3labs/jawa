@@ -440,6 +440,8 @@ details pre { margin-top: 10px; }
 }
 .field textarea, [data-slot="textarea"] { min-height: 96px; resize: vertical; line-height: 1.5; }
 .jawa-dialog {
+  /* Allow grid children to shrink below long Select labels. */
+  grid-template-columns: minmax(0, 1fr);
   /* Base UI provides centering through its popup classes. */
   position: fixed; margin: 0;
   width: 480px; max-width: calc(100vw - 32px); max-height: 90vh; padding: 22px; overflow: auto;
@@ -716,11 +718,11 @@ details pre { margin-top: 10px; }
 
 /* Keep the issue action adjacent without overflowing narrow .jawa-dialogs. */
 .issue-autofill-row { display: flex; flex-wrap: wrap; gap: .5rem; }
-.issue-autofill-row [data-select-field] { flex: 1 1 12rem; min-width: 0; }
+.issue-autofill-row > div { flex: 1 1 12rem; min-width: 0; }
 .issue-autofill-row .btn { flex: 0 0 auto; }
 
 /* Run detail: Jawa tokens, Bonnie's quiet message/tool hierarchy. */
-jawa-run-detail { display: block; min-width: 0; max-width: 100%; }
+
 .run-detail-header { margin-block: .75rem; }
 .run-detail-header h1 { font-size: 1.4rem; }
 .run-detail-metadata { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin-top: .5rem; }
@@ -808,7 +810,8 @@ label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; 
 [data-slot="badge"] { border-radius: 4px; margin-inline: 3px; }
 
 /* Select labels remain bounded in both .jawa-dialogs and standalone forms. */
-[data-select-field] { min-width: 0; width: 100%; }
+[id$="-declaration"] { min-width: 0; width: 100%; }
+[data-slot="select-trigger"] { max-width: 100%; }
 [data-slot="select-value"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; }
 [data-slot="select-content"] { max-width: calc(100vw - 24px); max-height: min(var(--available-height), 320px); }
 [data-slot="select-item"] .cn-select-item-text { min-width: 0; flex-shrink: 1; white-space: normal; overflow-wrap: anywhere; }
@@ -818,7 +821,5 @@ label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; 
 
 #run-message-scroller { height: auto; }
 
-/* Portaled dialogs are not descendants of .shell; retain mobile input sizing. */
-@media (max-width: 600px) {
-  .jawa-dialog input, .jawa-dialog textarea, .jawa-dialog [role="combobox"] { font-size: 16px; }
-}
+/* Dialog inputs remain legible and avoid touch-browser focus zoom. */
+.jawa-dialog input, .jawa-dialog textarea, .jawa-dialog [role="combobox"] { font-size: 16px; }
