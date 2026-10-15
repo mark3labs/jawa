@@ -102,11 +102,11 @@ async function drag(title, lane, accepted = true) {
  await page.mouse.up();
  if (accepted) await laneCard(lane, title).waitFor();
 }
-// Actions are native popover menuitems, not always-visible buttons.
+// Base UI portals action menus outside the card declaration.
 async function menu(title) {
  await card(title).getByRole('button', {name: `Actions for ${title}`, exact: true}).click();
- await card(title).locator('[popover]').waitFor({state: 'visible'});
- return card(title).locator('[popover]');
+ await page.locator('[role=menu][data-open]').waitFor({state: 'visible'});
+ return page.locator('[role=menu][data-open]');
 }
 async function action(title, name) {
  await (await menu(title)).getByRole('menuitem', {name, exact: true}).click();
@@ -125,7 +125,7 @@ async function screen(path, view) {
  for (const other of ['board', 'runs', 'agents', 'settings'].filter(v => v !== view)) {
   assert.equal(await page.locator(`#${other}-content`).count(), 0, `${other} must not appear on ${view}`);
  }
- await page.waitForFunction(() => customElements.get('jawa-shortcuts') && customElements.get('jawa-copy') && customElements.get('jawa-time') && customElements.get('jawa-menu') && customElements.get('jawa-board'));
+ await page.waitForFunction(() => typeof window.jawaBoard === 'function');
 }
 async function stableDocument() {
  const state = await page.evaluate(() => {
@@ -147,6 +147,7 @@ async function createCard(title) {
  await newCard().click();
  await page.getByLabel('Title', {exact: true}).fill(title);
  await page.getByLabel('Description', {exact: true}).fill('Offline browser orchestration test');
+ await page.locator('#card-issue-status').filter({hasNotText: 'Loading issues…'}).waitFor();
  await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
  await page.getByRole('button', {name: 'Create card', exact: true}).click();
  await card(title).waitFor();
@@ -205,6 +206,7 @@ try {
  await expect(page.getByLabel('Title', {exact: true})).toHaveValue('c/g r');
  assert.equal(new URL(page.url()).pathname, '/board');
  await page.locator('#card-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await page.locator('h1').click();
  await page.keyboard.press('/');
  assert.equal(await page.getByLabel('Filter cards').evaluate(el => el === document.activeElement), true);
@@ -234,6 +236,7 @@ try {
  await expect(page.getByLabel('Title', {exact: true})).toHaveValue('Preserved draft');
  await expect(page.getByLabel('Description', {exact: true})).toHaveValue('Keep this while results arrive');
  await page.locator('#card-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await sameDocument();
  for (const attempt of data.attempts) {
   assert.equal(attempt.Published, true);
@@ -280,6 +283,7 @@ try {
  await expect(page.getByLabel('Name', {exact: true})).toHaveValue('Project draft survives SSE');
  await expect(page.getByLabel('Repository name', {exact: true})).toHaveValue('example/draft');
  await page.locator('#project-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await page.getByLabel('Filter cards').fill('');
  await sameDocument();
  // G R navigation, card-specific history, state tabs and immutable disclosures.
@@ -304,6 +308,7 @@ try {
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
  await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
  const toolActivity = page.locator('.run-tool').first();
+ await toolActivity.evaluate(el => { for (let parent = el.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true; });
  await toolActivity.locator(':scope > summary').click();
  const activityID = await toolActivity.getAttribute('id');
  await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');
@@ -473,7 +478,7 @@ try {
  await expect(page.locator('#runs-content details[id^="run-planning-"]')).toHaveCount(1);
  assert.equal(await page.locator('#runs-content details[id^="run-planning-"]').getAttribute('id'), planningEntryID);
  await screen(`/planning?card=${resumableID}`, 'planning');
- await chooseSelect(page, '#plan-revision', '2', true);
+ await chooseSelect(page, '[id^=plan-revision-][role=combobox]', '2', true);
  await page.locator('#planning-approve-form [data-slot="checkbox"]').check();
  await page.getByRole('button', {name: 'Approve & build', exact: true}).click();
  await page.locator('#planning-content').getByText('Approved', {exact: true}).waitFor();
@@ -593,8 +598,9 @@ try {
  await screen(boardPath, 'board');
  for (const viewport of [{width:1440,height:1000},{width:1200,height:720},{width:390,height:844}]) {
   await page.setViewportSize(viewport);
-  for (const id of ['project-dialog','card-dialog','delete-dialog']) {
-   await page.evaluate(id => document.getElementById(id).showModal(), id);
+  for (const id of ['project-dialog','card-dialog']) {
+   await page.getByRole('button', {name: id === 'project-dialog' ? 'New project' : 'New card', exact: true}).first().click();
+   await page.getByRole('dialog').waitFor();
    await page.waitForTimeout(200); // Let the entrance animation finish before measuring.
    const bounds = await page.locator(`#${id}`).evaluate(el => {
     const r=el.getBoundingClientRect();
@@ -603,7 +609,8 @@ try {
    assert.ok(Math.abs(bounds.cx-bounds.vw/2)<2, `${id}: not horizontally centered`);
    assert.ok(Math.abs(bounds.cy-bounds.vh/2)<2, `${id}: not vertically centered`);
    assert.ok(bounds.left>=0 && bounds.top>=0 && bounds.right<=bounds.vw && bounds.bottom<=bounds.vh, `${id}: outside viewport`);
-   await page.evaluate(id => document.getElementById(id).close(), id);
+   await page.keyboard.press('Escape');
+   await page.locator('[data-dialog]').waitFor({state: 'detached'});
   }
  }
  await page.setViewportSize({width:1440,height:1000});
@@ -644,7 +651,7 @@ try {
  await expect(page.locator('details.run')).toHaveCount(3);
  assert.deepEqual(browserActivityRequests, [], 'browser must never poll /activity including re-login');
  assert.deepEqual(errors, [], 'no browser errors');
- console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
+ console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Datastar views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
 } finally {
  if (started) await bridge('/stop').catch(() => {});
  await browser.close();

@@ -6,8 +6,10 @@ A coding agent built on [BONNIE](https://github.com/mark3labs/bonnie). Jawa rece
 work over NATS, edits code, runs tests, and can push branches and create pull
 requests. Lightpanda MCP provides browser tools.
 
-The image includes Go, Git, GitHub CLI, Go linters, Python, and common development
-utilities.
+The image includes Go, Git, GitHub CLI, Go linters, Python, Chromium, Bun (with
+bunx), uv (with uvx), and common development utilities. `CHROMIUM_PATH` defaults
+to `/usr/bin/chromium`. Bun and uv versions are pinned in the Dockerfile and can
+be overridden with the `BUN_VERSION` and `UV_VERSION` build arguments.
 
 ## Orchestrator
 
@@ -210,8 +212,9 @@ The UI separates **Board** (one project at a time), **Archive**, **Runs**, **Age
 components, with a dark Jawa-inspired robe-brown/sand/amber palette, compact
 cards, keyboard-accessible action menus, and self-hosted Inter typography.
 Datastar SSE morphs only each view's keyed content, sidebar counts, and agent
-chip. Rocket (Datastar v1.0.4 + Rocket beta.2) wraps SortableJS, menus, relative
-timestamps, clipboard controls, and keyboard shortcuts. No production CDN is used.
+chip. Datastar v1.0.4 signals drive UI state; shadcn-templ owns dialogs, menus,
+selects and clipboard controls. Only the Sortable gesture and service-worker
+registration use application JavaScript. No production CDN is used.
 
 On phones the board stacks its lanes; tablets use two columns, with visible card
 actions and touch-sized controls. Runs retain their agent, attempt, PR and update

@@ -17,23 +17,15 @@ Authenticated routes: `/board?project=<id>`, `/runs?state=<tab>&card=<id>`,
 `/agents`, `/settings`. `/` redirects to `/board`. Board shows one project;
 execution history, agent inspection, and configuration live in separate views.
 
-`GET /projects/issues?project_id=<id>` requires an authenticated session and
-returns JSON `{"issues":[{"number":2,"title":"Example","url":"https://github.com/owner/repo/issues/2"}]}`.
-Only open issues (not pull requests) from the configured project are listed;
-empty lists return `{"issues":[]}`. Errors use 401 for missing authentication,
-404 for an unknown project, 405 for non-GET methods, and 502 for provider loading
-failures. Provider credentials and response bodies are never returned to the
-browser. The New card Rocket selector loads on opening, project changes and
-explicit refresh; loading failures do not prevent creating an unlinked card.
-Run `cd internal/orchestrator/frontend && CHROMIUM_PATH=/path/to/chromium npm run test:issues`
-for isolated selector browser tests (including stale-response races).
+`GET /dialogs/card/issues?project_id=<id>` renders open issue choices over finite
+SSE using replace mode, a fresh submission token and local `_issues` signals for
+explicit Autofill. Provider errors are sanitized; issue bodies are not logged.
+Issue requests are bounded to 20 seconds. No JSON choices endpoint remains.
 
-Templates are separated into `layout.templ`, `board.templ`, `runs.templ`,
-`agents.templ`, and `settings.templ`. Prebuilt shadcn-templ Card, Empty, Avatar,
-Table, Breadcrumb, Kbd, Input, Badge, Alert, Button, Label, Textarea, Separator,
-Checkbox and dialog primitives use compiled Tailwind/Nova styling with a dark Jawa palette.
-Rocket light-DOM components encapsulate Sortable, native popover actions, shortcuts,
-relative timestamps and clipboard behavior; templ retains ownership of markup.
+The templ UI uses pinned shadcn-templ components for controls, Dialog and
+DropdownMenu behavior. Every dialog opening is rendered by `GET /dialogs/{name}`
+and carries a unique operation-keyed frame outside live roots. Submit success
+removes only that frame, after every other response frame. See `SSE_UI.md`.
 
 Regenerate templates from repository root:
 `for file in internal/orchestrator/*.templ; do go run github.com/a-h/templ/cmd/templ@v0.3.1070 generate -f "$file"; done`.
@@ -45,9 +37,8 @@ production requires neither Node nor CDN access. The build locates shadcn compon
 using `go list -m`, bundles the pinned Select, Base UI/Floating UI, checkbox/switch runtimes and lifecycle with the
 application (no CDN), and copies the self-hosted Inter Latin variable font.
 
-Datastar/Rocket is vendored from the official v1.0.4 bundle:
-https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar-rocket.js.
-It includes Datastar v1.0.4 and Rocket beta.2 (beta API). Datastar's license is in
+Datastar is vendored from the official v1.0.4 bundle:
+https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.4/bundles/datastar.js. Datastar's license is in
 frontend/DATASTAR-LICENSE.md, Inter's OFL license in frontend/INTER-LICENSE.
 
 All browser scripts share `frontend/browser.mjs`, including the persistent-profile
@@ -216,7 +207,7 @@ All payloads are escaped (JSON syntax spans use fixed classes), and Markdown kee
 the stricter no-remote-media sanitizer. The growing composer uses Ctrl+Enter and
 native validation, ignores IME submission and leaves plain Enter as a newline.
 The focusable transcript follows only at bottom and preserves scrolled-up readers.
-Rocket cleanup disconnects all observers/listeners.
+Component runtimes own lifecycle cleanup.
 
 Trace uses separate snapshot (Role/Summary), durable and live event tables. Event
 columns are Sequence, Time (UTC), Kind, Role, State and Summary, omitting columns
@@ -253,7 +244,7 @@ Completed evidence survives card deletion. Recovery is explicit and uses the
 original submitted draft, validating same-repository canonical issue links.
 Enhanced errors patch recovery/notice only; native errors retain escaped fields.
 Only confirmed success closes/resets. The form disables Datastar retries and
-locks submit/project/issue/create controls while pending. Read-only tokens work
+locks submit buttons while pending; named inputs remain enabled for FormData. Read-only tokens work
 when creation is off; Issues write permission is required when on. Check the
 repository after uncertainty: remote/local writes cannot be atomic and issues
 are never automatically retried. Offline browser fixtures must uncheck creation.
@@ -275,7 +266,7 @@ keyboard/touch interaction, mutually exclusive controls and overflow at
 Visible controls use the pinned shadcn-templ Button (including action links),
 Input, Textarea, Label, Select/Trigger/Value/Content/Item, Checkbox and Switch. Status/count
 pills use Badge, warnings use Alert, menu dividers use Separator and card
-surfaces use Card. Native forms, dialogs, popovers, disclosures, ordinary text
+surfaces use Card. Native forms, disclosures, ordinary text
 links and structural layout remain native. Hidden transport fields (including
 move-form fields) are intentionally not components.
 
@@ -315,28 +306,26 @@ it never falls back to shared delivery or another agent. Replies, guidance,
 cancellation and Resume still address the observed execution, not a new task.
 Assignment fences admission but is not isolation against hostile trusted agents.
 
-`GET /agents/choices` is authenticated, setup-guarded, GET-only and no-store.
-Discovery is bounded to two seconds; the JSON contains only agent ID, provider,
+`GET /dialogs/assign/agents` is authenticated, setup-guarded, GET-only and no-store.
+Discovery is bounded to two seconds; the rendered choices contain only agent ID, provider,
 model, availability and selectable capability. Targeted mutations revalidate
 this projection before their atomic lane/task transaction. Shared actions do not
 require presence. No browser-supplied subject, PR URL, branch or run selects work.
 The assignment dialog stays outside SSE patch roots. It loads on open/Refresh,
 aborts and invalidates stale reads, and retains drafts on failed submissions.
-Successful `/cards/assign` responses clear only its assignment signals.
+Successful `/cards/assign` responses remove only their operation-keyed frame.
 Run `npm run test:agents` in the frontend directory for selector race regressions.
 
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already
 support targeted delivery. No provider permissions or model configuration change.
 
-Select fields require JavaScript; there is no native-select or noscript select
-fallback. The standalone recovery page still submits an ordinary HTTP POST.
-The shared `selectField` keeps trigger/content/input siblings for beta.14's
-input lookup. The adapter uses the pinned `templ.select.setValue` for resets
-and programmatic updates; named inputs carry committed form values. Select
-portals target the trigger's native dialog when present, preserving upstream
-portal ownership and cleanup. Provider changes bridge the committed input to
-Datastar; reset must restore both the displayed selection and provider signal.
+Selects are shadcn-templ `Select` via `selectField`, with server-rendered
+options. Fragments containing Select/DropdownMenu/Dialog are replace-patched, or
+option-keyed inside morph roots. No native-select fallback is provided. The
+standalone recovery page still submits ordinary HTTP POST. Never call form.reset
+on forms containing shadcn controls. Settings switches use state-keyed wrapper
+IDs so changes to server defaults replace their mounted declaration.
 
 ## Compact UI regression fixture
 

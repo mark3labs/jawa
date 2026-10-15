@@ -21,29 +21,25 @@ Stable element patch roots:
 
 Live updates omit notice; mutation success clears it or shows a success flash.
 Expected failures return finite SSE alerts rather than navigation/raw SQL errors.
-Shared mutation dialogs own `project|card|delete|fix|guide|cancel|ready|force-error`
-roots, outside live view roots. Each opening assigns a validated opaque operation
-suffix to its error root and hidden form transport field. Only fixed server-owned
-POST routes select a destination; messages remain templ-escaped. Non-dialog
-actions retain the page notice fallback and native failures retain HTTP statuses.
-Failures leave the modal open and preserve drafts/acknowledgements. Live snapshots
-omit these roots. Fresh open and dismissal clear local errors; dismissal also
-aborts that opening’s request, so delayed errors and success signals cannot
-contaminate another operation. Success clears the correlated alert, marks form
-reset evidence and closes via existing signals. Issue creation keeps its dedicated
-recovery controls and explicit retry policy.
-Dialog-close signals accompany success. Project creation patches `goto` with a
-server-generated same-origin board URL; the stable shell navigates through a
-Datastar effect. No script strings from user input are executed.
+Dialogs are freshly server-rendered by authenticated `GET /dialogs/{name}` into
+`#dialog-slot`, outside live patch roots. Every opening owns a random 32-hex
+operation and frame `dialog-<op>`; errors target `<name>-error-<op>` only.
+Successful mutation responses send snapshot and reset/navigation signals first,
+then an operation-keyed remove frame **last**. Removing a frame unmounts its
+component and cancels its request, so no response frames may follow it. Late
+responses cannot remove another opening. Failed submissions preserve drafts.
 
-Dialogs are outside patch roots, preserving drafts. Run disclosures preserve `open`.
-Rocket wraps SortableJS; entire noninteractive cards are draggable. During a drag,
-board-content uses data-ignore-morph. Drop restores authoritative layout before
-submitting a hidden Datastar form; unchanged drops request a finite snapshot.
+Datastar owns signals and transport; shadcn-templ owns Dialog, DropdownMenu,
+Select, Checkbox, Switch, CopyButton and MessageScroller behavior. Component
+fragments use replace mode; selects inside live morph roots have option-keyed
+IDs. Never morph a mounted declaration when its options change.
 
-Rocket also wraps card popovers, keyboard shortcuts, copy controls and relative
-timestamps. Prebuilt shadcn-templ components retain their markup and styles. See
-CONTRACT.md for builds and integrated browser smoke instructions.
+Sortable reports bubbling gesture events only. `#board-content` binds
+`data-ignore-morph` to `$_dragging || $_menuOpen`; menu close without an action
+requests a catch-up snapshot, while an action supplies its own authoritative
+snapshot. Dialog acknowledgements and select defaults are fresh server markup.
+Relative timestamps share one 15-second clock signal; shortcuts read shell
+signals. Submit indicators disable buttons only, never named inputs.
 
 Run details use `/runs/{attemptID}/events?tab=chat|trace`, with stable roots
 `run-detail-content` and `run-detail-controls`. Draft, tab links and filter are
@@ -61,16 +57,14 @@ cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
 ## UI component ownership
 
 - `layout.templ`: shared shell, sidebar, breadcrumb/header, agent chip, dialogs, auth.
-- `board.templ`: selected-project kanban, compact cards and Rocket action popovers.
+- `board.templ`: selected-project kanban, compact cards and shadcn DropdownMenus.
 - `runs.templ`: newest-first attempt list, state/card filters, expandable details.
 - `agents.templ`: presence cards, endpoint table, inspection and connect empty state.
 - `settings.templ`: agent credential rotation, connect instructions, provider status.
 - `view.go`: validated routes/filters, presentation helpers; no secret values exposed.
 
-Datastar owns requests and DOM patches; templ owns server-rendered markup. Rocket's
-light-DOM setup/cleanup encapsulates gestures, menus, shortcuts, relative time and
-copy behavior. Stable keyed roots keep the shell, filter and drafts intact. No manual
-fetch loop or page reload is used for card actions.
+Datastar owns requests and DOM patches; templ owns server-rendered markup.
+All application reactivity is signal-driven; runtime helpers are component-owned.
 
 - `run_detail.templ`: run-detail page, Chat/Trace history and separate controls;
   composer, filter and tab links are outside patch roots.
@@ -102,14 +96,14 @@ it never falls back to shared delivery or another agent. Replies, guidance,
 cancellation and Resume still address the observed execution, not a new task.
 Assignment fences admission but is not isolation against hostile trusted agents.
 
-`GET /agents/choices` is authenticated, setup-guarded, GET-only and no-store.
-Discovery is bounded to two seconds; the JSON contains only agent ID, provider,
+`GET /dialogs/assign/agents` is authenticated, setup-guarded, GET-only and no-store.
+Discovery is bounded; rendered choices contain only agent ID, provider,
 model, availability and selectable capability. Targeted mutations revalidate
 this projection before their atomic lane/task transaction. Shared actions do not
 require presence. No browser-supplied subject, PR URL, branch or run selects work.
 The assignment dialog stays outside SSE patch roots. It loads on open/Refresh,
 aborts and invalidates stale reads, and retains drafts on failed submissions.
-Successful `/cards/assign` responses clear only its assignment signals.
+Successful `/cards/assign` responses remove only their operation-keyed frame.
 Run `npm run test:agents` in the frontend directory for selector race regressions.
 
 Back up the database before migration 00019 and coordinate backend deployment.
@@ -118,11 +112,10 @@ support targeted delivery. No provider permissions or model configuration change
 
 Run detail silently omits empty sources/optional fields. Trace tables use API-only
 snapshot/durable/live data, not local deliveries or inferred journal history.
-Chat payload disclosures preserve open state. A view-local Rocket controller
-resizes the composer, validates Ctrl+Enter (not IME/plain Enter), prevents duplicate
-pending sends and follows transcript updates only at bottom. Confirmed send SSE
-returns the submitted text as a signal; it clears only an unchanged draft. Newer
-and uncertain drafts survive. All controller listeners/observers are cleaned up.
+Chat payload disclosures preserve open state. The textarea uses field-sizing
+and signal-driven Ctrl+Enter eligibility and pending lock. MessageScroller follows
+appended messages only at the bottom. A matching server confirmation clears the
+draft; newer and uncertain drafts survive.
 
 Runs snapshots and sidebar active counts use a separate mixed Planning/Build/Fix
 read-only projection. Rows are keyed `run-{mode}-{local execution ID}`; replies
@@ -132,8 +125,8 @@ Planning detail uses only `/runs/planning/{turnID}/events?tab=chat|trace`, with 
 same bounded writes, authentication rechecks and identity-change fencing as build
 details. Its controls remain observation-only without passive policy text; no planning composer
 or Stop is rendered. Build authority collections and `/activity` are unchanged.
-Guidance success signals close `guideOpen` and clear `guideCard`, `guideToken`
-and `guideMessage`; error notices and live snapshots do not clear them. The
+Guidance dialog success removes the correlated frame; inline guidance success
+clears `guidanceReply`. Errors and live snapshots do not clear drafts. The
 inline `/cards/guide` composer lives inside `planning-content`, with form and
 textarea IDs keyed by report identity and `data-ignore-morph` draft preservation.
 A new report replaces the old composer; queued replies render immediately with
@@ -148,7 +141,23 @@ native 303 view-preserving redirects. Enhanced requests use finite SSE, a keyed
 `merge-error-{dialog_operation}` alert and `retry:'never'`. The shared merge dialog
 lives outside live patch roots, resets its Select to Merge commit per opening,
 locks pending submit and retains method/errors on refusal. Merge success closes
-only the opening with its correlated success alert (not a global close signal).
+only the opening with its operation-keyed remove frame (not a global signal).
 Closing an in-flight dialog aborts waiting, not remote work; uncertain outcomes
 instruct Refresh ready PRs instead of claiming success. Live PR evidence patches
 remove eligibility and the visible card Merge button when no longer clear.
+
+### Component integration regressions
+
+With pinned shadcn-templ beta.14, a dialog opened from a portaled menu does
+not reliably restore focus to the card trigger. The approved temporary
+workaround records the menu trigger id in UI-only `$_dialogReturn`; the
+trigger's own delayed `dialog-close` listener focuses `el` after the dialog
+exit. It performs no DOM query and adds no application JS helper.
+
+Sortable's `board-move` event updates the move signals on the board. The shell
+form posts on a one-tick delayed window listener, after Datastar's bound input
+effects flush, so FormData contains the newly emitted card/lane/position.
+
+MessageScroller owns `data-pending-scroll`: preserve that attribute on its root
+and viewport during live morphs. Reapplying the server's initial pending marker
+after initialization can otherwise hide a mounted transcript indefinitely.

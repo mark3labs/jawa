@@ -1,15 +1,15 @@
 #!/bin/sh
-# Builds the embedded frontend: JS bundle (Datastar + Rocket + SortableJS),
+# Builds the embedded frontend: JS bundle (Datastar + SortableJS),
 # compiled Tailwind/Nova CSS and the self-hosted Inter font.
 set -eu
 cd "$(dirname "$0")"
 SHADCN="$(go list -m -f '{{.Dir}}' github.com/axadrn/shadcn-templ/v2)"
-# Bundle only the pinned shadcn behavior we use, before the Rocket owners.
+# Bundle only the pinned shadcn behavior we use, before the Datastar scan.
 # Keep entries temporary: component sources remain owned by the Go module.
 # The runtime list lives in runtime.sh, shared with the dev watch (dev.mjs).
 trap 'rm -f src/.build.js src/.build.css src/.runtime.js' EXIT
 sh ./runtime.sh > src/.runtime.js
-printf 'import "./select.js";\nimport "./app.js";\n' > src/.build.js
+printf '\nimport "./app.js";\nimport "./datastar.js";\n' > src/.build.js
 esbuild src/.build.js --bundle --minify --outfile=../assets/app.js
 cat src/.runtime.js ../assets/app.js > src/.build.js
 esbuild src/.build.js --minify --outfile=../assets/app.js

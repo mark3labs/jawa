@@ -270,3 +270,19 @@ func traceStripe(stripe bool) string {
 	}
 	return ""
 }
+
+// Compute searchable source text on the server rather than inspecting client DOM.
+func traceSourceExpr(table runTraceTable) string {
+	var text strings.Builder
+	for _, row := range table.Rows {
+		for _, cell := range row.Cells {
+			text.WriteString(cell)
+			text.WriteByte(' ')
+		}
+		text.WriteString(row.Summary)
+		text.WriteByte(' ')
+		text.WriteString(row.Raw)
+		text.WriteByte(' ')
+	}
+	return "$traceFilter === '' || " + strconv.Quote(strings.ToLower(text.String())) + ".includes($traceFilter.toLowerCase())"
+}

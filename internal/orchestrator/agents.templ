@@ -1,12 +1,12 @@
 package orchestrator
 
 import (
+ "github.com/axadrn/shadcn-templ/v2/components/copybutton"
 	"strconv"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/avatar"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
-	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
 	"github.com/axadrn/shadcn-templ/v2/components/table"
@@ -58,14 +58,11 @@ templ agentsContent(d pageData) {
 }
 
 templ connectBlock(d pageData) {
-	<div class="connect">
+	<div class="connect relative">
 		<pre class="snippet">{ connectSnippet(d.nats.URL, d.nats.Username) }</pre>
-		<jawa-copy text={ connectSnippet(d.nats.URL, d.nats.Username) }>
-			@button.Button(button.Props{Type: button.TypeButton, Class: "btn", Size: button.SizeSm, Variant: button.VariantOutline}) {
-				@icon("copy")
-				<span class="copy-label">Copy</span>
-			}
-		</jawa-copy>
+		<div class="absolute top-2 right-2">
+ @copybutton.CopyButton(copybutton.Props{Value: connectSnippet(d.nats.URL, d.nats.Username), Attrs: templ.Attributes{"aria-label": "Copy connection snippet"}})
+ </div>
 	</div>
 }
 
@@ -108,7 +105,7 @@ templ agentCard(d pageData, w presence.Record) {
 				<span class="muted">Idle</span>
 			}
 			<span class="spacer"></span>
-			<jawa-time datetime={ timeAttr(w.UpdatedAt) }>{ relativeTime(w.UpdatedAt, d.now) }</jawa-time>
+			@relTime(w.UpdatedAt, d.now)
 		</div>
 		@table.Table(table.Props{Class: "endpoints"}) {
 			@table.Header() {

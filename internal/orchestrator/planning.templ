@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+ "strings"
 	"strconv"
 
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
@@ -35,14 +36,14 @@ templ planningContent(d pageData) {
  @card.Card(card.Props{Class:"planning-surface"}) {
  <h2>Auto merge</h2>
  <p class="muted small">{ autoMergeSavedLabel(c.AutoMergeMode,d.dashboard["auto-merge"]=="true") }</p>
- <form method="post" action="/cards/auto-merge" data-auto-merge-form data-ignore-morph data-on:submit__prevent="@post('/cards/auto-merge', {contentType:'form', retry:'never'})">
+ <form method="post" action="/cards/auto-merge" data-auto-merge-form data-ignore-morph { dsForm("/cards/auto-merge", "cardsautomerge")... }>
  <input type="hidden" name="_csrf" value={d.csrf}/>
  @viewFields(d.v)
  <input type="hidden" name="card_id" value={c.ID}/>
  <input type="hidden" name="expected_mode" value={c.AutoMergeMode}/>
  @autoMergeControls("card-merge",c.AutoMergeMode)
  <p class="muted small">Applies to existing eligible Ready PRs. Card On works even with global Off. Disabling cannot undo a merge or reliably stop an in-flight write.</p>
- @submit("Save")
+ @pendingSubmit("Save", "cardsautomerge")
  </form>
  if status,ok:=d.autoMerges[c.ID]; ok {
  <p class="muted small" role="status">{status.State} · {status.Category} · {status.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC")}</p>
@@ -130,18 +131,18 @@ templ planningContent(d pageData) {
 							<h2>Approve &amp; build</h2>
 							<p class="meta">Approval freezes the selected plan and starts implementation. Only the current ready revision can be approved; stale selections are rejected by the server.</p>
 							if detail.CanApprove {
-								<form id="planning-approve-form" method="post" action="/cards/planning/approve" data-on:submit__prevent="@post('/cards/planning/approve', {contentType:'form'})">
+								<form id="planning-approve-form" method="post" action="/cards/planning/approve" { dsForm("/cards/planning/approve", "cardsplanningapprove")... }>
 									@planningFields(d, c)
 									<div class="field">
-										@label.Label(label.Props{For: "plan-revision"}) {
+										@label.Label(label.Props{For: selectTriggerID("plan-revision", optionsKey(revisionSelectItems(detail.Revisions)))}) {
 											Plan revision to approve
 										}
-										@selectField("plan-revision", "expected_revision", "", true, revisionSelectItems(detail.Revisions), nil)
+										@selectField("plan-revision", optionsKey(revisionSelectItems(detail.Revisions)), "expected_revision", "", true, false, revisionSelectItems(detail.Revisions), nil)
 									</div>
 									@label.Label(label.Props{Class: "meta"}) {
 										@checkbox.Checkbox(checkbox.Props{ID: "planning-acknowledge", Required: true}) I reviewed this revision and want to start building.
 									}
-									<div class="plan-actions">@submit("Approve & build")</div>
+									<div class="plan-actions">@pendingSubmit("Approve & build", "cardsplanningapprove")</div>
 								</form>
 							} else {
 								<p class="meta">Wait for a ready plan with all questions answered before approving.</p>
@@ -149,10 +150,10 @@ templ planningContent(d pageData) {
 							<div class="plan-actions">
 								if detail.CanResume {
 									<p class="meta">Resume keeps this run and its saved context. Retry planning starts a fresh investigation.</p>
-									<form method="post" action="/cards/planning/resume" data-on:submit__prevent="@post('/cards/planning/resume', {contentType:'form'})">
+									<form method="post" action="/cards/planning/resume" { dsForm("/cards/planning/resume", "cardsplanningresume")... }>
 										@planningFields(d, c)
 										<input type="hidden" name="expected_resume" value={ detail.ResumeToken }/>
-										@submit("Resume failed run")
+										@pendingSubmit("Resume failed run", "cardsplanningresume")
 									</form>
 								}
 								if detail.Session.State == "failed" {
@@ -207,7 +208,7 @@ templ planningContent(d pageData) {
 							<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
 						}
 						if c.Status == "Planning" && planningCanReply(detail) {
-							<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" data-on:submit__prevent="@post('/cards/planning/reply', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+							<form id={ "planning-reply-form-" + detail.InteractionToken } method="post" action="/cards/planning/reply" { dsForm("/cards/planning/reply", "cardsplanningreply")... } data-ignore-morph>
 								@planningFields(d, c)
 								<input type="hidden" name="expected_interaction" value={ detail.InteractionToken }/>
 								<div class="field">
@@ -217,9 +218,9 @@ templ planningContent(d pageData) {
 										} else {
 											Reply or request a revision
 										}
-									}@textarea.Textarea(textarea.Props{ID: "planning-reply", Name: "reply", Attributes: templ.Attributes{"required": true, "maxlength": "65536"}})
+									}@textarea.Textarea(textarea.Props{ID: "planning-reply", Name: "reply", Attributes: templ.Attributes{"data-signals:planning-reply": "''", "data-bind:planning-reply": true, "required": true, "maxlength": "65536"}})
 								</div>
-								@submit("Send reply")
+								@pendingSubmit("Send reply", "cardsplanningreply")
 							</form>
 						}
 					}
@@ -236,16 +237,16 @@ templ planningContent(d pageData) {
 						if b.Queued {
 							<p class="meta" role="status">{ guidanceQueuedNotice }</p>
 						} else if d.canGuide(c) {
-							<form id={ "guidance-reply-form-" + b.Token } method="post" action="/cards/guide" data-on:submit__prevent="@post('/cards/guide', {contentType:'form'})" data-reset-on-success data-ignore-morph>
+							<form id={ "guidance-reply-form-" + b.Token } method="post" action="/cards/guide" { dsForm("/cards/guide", "cardsguide")... } data-ignore-morph>
 								@planningFields(d, c)
 								<input type="hidden" name="expected_interaction" value={ b.Token }/>
 								<div class="field">
 									@label.Label(label.Props{For: "guidance-reply-" + b.Token}) {
 										Reply with guidance
 									}
-									@textarea.Textarea(textarea.Props{ID: "guidance-reply-" + b.Token, Name: "message", Attributes: templ.Attributes{"required": true, "maxlength": "64000"}})
+									@textarea.Textarea(textarea.Props{ID: "guidance-reply-" + b.Token, Name: "message", Attributes: templ.Attributes{"data-signals:guidance-reply": "''", "data-bind:guidance-reply": true, "required": true, "maxlength": "64000"}})
 								</div>
-								@submit("Send guidance")
+								@pendingSubmit("Send guidance", "cardsguide")
 							</form>
 						}
 					}
@@ -267,9 +268,9 @@ templ planningFields(d pageData, c Card) {
 }
 
 templ planningAction(d pageData, c Card, route, title string) {
-	<form method="post" action={ route } data-on:submit__prevent={ "@post('" + route + "', {contentType:'form'})" }>
+	<form method="post" action={ route } { dsForm(route, strings.ReplaceAll(routeSlug(route), "-", ""))... }>
 		@planningFields(d, c)
-		@submit(title)
+		@pendingSubmit(title, strings.ReplaceAll(routeSlug(route), "-", ""))
 	</form>
 }
 

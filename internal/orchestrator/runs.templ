@@ -1,12 +1,12 @@
 package orchestrator
 
 import (
+ "github.com/axadrn/shadcn-templ/v2/components/copybutton"
 	"strconv"
 	"strings"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
-	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/empty"
 )
 
@@ -97,7 +97,7 @@ templ runRow(d pageData, a RunRecord) {
 				}
 			</span>
 			<span class="run-time">
-				<jawa-time datetime={ timeAttr(a.UpdatedAt) }>{ relativeTime(a.UpdatedAt, d.now) }</jawa-time>
+				@relTime(a.UpdatedAt, d.now)
 			</span>
 		</summary>
 		<div class="run-body">
@@ -113,11 +113,7 @@ templ runRow(d pageData, a RunRecord) {
 						<dd class="mono">
 							@icon("branch")
 							<span>{ attemptBranch(a.Build) }</span>
-							<jawa-copy text={ attemptBranch(a.Build) } aria-label="Copy branch name">
-								@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: templ.Attributes{"aria-label": "Copy branch name"}}) {
-									@icon("copy")
-								}
-							</jawa-copy>
+							@copybutton.CopyButton(copybutton.Props{Value: attemptBranch(a.Build), Attrs: templ.Attributes{"aria-label": "Copy branch name"}})
 						</dd>
 					</div>
 				}

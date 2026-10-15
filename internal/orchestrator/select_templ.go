@@ -8,12 +8,21 @@ package orchestrator
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "fmt"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+)
 import selectcomp "github.com/axadrn/shadcn-templ/v2/components/select"
 
-// Keep the trigger and generated form input adjacent: beta.14 discovers the
-// value input by sibling traversal, including after Content has been portaled.
-func selectField(id, name, value string, required bool, items []selectcomp.ItemData, attrs templ.Attributes) templ.Component {
+type selectOption struct {
+	Value, Label string
+	Disabled     bool
+}
+
+// Option-keyed declarations swap mounted controls when server options change.
+func selectField(id, key, name, value string, required, disabled bool, items []selectOption, attrs templ.Attributes) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -34,11 +43,25 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div data-select-field>")
+		tid := selectTriggerID(id, key)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Var2 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		var templ_7745c5c3_Var2 string
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(tid + "-declaration")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/select.templ`, Line: 14, Col: 31}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Var3 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -50,7 +73,7 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Var3 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_Var4 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 				if !templ_7745c5c3_IsBuffer {
@@ -68,11 +91,11 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = selectcomp.Trigger(selectcomp.TriggerProps{ID: id, Attributes: attrs}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = selectcomp.Trigger(selectcomp.TriggerProps{ID: tid, Attributes: attrs}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Var4 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_Var5 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 				if !templ_7745c5c3_IsBuffer {
@@ -85,7 +108,7 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 				}
 				ctx = templ.InitializeContext(ctx)
 				for _, item := range items {
-					templ_7745c5c3_Var5 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_Var6 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 						if !templ_7745c5c3_IsBuffer {
@@ -97,67 +120,35 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						var templ_7745c5c3_Var6 string
-						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(item.Label))
+						var templ_7745c5c3_Var7 string
+						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(item.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/select.templ`, Line: 17, Col: 30}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/select.templ`, Line: 19, Col: 101}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = selectcomp.Item(selectcomp.ItemProps{Value: item.Value}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = selectcomp.Item(selectcomp.ItemProps{Value: item.Value, Disabled: item.Disabled}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var6), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = selectcomp.Content(selectcomp.ContentProps{AlignItemWithTrigger: boolPointer(false), Align: selectcomp.AlignStart}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = selectcomp.Content(selectcomp.ContentProps{AlignItemWithTrigger: boolPointer(false), Align: selectcomp.AlignStart}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = selectcomp.Select(selectcomp.Props{ID: id + "-content", Name: name, DefaultValue: value, Required: required, Items: items}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = selectcomp.Select(selectcomp.Props{ID: tid + "-content", Name: name, DefaultValue: value, Required: required, Disabled: disabled, Items: selectItems(items)}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if name == "issue_url" || name == "target_agent_id" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<template data-select-item>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Var7 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
-				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
-				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
-				if !templ_7745c5c3_IsBuffer {
-					defer func() {
-						templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
-						if templ_7745c5c3_Err == nil {
-							templ_7745c5c3_Err = templ_7745c5c3_BufErr
-						}
-					}()
-				}
-				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Option")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				return nil
-			})
-			templ_7745c5c3_Err = selectcomp.Item(selectcomp.ItemProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var7), templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</template>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -165,12 +156,33 @@ func selectField(id, name, value string, required bool, items []selectcomp.ItemD
 	})
 }
 
+func selectTriggerID(id, key string) string {
+	if key == "" {
+		return id
+	}
+	return id + "-" + key
+}
+
+func optionsKey(options []selectOption) string {
+	data, _ := json.Marshal(options)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:4])
+}
+
+func selectItems(options []selectOption) []selectcomp.ItemData {
+	items := make([]selectcomp.ItemData, 0, len(options))
+	for _, o := range options {
+		items = append(items, selectcomp.ItemData{Value: o.Value, Label: o.Label})
+	}
+	return items
+}
+
 func boolPointer(value bool) *bool { return &value }
 
-func projectSelectItems(projects []Project) []selectcomp.ItemData {
-	items := make([]selectcomp.ItemData, 0, len(projects))
+func projectSelectItems(projects []Project) []selectOption {
+	items := make([]selectOption, 0, len(projects))
 	for _, p := range projects {
-		items = append(items, selectcomp.ItemData{Value: p.ID, Label: p.Name})
+		items = append(items, selectOption{Value: p.ID, Label: p.Name})
 	}
 	return items
 }
@@ -187,18 +199,18 @@ func projectSelectDefault(projects []Project, selected string) string {
 	return ""
 }
 
-func recoverySelectItems(state string) []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: "", Label: "No recovery selected"}, {Value: "link", Label: "Link existing issue"}, {Value: "unlinked", Label: "Create unlinked card"}}
+func recoverySelectItems(state string) []selectOption {
+	items := []selectOption{{Value: "", Label: "No recovery selected"}, {Value: "link", Label: "Link existing issue"}, {Value: "unlinked", Label: "Create unlinked card"}}
 	if state == "rejected" {
-		items = append(items, selectcomp.ItemData{Value: "retry", Label: "Retry rejected creation (new submission)"})
+		items = append(items, selectOption{Value: "retry", Label: "Retry rejected creation (new submission)"})
 	}
 	return items
 }
 
-func revisionSelectItems(revisions []PlanningRevision) []selectcomp.ItemData {
-	items := []selectcomp.ItemData{{Value: "", Label: "Select the revision you reviewed"}}
+func revisionSelectItems(revisions []PlanningRevision) []selectOption {
+	items := []selectOption{{Value: "", Label: "Select the revision you reviewed"}}
 	for _, revision := range revisions {
-		items = append(items, selectcomp.ItemData{Value: fmt.Sprint(revision.Number), Label: fmt.Sprintf("Revision %d", revision.Number)})
+		items = append(items, selectOption{Value: fmt.Sprint(revision.Number), Label: fmt.Sprintf("Revision %d", revision.Number)})
 	}
 	return items
 }

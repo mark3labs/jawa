@@ -51,6 +51,27 @@ func elementsFrame(elements string) string {
 	return "event: datastar-patch-elements\ndata: elements " + strings.ReplaceAll(elements, "\n", "\ndata: elements ") + "\n\n"
 }
 
+// elementsFrameMode swaps mounted component declarations rather than morphing them.
+// Each content line is prefixed so user content cannot inject SSE fields.
+func elementsFrameMode(mode, selector, elements string) string {
+	var b strings.Builder
+	b.WriteString("event: datastar-patch-elements\n")
+	if mode != "" {
+		b.WriteString("data: mode " + mode + "\n")
+	}
+	if selector != "" {
+		b.WriteString("data: selector " + selector + "\n")
+	}
+	if elements != "" {
+		elements = strings.ReplaceAll(strings.ReplaceAll(elements, "\r\n", "\n"), "\r", "\n")
+		b.WriteString("data: elements " + strings.ReplaceAll(elements, "\n", "\ndata: elements ") + "\n")
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+func removeFrame(id string) string { return elementsFrameMode("remove", "#"+id, "") }
+
 func (a *app) responseError(w http.ResponseWriter, r *http.Request, message string, status int) {
 	if !datastarRequest(r) {
 		http.Error(w, message, status)
@@ -69,6 +90,9 @@ func (a *app) responseError(w http.ResponseWriter, r *http.Request, message stri
 	stream := newSSEWriter(w)
 	if err := stream.write(elementsFrame(notice.String())); err != nil {
 		return
+	}
+	if r.URL.Path == "/prs/refresh" {
+		_ = stream.write("event: datastar-patch-signals\ndata: signals {\"prRefreshing\":false}\n\n")
 	}
 }
 
@@ -117,46 +141,24 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	}
 	signals := map[string]string{}
 	switch r.URL.Path {
-	case "/projects":
-		signals["projectOpen"] = "false"
-	case "/cards":
-		signals["cardOpen"] = "false"
-	case "/cards/cancel":
-		signals["cancelOpen"] = "false"
-		signals["cancelCard"] = `""`
-	case "/cards/force-ready":
-		signals["readyOpen"] = "false"
-		signals["readyAcknowledged"] = "false"
-		for _, key := range []string{"readyCard", "readyToken", "readyPR", "readyNumber", "readyReason", "readyLane"} {
-			signals[key] = `""`
-		}
-	case "/cards/force-stop":
-		signals["forceOpen"] = "false"
-		signals["forceCard"] = `""`
-	case "/cards/assign":
-		signals["assignOpen"] = "false"
-		for _, key := range []string{"assignCard", "assignMode", "assignMessage"} {
-			signals[key] = `""`
-		}
+	case "/cards/planning/reply":
+		signals["planningReply"] = `""`
 	case "/cards/guide":
-		signals["guideOpen"] = "false"
-		for _, key := range []string{"guideCard", "guideToken", "guideMessage"} {
-			signals[key] = `""`
+		if r.FormValue("dialog_operation") == "" {
+			signals["guidanceReply"] = `""`
 		}
-	case "/cards/merge":
-	// Merge closes via its correlated success alert, never a stale global signal.
-	case "/cards/fix":
-		signals["fixOpen"] = "false"
-		signals["fixCard"] = `""`
-		signals["fixMessage"] = `""`
-	case "/cards/delete":
-		signals["deleteOpen"] = "false"
-		signals["deleteCard"] = `""`
+	case "/settings/nats":
+		signals["natsPassword"] = `""`
+	case "/prs/refresh":
+		signals["prRefreshing"] = "false"
 	}
 	if fx.goTo != "" {
 		signals["goto"] = strconv.Quote(fx.goTo)
 	}
 	if len(signals) == 0 {
+		if mutationDialog(r) != "" && validOperation(r.FormValue("dialog_operation")) {
+			_ = stream.write(removeFrame("dialog-" + r.FormValue("dialog_operation")))
+		}
 		return
 	}
 	keys := make([]string, 0, len(signals))
@@ -168,7 +170,12 @@ func (a *app) snapshot(w http.ResponseWriter, r *http.Request, mutation bool, fx
 	for _, k := range keys {
 		parts = append(parts, `"`+k+`":`+signals[k])
 	}
-	_ = stream.write("event: datastar-patch-signals\ndata: signals {" + strings.Join(parts, ",") + "}\n\n")
+	if stream.write("event: datastar-patch-signals\ndata: signals {"+strings.Join(parts, ",")+"}\n\n") != nil {
+		return
+	}
+	if mutationDialog(r) != "" && validOperation(r.FormValue("dialog_operation")) {
+		_ = stream.write(removeFrame("dialog-" + r.FormValue("dialog_operation")))
+	}
 }
 
 func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects) (string, error) {
@@ -182,11 +189,6 @@ func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects
 	var out bytes.Buffer
 	for _, fragment := range fragments {
 		if err := fragment.Render(r.Context(), &out); err != nil {
-			return "", err
-		}
-	}
-	if name := mutationDialog(r); name != "" {
-		if err := dialogError(name, r.FormValue("dialog_operation"), "").Render(r.Context(), &out); err != nil {
 			return "", err
 		}
 	}

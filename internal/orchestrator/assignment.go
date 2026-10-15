@@ -2,8 +2,8 @@ package orchestrator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -71,7 +71,7 @@ func (w *Workflow) choices(ctx context.Context) ([]AgentChoice, error) {
 	defer cancel()
 	records, err := w.Agents(ctx)
 	if err != nil {
-		return nil, errors.New("agent discovery unavailable")
+		return nil, fmt.Errorf("agent discovery unavailable: %w", err)
 	}
 	return agentChoices(records), nil
 }
@@ -125,27 +125,6 @@ func (w *Workflow) submitTask(ctx context.Context, target string, task client.Ta
 		_, err = w.client.SubmitTo(ctx, target, task)
 	}
 	return err
-}
-
-func (a *app) agentChoices(w http.ResponseWriter, r *http.Request, ready bool) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !ready {
-		http.Error(w, "NATS setup required", http.StatusConflict)
-		return
-	}
-	choices, err := a.workflow.choices(r.Context())
-	if err != nil {
-		http.Error(w, "agent discovery unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(struct {
-		Agents []AgentChoice `json:"agents"`
-	}{choices})
 }
 
 func (a *app) mutateAssignment(_ http.ResponseWriter, r *http.Request, _ *mutationContext) error {

@@ -243,7 +243,7 @@ func TestMergeRoute(t *testing.T) {
 		t.Fatal("view lost")
 	}
 	body = assertSSE(t, sseRequest(app, "POST", "/cards/merge", form, session, csrf))
-	if !strings.Contains(body, `data-pr-check-state="merged"`) || !strings.Contains(body, `data-succeeded`) || strings.Contains(body, `"mergeOpen":false`) || calls != 1 {
+	if !strings.Contains(body, `data-pr-check-state="merged"`) || !strings.HasSuffix(body, removeFrame("dialog-"+strings.Repeat("a", 32))) || strings.Contains(body, `"mergeOpen":false`) || calls != 1 {
 		t.Fatal("wrong success/replay")
 	}
 	app.workflow = nil

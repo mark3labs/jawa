@@ -104,37 +104,3 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 	}
 	return nil, errors.New("issues: pagination exceeds supported limit")
 }
-
-func (a *app) projectIssues(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
-		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
-		return
-	}
-	projects, err := a.s.Projects()
-	if err != nil {
-		http.Error(w, "Unable to load projects.", http.StatusInternalServerError)
-		return
-	}
-	for _, project := range projects {
-		if project.ID != r.URL.Query().Get("project_id") {
-			continue
-		}
-		settings, err := a.s.providerSettings()
-		if err != nil {
-			http.Error(w, "Unable to load provider settings.", http.StatusInternalServerError)
-			return
-		}
-		issues, err := listProjectIssues(r.Context(), project, a.issueClient, settings)
-		if err != nil {
-			http.Error(w, "Unable to load project issues.", http.StatusBadGateway)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(struct {
-			Issues []projectIssue `json:"issues"`
-		}{issues})
-		return
-	}
-	http.NotFound(w, r)
-}

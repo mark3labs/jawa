@@ -28,10 +28,13 @@ func (a *app) issueCardError(w http.ResponseWriter, r *http.Request, err error) 
 				return
 			}
 		}
-		if stream.write(elementsFrame(controls)) != nil {
+		if stream.write(elementsFrameMode("replace", "", controls)) != nil {
 			return
 		}
-		_ = stream.write(elementsFrame(render(notification(err.Error(), ""))))
+		if stream.write(elementsFrameMode("replace", "", render(cardIssueField(nil, "Refresh issues / check repository before recovering.", state)))) != nil {
+			return
+		}
+		_ = stream.write(elementsFrame(render(dialogError("card", r.FormValue("dialog_operation"), err.Error()))))
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
