@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 ARG GO_VERSION=1.27.0
 ARG RUST_VERSION=1
+ARG BUN_VERSION=1.3.0
+ARG UV_VERSION=0.9.2
+
+FROM oven/bun:${BUN_VERSION} AS bun
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # Forgejo CLI (fj). Upstream Linux binaries require glibc 2.39, newer than
 # bookworm's, so build it against the runtime's Debian release instead.
@@ -32,7 +37,7 @@ ARG TEA_SHA256_ARM64=0e14a036322eeb1fc55e266acafeb8490e523ed99f9232034ae74861e23
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl git gnupg build-essential pkg-config ripgrep \
-       bash file time python3 python3-pip python3-venv python3-pil \
+       bash file time python3 python3-pip python3-venv python3-pil chromium \
        libssl3 zlib1g \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -82,7 +87,11 @@ RUN useradd --create-home --uid 10001 --shell /bin/bash jawa \
     && ln -s /data/.bonnie/workspaces /w
 COPY --from=build /out/jawa /out/gopls /out/golangci-lint /usr/local/bin/
 COPY --from=fj /out/bin/fj /usr/local/bin/
-ENV LIGHTPANDA_DISABLE_TELEMETRY=true \
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=uv /uv /uvx /usr/local/bin/
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
+ENV CHROMIUM_PATH=/usr/bin/chromium \
+    LIGHTPANDA_DISABLE_TELEMETRY=true \
     GH_PROMPT_DISABLED=1 \
     JAWA_HTTP_ADDR=0.0.0.0:8080 \
     JAWA_SANDBOX_ROOT=/w \
@@ -94,6 +103,6 @@ EXPOSE 8080
 USER jawa
 WORKDIR /data
 # Check the same login-shell mode the agent uses, as the runtime user.
-RUN sh -lc 'command -v go && command -v gofmt && go version && gh --version && tea --version && fj version && gopls version && golangci-lint version'
+RUN sh -lc 'command -v go && command -v gofmt && go version && gh --version && tea --version && fj version && gopls version && golangci-lint version && chromium --version && bun --version && uv --version && uvx --version'
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/jawa"]

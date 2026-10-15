@@ -6,8 +6,10 @@ A coding agent built on [BONNIE](https://github.com/mark3labs/bonnie). Jawa rece
 work over NATS, edits code, runs tests, and can push branches and create pull
 requests. Lightpanda MCP provides browser tools.
 
-The image includes Go, Git, GitHub CLI, Go linters, Python, and common development
-utilities.
+The image includes Go, Git, GitHub CLI, Go linters, Python, Chromium, Bun (with
+bunx), uv (with uvx), and common development utilities. `CHROMIUM_PATH` defaults
+to `/usr/bin/chromium`. Bun and uv versions are pinned in the Dockerfile and can
+be overridden with the `BUN_VERSION` and `UV_VERSION` build arguments.
 
 ## Orchestrator
 
