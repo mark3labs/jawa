@@ -83,7 +83,7 @@ try {
           await page.waitForTimeout(160);
           const bounds = await dialog.boundingBox();
           assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width && bounds.y + bounds.height <= height, `${id}/${width}: outside viewport`);
-          assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth), `${id}: horizontal overflow`);
+          assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth), `${id}/${width}: horizontal overflow`);
           for (const input of await dialog.locator('input:not([type="hidden"]):not([type="checkbox"]), select, textarea').all()) {
             if (await input.isVisible()) assert.ok(await input.evaluate(el => parseFloat(getComputedStyle(el).fontSize) >= 16), 'input below 16px');
           }

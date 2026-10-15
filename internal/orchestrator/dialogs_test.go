@@ -219,7 +219,7 @@ func TestBoardDialogAndDragBindings(t *testing.T) {
 func TestDialogRetainsOriginatingProject(t *testing.T) {
 	a := testApp(t)
 	session, csrf := sseCookies(t, a)
-	first, err := a.s.CreateProjectDetails("first", "github", "https://github.com/acme/first", "main")
+	_, err := a.s.CreateProjectDetails("first", "github", "https://github.com/acme/first", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestDialogRetainsOriginatingProject(t *testing.T) {
 	}
 	for _, tc := range []struct{ ref, want string }{
 		{"http://example.com/board?project=" + second.ID, second.ID},
-		{"https://untrusted.example/board?project=" + second.ID, first.ID},
+		{"https://untrusted.example/board?project=" + second.ID, ""},
 	} {
 		r := httptest.NewRequest(http.MethodGet, "/dialogs/card", nil)
 		r.Header.Set("Referer", tc.ref)
