@@ -233,7 +233,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',runSending:false,runConfirmedDraft:'',traceFilter:'',filter:'',goto:'',prRefreshing:false,_dialogOpen:false,_menuOpen:false,_menuActed:false,_dragging:false,_typing:false,_g:0}"
+	return "{runDraft:'',runSending:false,runConfirmedDraft:'',traceFilter:'',filter:'',goto:'',prRefreshing:false,_dialogOpen:false,_dialogReturn:'',_menuOpen:false,_menuActed:false,_dragging:false,_typing:false,_g:0}"
 }
 
 func isCurrent(active bool) string {
@@ -290,7 +290,7 @@ templ appPage(d pageData) {
 					</main>
 				</div>
 				<div id="dialog-slot"></div>
-<form id="move-form" data-signals="{moveCard: '', moveStatus: '', movePosition: ''}" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
+<form id="move-form" data-on:board-move__window__delay.1ms="@post('/cards/move', {contentType:'form', selector: '#move-form'})" data-signals="{moveCard: '', moveStatus: '', movePosition: ''}" hidden data-on:submit__prevent="@post('/cards/move', {contentType:'form'})">
 		<input type="hidden" name="_csrf" value={ d.csrf }/>
 		@viewFields(d.v)
 		<input name="card_id" data-bind:move-card/>

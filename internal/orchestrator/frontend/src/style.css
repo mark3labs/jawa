@@ -817,3 +817,8 @@ label:has(> [data-slot="checkbox"]) { flex-direction: row; align-items: center; 
 }
 
 #run-message-scroller { height: auto; }
+
+/* Portaled dialogs are not descendants of .shell; retain mobile input sizing. */
+@media (max-width: 600px) {
+  .jawa-dialog input, .jawa-dialog textarea, .jawa-dialog [role="combobox"] { font-size: 16px; }
+}

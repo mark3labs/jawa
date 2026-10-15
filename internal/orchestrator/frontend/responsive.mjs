@@ -47,6 +47,7 @@ try {
     await page.locator('.topbar').getByRole('button', { name: 'New card', exact: true }).click();
     await page.getByLabel('Title', { exact: true }).fill(`Responsive ${'long-title-'.repeat(15)}`);
     await page.getByLabel('Description', {exact: true}).fill('Long description for responsive layout');
+    await page.locator('#card-issue-status').filter({hasNotText: 'Loading issues…'}).waitFor();
     await page.getByRole('checkbox', {name: 'Create issue', exact: true}).uncheck();
     await page.getByRole('button', { name: 'Create card', exact: true }).click();
     await page.locator('.task-card').waitFor();

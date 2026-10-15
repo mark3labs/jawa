@@ -44,7 +44,7 @@ templ boardContent(d pageData) {
  data-on:board-drag="$_dragging = evt.detail.active"
  data-on:board-fix={ "evt.detail.canFix ? @get('/dialogs/fix?card_id=' + encodeURIComponent(evt.detail.card), {filterSignals: {include: /^$/}}) : " + d.v.SnapshotAction() }
  data-on:board-plan="$goto = '/planning?card=' + encodeURIComponent(evt.detail.card) + '#approve-plan'"
- data-on:board-move="$moveCard = evt.detail.card; $moveStatus = evt.detail.status; $movePosition = String(evt.detail.position); @post('/cards/move', {contentType:'form', selector: '#move-form'})">
+ data-on:board-move="$moveCard = evt.detail.card; $moveStatus = evt.detail.status; $movePosition = String(evt.detail.position)">
 				<div class="lanes">
 					for _, status := range []string{"Todo", "Planning", "Building", "Fix", "Done"} {
 						<section class={ "lane", "lane-" + status } aria-label={ laneName(status) }>
@@ -208,10 +208,10 @@ templ cardNote(d pageData, c Card) {
 // Base UI owns menu placement, dismissal and keyboard navigation.
 templ cardMenu(d pageData, c Card) {
 	@dropdownmenu.DropdownMenu(dropdownmenu.Props{ID: "menu-" + c.ID}) {
-		@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: menuTrigger(ctx, templ.Attributes{"aria-label": "Actions for " + c.Title})}) {
+		@button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: menuTrigger(ctx, templ.Attributes{"aria-label": "Actions for " + c.Title, "data-on:dialog-close__window__delay.350ms": "$_dialogReturn === el.id && (el.focus(), $_dialogReturn = '')"})}) {
 			@icon("more")
 		}
-		@dropdownmenu.Content(dropdownmenu.ContentProps{Class: "menu w-auto min-w-48", Side: dropdownmenu.SideBottom, Align: dropdownmenu.AlignEnd, SideOffset: 6, Attributes: templ.Attributes{"data-on:click": "evt.target.closest('[data-slot=dropdown-menu-item]:not([data-disabled])') && ($_menuActed = true)"}}) {
+		@dropdownmenu.Content(dropdownmenu.ContentProps{Class: "menu w-auto min-w-48", Side: dropdownmenu.SideBottom, Align: dropdownmenu.AlignEnd, SideOffset: 6, Attributes: templ.Attributes{"data-on:click": "evt.target.closest('[data-slot=dropdown-menu-item]:not([data-disabled])') && ($_menuActed = true, $_dialogReturn = " + strconv.Quote("menu-" + c.ID + "-trigger") + ")"}}) {
 			if c.Status == "Done" {
 				if canAction(c, d.attempts, "fix") {
 					if d.prChecks[c.ID].State != "merged" {
@@ -302,7 +302,7 @@ templ cardMenu(d pageData, c Card) {
 			}
 			@dropdownmenu.Separator()
 			if canAction(c, d.attempts, "delete") {
-				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true"}}) {
+				@dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": dialogOpen("delete", c.ID, "")}}) {
 					@icon("trash")
 					<span>Delete…</span>
 				}

@@ -188,3 +188,29 @@ func TestDatastarBrowserFixture(t *testing.T) {
 	write("recovery.html", issueRecoveryControls("uncertain", "Check repository before recovering."))
 	write("blocked-issues.html", cardIssueField(nil, "Check repository before recovering.", "uncertain"))
 }
+
+// Regressions found by the real browser smoke: menu delete must use the
+// server opener, focus return uses the trigger itself, and drag requests wait
+// until Datastar has flushed data-bind values before building FormData.
+func TestBoardDialogAndDragBindings(t *testing.T) {
+	d := pageData{v: viewParams{View: viewBoard}, now: time.Now()}
+	var out bytes.Buffer
+	if err := appPage(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "data-on:board-move__window__delay.1ms") {
+		t.Fatal("drag transport must run after bound field effects")
+	}
+	out.Reset()
+	if err := cardMenu(d, Card{ID: "test", Status: "Todo", Title: "Task"}).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"/dialogs/delete?card_id=test", "data-on:dialog-close__window__delay.350ms", "el.focus()"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %s", want)
+		}
+	}
+	if strings.Contains(out.String(), "$deleteOpen") {
+		t.Fatal("obsolete dialog state")
+	}
+}

@@ -145,3 +145,19 @@ only the opening with its operation-keyed remove frame (not a global signal).
 Closing an in-flight dialog aborts waiting, not remote work; uncertain outcomes
 instruct Refresh ready PRs instead of claiming success. Live PR evidence patches
 remove eligibility and the visible card Merge button when no longer clear.
+
+### Component integration regressions
+
+With pinned shadcn-templ beta.14, a dialog opened from a portaled menu does
+not reliably restore focus to the card trigger. The approved temporary
+workaround records the menu trigger id in UI-only `$_dialogReturn`; the
+trigger's own delayed `dialog-close` listener focuses `el` after the dialog
+exit. It performs no DOM query and adds no application JS helper.
+
+Sortable's `board-move` event updates the move signals on the board. The shell
+form posts on a one-tick delayed window listener, after Datastar's bound input
+effects flush, so FormData contains the newly emitted card/lane/position.
+
+MessageScroller owns `data-pending-scroll`: preserve that attribute on its root
+and viewport during live morphs. Reapplying the server's initial pending marker
+after initialization can otherwise hide a mounted transcript indefinitely.

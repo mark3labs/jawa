@@ -687,7 +687,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',runSending:false,runConfirmedDraft:'',traceFilter:'',filter:'',goto:'',prRefreshing:false,_dialogOpen:false,_menuOpen:false,_menuActed:false,_dragging:false,_typing:false,_g:0}"
+	return "{runDraft:'',runSending:false,runConfirmedDraft:'',traceFilter:'',filter:'',goto:'',prRefreshing:false,_dialogOpen:false,_dialogReturn:'',_menuOpen:false,_menuActed:false,_dragging:false,_typing:false,_g:0}"
 }
 
 func isCurrent(active bool) string {
@@ -841,7 +841,7 @@ func appPage(d pageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</main></div><div id=\"dialog-slot\"></div><form id=\"move-form\" data-signals=\"{moveCard: '', moveStatus: '', movePosition: ''}\" hidden data-on:submit__prevent=\"@post('/cards/move', {contentType:'form'})\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</main></div><div id=\"dialog-slot\"></div><form id=\"move-form\" data-on:board-move__window__delay.1ms=\"@post('/cards/move', {contentType:'form', selector: '#move-form'})\" data-signals=\"{moveCard: '', moveStatus: '', movePosition: ''}\" hidden data-on:submit__prevent=\"@post('/cards/move', {contentType:'form'})\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

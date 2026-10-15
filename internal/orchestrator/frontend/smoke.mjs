@@ -105,8 +105,8 @@ async function drag(title, lane, accepted = true) {
 // Base UI portals action menus outside the card declaration.
 async function menu(title) {
  await card(title).getByRole('button', {name: `Actions for ${title}`, exact: true}).click();
- await page.getByRole('menu').waitFor({state: 'visible'});
- return page.getByRole('menu');
+ await page.locator('[role=menu][data-open]').waitFor({state: 'visible'});
+ return page.locator('[role=menu][data-open]');
 }
 async function action(title, name) {
  await (await menu(title)).getByRole('menuitem', {name, exact: true}).click();
@@ -282,6 +282,7 @@ try {
  await expect(page.getByLabel('Name', {exact: true})).toHaveValue('Project draft survives SSE');
  await expect(page.getByLabel('Repository name', {exact: true})).toHaveValue('example/draft');
  await page.locator('#project-dialog').getByRole('button', {name: 'Cancel', exact: true}).click();
+ await page.locator('[data-dialog]').waitFor({state: 'detached'});
  await page.getByLabel('Filter cards').fill('');
  await sameDocument();
  // G R navigation, card-specific history, state tabs and immutable disclosures.
@@ -306,6 +307,7 @@ try {
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
  await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
  const toolActivity = page.locator('.run-tool').first();
+ await toolActivity.evaluate(el => { for (let parent = el.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true; });
  await toolActivity.locator(':scope > summary').click();
  const activityID = await toolActivity.getAttribute('id');
  await page.getByLabel('Message / follow-up').fill('draft survives unsolicited updates');

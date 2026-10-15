@@ -257,7 +257,7 @@ func boardContent(d pageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" data-on:board-plan=\"$goto = '/planning?card=' + encodeURIComponent(evt.detail.card) + '#approve-plan'\" data-on:board-move=\"$moveCard = evt.detail.card; $moveStatus = evt.detail.status; $movePosition = String(evt.detail.position); @post('/cards/move', {contentType:'form', selector: '#move-form'})\"><div class=\"lanes\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" data-on:board-plan=\"$goto = '/planning?card=' + encodeURIComponent(evt.detail.card) + '#approve-plan'\" data-on:board-move=\"$moveCard = evt.detail.card; $moveStatus = evt.detail.status; $movePosition = String(evt.detail.position)\"><div class=\"lanes\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1252,7 +1252,7 @@ func cardMenu(d pageData, c Card) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: menuTrigger(ctx, templ.Attributes{"aria-label": "Actions for " + c.Title})}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var61), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = button.Button(button.Props{Type: button.TypeButton, Class: "icon-btn", Size: button.SizeIconSm, Variant: button.VariantGhost, Attributes: menuTrigger(ctx, templ.Attributes{"aria-label": "Actions for " + c.Title, "data-on:dialog-close__window__delay.350ms": "$_dialogReturn === el.id && (el.focus(), $_dialogReturn = '')"})}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var61), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1660,7 +1660,7 @@ func cardMenu(d pageData, c Card) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": "$deleteCard = " + strconv.Quote(c.ID) + "; $deleteOrphan = " + strconv.FormatBool(cardNeedsReconciliation(c, d.attempts)) + "; $deleteAcknowledged = false; $deleteOpen = true"}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var71), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = dropdownmenu.Item(dropdownmenu.ItemProps{Class: "menu-item danger", Variant: dropdownmenu.ItemVariantDestructive, Attributes: templ.Attributes{"data-on:click": dialogOpen("delete", c.ID, "")}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var71), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1672,7 +1672,7 @@ func cardMenu(d pageData, c Card) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = dropdownmenu.Content(dropdownmenu.ContentProps{Class: "menu w-auto min-w-48", Side: dropdownmenu.SideBottom, Align: dropdownmenu.AlignEnd, SideOffset: 6, Attributes: templ.Attributes{"data-on:click": "evt.target.closest('[data-slot=dropdown-menu-item]:not([data-disabled])') && ($_menuActed = true)"}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var62), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = dropdownmenu.Content(dropdownmenu.ContentProps{Class: "menu w-auto min-w-48", Side: dropdownmenu.SideBottom, Align: dropdownmenu.AlignEnd, SideOffset: 6, Attributes: templ.Attributes{"data-on:click": "evt.target.closest('[data-slot=dropdown-menu-item]:not([data-disabled])') && ($_menuActed = true, $_dialogReturn = " + strconv.Quote("menu-"+c.ID+"-trigger") + ")"}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var62), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

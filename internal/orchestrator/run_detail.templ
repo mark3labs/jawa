@@ -190,8 +190,8 @@ templ runParts(m runMessage) {
 
 templ runChat(d runDetail) {
 	@messagescroller.Provider(messagescroller.ProviderProps{AutoScroll: true}) {
- @messagescroller.MessageScroller(messagescroller.Props{ID: "run-message-scroller"}) {
- @messagescroller.Viewport(messagescroller.ViewportProps{ID: "run-transcript", Class: "run-chat-transcript"}) {
+ @messagescroller.MessageScroller(messagescroller.Props{ID: "run-message-scroller", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
+ @messagescroller.Viewport(messagescroller.ViewportProps{ID: "run-transcript", Class: "run-chat-transcript", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
  @messagescroller.Content(messagescroller.ContentProps{ID: "run-messages"}) {
 		for _, m := range d.Messages {
 			<article id={ m.Key } class={ "run-chat-message run-role-" + m.Role }>
