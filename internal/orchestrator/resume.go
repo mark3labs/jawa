@@ -136,6 +136,13 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 			return errors.New("automatic schedule changed or not due")
 		}
 	}
+	var chatQueued bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM run_chat WHERE task_id=? AND status IN ('queued','dispatched','active','ambiguous'))`, a.TaskID).Scan(&chatQueued); err != nil {
+		return err
+	}
+	if chatQueued {
+		return errors.New("explicit chat pending")
+	}
 	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
 	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 	defer cancel()
@@ -404,6 +411,9 @@ func (w *Workflow) finishFailedResume(id string, reply reportprotocol.FailedResu
 	if err != nil {
 		return err
 	}
+	if blocked, e := chatEvidenceBlocked(tx, task); e != nil || blocked {
+		return e
+	}
 	var req reportprotocol.FailedResume
 	if err = json.Unmarshal([]byte(requestJSON), &req); err != nil {
 		return err
@@ -544,6 +554,9 @@ func resumeOutcomeBlocked(tx *sql.Tx, out client.Outcome) (bool, error) {
 	return false, rows.Err()
 }
 func noPendingResume(tx *sql.Tx, card string) error {
+	if err := noActiveChat(tx, card); err != nil {
+		return err
+	}
 	var pending bool
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, card).Scan(&pending); err != nil {
 		return err

@@ -402,7 +402,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.28.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.29.0
 bonnie chat
 ```
 
@@ -691,7 +691,7 @@ The native/enhanced form sends `card_id`, `expected_attempt_id`,
 ineligible submissions fail without writing metadata. Already effectively
 merged cards omit the action.
 
-### Run detail (BONNIE v0.28.0)
+### Run detail (BONNIE v0.29.0)
 
 Open a pinned attempt in **Runs** to view **Chat** and **Trace** through the
 agent's outbound NATS connection. No browser NATS credentials or agent TCP
@@ -716,7 +716,7 @@ escaped; stdout, stderr and metadata stay separate. The focusable transcript
 scrolls independently and follows new messages only while at the bottom. The
 compact composer grows with input; plain Enter inserts a newline and Ctrl+Enter
 submits through native validation. Drafts remain editable while sending; only a
-confirmed success clears an unchanged submitted draft.
+durable acceptance clears an unchanged submitted draft; this is not delivery confirmation.
 
 Trace contains separate API-backed tables for snapshot messages, durable events
 and live events, omitting empty sources and columns. Search includes collapsed
@@ -724,14 +724,39 @@ payloads without server requests. Missing fields and empty results stay silent;
 there are no missing-history or offline banners. Native links and disclosures
 work without JavaScript. Local workflow deliveries/outcomes are not shown here.
 
-Chat steers a current running build or queues a follow-up after accepted typed
-completion/readiness. A completed run without accepted completion, failed run,
-waiting/guidance run, pending recovery/cancellation, or offline agent is
-read-only; use the existing card recovery/guidance flow. Stop targets the exact
-observed active turn. It requests cancellation, not proof of completion. Core
-NATS mutations are **never retried**: a lost reply or the 25-second synchronous
-send deadline has an unknown outcome and may interrupt execution. Check the
-conversation before sending again.
+Every retained pinned Planning, Build and Fix run accepts chat, including offline,
+failed, cancelled and historical runs. **Message queued** means the local SQLite
+outbox committed, not that an agent consumed it. Delivery records show queued,
+dispatched/unconfirmed, active, completed, failed or ambiguous. The composer stays
+editable while offline. Messages retain their identity across uncertain browser
+retries; changing the draft starts a new message. No new attempt/branch is created.
+
+Current unfinished work continues on its original owner and conversation. Pending
+blockers, clarification and specification review use the exact displayed interaction
+and existing Answer outbox; chat review text requests revision, never approval.
+Historical, readied, force-stopped, cancelled planners and approved planners receive
+conversational follow-ups only. Host-journal provenance and orchestrator guards
+reject their workflow reports/status/outcomes. Approved specs, readiness and force-stop
+fences remain unchanged. Prompting is not a sandbox: configured tools still exist.
+
+Deploy updated agents and orchestrator together, back up SQLite before migration
+00022, and retain original journals/sandboxes. Agents advertise `jawa.run_chat=1`;
+`bonnie.run_chat.v1.<agent>` requires a short-lived signed orchestrator token as
+well as broker access. Old/unreachable agents leave visible pending delivery;
+there is no unsafe synchronous fallback. Missing/retired journals fail explicitly
+and never create a replacement run. Messages are sensitive durable data, cascading
+with card deletion; they are not logged or cached by the browser service worker.
+
+The host journals each command before execution and its receipt afterwards. Lost
+replies replay the same command, not a new input. An idle orphan intent becomes
+ambiguous and blocks subsequent execution. **Reconcile uncertain message** asks
+the idle owner to durably fence it without replay; after confirmation, explicitly
+submit a new message if wanted. Do not delete its ledger or blindly resubmit. Exact-turn Stop requests cooperative cancellation, not rollback. A new
+explicit message to an idle interrupted run first closes that exact old turn with
+RequestCancel, then Start consumes the new text on the retained conversation.
+This deliberately ends the old completion budget rather than recovering old work
+before delivering chat. BONNIE v0.29's ErrInputDeferred is surfaced explicitly,
+never interpreted as delivery. No exactly-once external side-effects claim is made.
 
 The API is not a full journal: selected-branch snapshot messages have no reliable
 turn/timestamp mapping. Events retain source order and supplied turn IDs, sequence,

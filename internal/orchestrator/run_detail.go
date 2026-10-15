@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/runtime"
+	"jawa/internal/reportprotocol"
 	"jawa/internal/runapitoken"
 	"net/http"
 	"strings"
@@ -19,6 +20,9 @@ type runDetail struct {
 	Tab         string
 	Observation runObservation
 	Messages    []runMessage
+	Chat        []RunChatMessage
+	Interaction string
+	MessageID   string
 	Policy      runPolicy
 }
 type runPolicy struct {
@@ -59,50 +63,14 @@ func (w *Workflow) apiAvailable(ctx context.Context, source runObserver) bool {
 	return false
 }
 
-// Eligibility is re-read for every action. Run-completed without accepted
-// workflow completion never enables a manual chat resume.
+// Chat acceptance is independent of remote availability and workflow state.
+// Stop alone remains bound to an observed exact active turn.
 func (w *Workflow) runPolicy(a Attempt, snap *bonnieclient.Snapshot, online bool) runPolicy {
-	p := runPolicy{Reason: "Read-only. Use the card's authoritative Resume/Retry or guidance action."}
-	if !online || snap == nil {
-		p.Reason = "Agent offline, unreachable, or without run API support. Stored workflow data only."
-		return p
-	}
-	if snap.RunID != a.RunID || snap.Suspend != nil || snap.State == runtime.RunWaiting || snap.State == runtime.RunRetired || snap.State == runtime.RunCancelled || snap.State == runtime.RunFailed || snap.State == runtime.RunInterrupted {
-		return p
-	}
-	latest, err := w.CardResult(a.CardID)
-	if err != nil {
-		return p
-	}
-	var lane string
-	if err := w.s.db.QueryRow(`SELECT status FROM cards WHERE id=?`, a.CardID).Scan(&lane); err != nil {
-		return p
-	}
-	if lane != "Building" && lane != "Fix" && lane != "Done" {
-		return p
-	}
-	var pending, completed bool
-	err = w.s.db.QueryRow(`SELECT
- EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending') OR
- EXISTS(SELECT 1 FROM workflow_cancel_requests WHERE task_id=? AND status IN ('pending','requested','uncertain')) OR
- EXISTS(SELECT 1 FROM workflow_interactions WHERE task_id=? AND status IN ('pending','queued')),
- EXISTS(SELECT 1 FROM typed_reports WHERE task_id=? AND kind='complete_task')`, a.CardID, a.TaskID, a.TaskID, a.TaskID).Scan(&pending, &completed)
-	if err != nil || pending {
-		return p
-	}
-	if latest.ID != a.ID {
-		return p
-	}
-	if a.Ready || completed {
-		p.Send = true
-		p.Mode = "queue"
-		p.Reason = "Follow-up only; workflow completion and readiness remain unchanged."
-	} else if a.RunState == "running" && snap.State == runtime.RunRunning && attemptActive(a) && (lane == "Building" || lane == "Fix") {
-		p.Send = true
+	p := runPolicy{Send: true, Mode: "queue", Reason: "Message queued durably; historical work is conversational follow-up only."}
+	if !a.Ready && a.RunState != "abandoned" {
 		p.Mode = "steer"
-		p.Reason = "Message the active turn."
 	}
-	if p.Send && snap.State == runtime.RunRunning && snap.TurnID != "" {
+	if online && snap != nil && snap.RunID == a.RunID && snap.State == runtime.RunRunning && snap.TurnID != "" {
 		p.Stop = true
 		p.Turn = snap.TurnID
 	}
@@ -114,6 +82,7 @@ func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, 
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
+	a.loadChatDetail(&d)
 	return d
 }
 
@@ -122,10 +91,11 @@ func (a *app) historyDetailModel(r *http.Request, record RunRecord, obs runObser
 		return a.detailModel(r, record.Build, obs, online)
 	}
 	d := runDetail{Record: record, Tab: detailTab(r), Observation: obs,
-		Policy: runPolicy{Reason: "Planning is observation-only. Replies, review, guidance, recovery and cancellation live on the card."}}
+		Policy: runPolicy{Send: true, Mode: "steer", Reason: "Messages are saved before delivery. Specification approval still requires the card action."}}
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
+	a.loadChatDetail(&d)
 	return d
 }
 
@@ -145,13 +115,13 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 	action := ""
 	if len(parts) == 2 {
 		action = parts[1]
-		if action != "events" && action != "chat" && action != "stop" {
+		if action != "events" && action != "chat" && action != "stop" && action != "reconcile" {
 			http.NotFound(w, r)
 			return
 		}
 	}
 	method := http.MethodGet
-	if action == "chat" || action == "stop" {
+	if action == "chat" || action == "stop" || action == "reconcile" {
 		method = http.MethodPost
 	}
 	if r.Method != method {
@@ -165,8 +135,8 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if method == http.MethodPost {
-		if mode == "Planning" {
-			a.responseError(w, r, "Planning runs are observation-only. Use the card.", http.StatusForbidden)
+		if mode == "Planning" && action == "stop" {
+			a.responseError(w, r, "Use Cancel planning on the card.", http.StatusConflict)
 			return
 		}
 		if !a.csrf(w, r) {
@@ -175,6 +145,14 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 		ready, e := a.s.NATSConfigured()
 		if e != nil || !ready {
 			a.responseError(w, r, "NATS setup required.", http.StatusConflict)
+			return
+		}
+		if action == "reconcile" {
+			a.reconcileRunChatAction(w, r, attempt)
+			return
+		}
+		if action == "chat" {
+			a.runChatAction(w, r, attempt)
 			return
 		}
 		a.runDetailAction(w, r, attempt.Build, action)
@@ -298,50 +276,45 @@ func (a *app) runDetailAction(w http.ResponseWriter, r *http.Request, attempt At
 		return
 	}
 	policy := a.workflow.runPolicy(fresh, snap, true)
-	notice := "Message confirmed."
-	if action == "chat" {
-		text := r.FormValue("text")
-		if !policy.Send {
-			a.responseError(w, r, policy.Reason, http.StatusConflict)
+	notice := "Cancellation requested; wait for agent confirmation."
+	turn := r.FormValue("turn_id")
+	if !policy.Stop || turn == "" || turn != snap.TurnID {
+		a.responseError(w, r, "Active turn changed or cannot be stopped. No request sent.", http.StatusConflict)
+		return
+	}
+	activeWorkflow := !fresh.Ready && policy.Mode == "steer"
+	tx, e := a.s.writeTx()
+	if e == nil {
+		class, ce := classifyChat(tx, buildRun(fresh))
+		chat, he := chatContinuation(tx, fresh.TaskID)
+		_ = tx.Rollback()
+		if ce == nil && he == nil && (class == "followup" || chat) {
+			activeWorkflow = false
+		}
+	}
+	if activeWorkflow {
+		if err = a.workflow.checkCancelLatest(fresh); err != nil {
+			a.responseError(w, r, "Cancellation target changed.", http.StatusConflict)
 			return
 		}
-		if strings.TrimSpace(text) == "" || len(text) > 64<<10 {
-			a.responseError(w, r, "Enter a message of at most 64 KiB.", http.StatusBadRequest)
+		if err = a.workflow.cancelAudit(fresh, turn, "pending", ""); err != nil {
+			a.responseError(w, r, "Cannot record cancellation. No request sent.", http.StatusServiceUnavailable)
 			return
 		}
-		err = a.workflow.runAPI.send(r.Context(), fresh, text, policy.Mode)
-	} else {
-		turn := r.FormValue("turn_id")
-		if !policy.Stop || turn == "" || turn != snap.TurnID {
-			a.responseError(w, r, "Active turn changed or cannot be stopped. No request sent.", http.StatusConflict)
-			return
+	}
+	result, callErr := a.workflow.runAPI.cancelTurn(r.Context(), fresh, turn)
+	err = callErr
+	if err == nil && (result.RunID != fresh.RunID || result.TurnID != turn || result.Status != runtime.CancelRequested) {
+		err = errors.New("cancellation not confirmed")
+	}
+	if activeWorkflow {
+		status := "requested"
+		if err != nil {
+			status = "uncertain"
 		}
-		activeWorkflow := !fresh.Ready && policy.Mode == "steer"
-		if activeWorkflow {
-			if err = a.workflow.checkCancelLatest(fresh); err != nil {
-				a.responseError(w, r, "Cancellation target changed.", http.StatusConflict)
-				return
-			}
-			if err = a.workflow.cancelAudit(fresh, turn, "pending", ""); err != nil {
-				a.responseError(w, r, "Cannot record cancellation. No request sent.", http.StatusServiceUnavailable)
-				return
-			}
-		}
-		result, callErr := a.workflow.runAPI.cancelTurn(r.Context(), fresh, turn)
-		err = callErr
-		if err == nil && (result.RunID != fresh.RunID || result.TurnID != turn || result.Status != runtime.CancelRequested) {
-			err = errors.New("cancellation not confirmed")
-		}
-		notice = "Cancellation requested; wait for agent confirmation."
-		if activeWorkflow {
-			status := "requested"
-			if err != nil {
-				status = "uncertain"
-			}
-			auditErr := a.workflow.cancelAudit(fresh, turn, status, "")
-			if err == nil {
-				err = auditErr
-			}
+		auditErr := a.workflow.cancelAudit(fresh, turn, status, "")
+		if err == nil {
+			err = auditErr
 		}
 	}
 	if err != nil {
@@ -358,10 +331,7 @@ func (a *app) runDetailAction(w http.ResponseWriter, r *http.Request, attempt At
 	if stream.write(elementsFrame(out.String())) != nil {
 		return
 	}
-	if action == "chat" {
-		payload, _ := json.Marshal(map[string]string{"runConfirmedDraft": r.FormValue("text")})
-		_ = stream.write("event: datastar-patch-signals\ndata: signals " + string(payload) + "\n\n")
-	}
+
 }
 
 func validAttemptID(id string) bool { _, err := uuid.Parse(id); return err == nil }
@@ -376,4 +346,85 @@ func validRunDestination(id string) bool {
 		}
 	}
 	return true
+}
+
+func (a *app) loadChatDetail(d *runDetail) {
+	d.MessageID = uuid.NewString()
+	d.Chat = a.workflow.chatMessages(d.Record)
+	for i := range d.Chat {
+		var receipt reportprotocol.ChatReceipt
+		if json.Unmarshal([]byte(d.Chat[i].Receipt), &receipt) == nil && receipt.UserIndex != nil && d.Observation.Snapshot != nil {
+			index := *receipt.UserIndex
+			if index >= 0 && index < len(d.Messages) {
+				for _, part := range d.Messages[index].Parts {
+					if part.Text == d.Chat[i].Text {
+						d.Chat[i].InTranscript = true
+					}
+				}
+			}
+		}
+	}
+	tx, err := a.s.writeTx()
+	if err != nil {
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	token, _, err := chatInteraction(tx, d.Record)
+	if err == nil {
+		d.Interaction = token
+	}
+	class, err := classifyChat(tx, d.Record)
+	if err == nil && class == "followup" {
+		d.Policy.Mode = "queue"
+	}
+}
+func (a *app) runChatAction(w http.ResponseWriter, r *http.Request, record RunRecord) {
+	_, err := a.workflow.QueueRunChat(r.Context(), record.Mode, record.ID, r.FormValue("message_id"), r.FormValue("text"), r.FormValue("interaction"))
+	if err != nil {
+		a.responseError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !datastarRequest(r) {
+		http.Redirect(w, r, record.path(detailTab(r)), http.StatusSeeOther)
+		return
+	}
+	var out bytes.Buffer
+	_ = notification("Message queued.", "").Render(r.Context(), &out)
+	stream := newSSEWriter(w)
+	if stream.write(elementsFrame(out.String())) != nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"runConfirmedDraft": r.FormValue("text"), "runAcceptedMessage": r.FormValue("message_id")})
+	_ = stream.write("event: datastar-patch-signals\ndata: signals " + string(payload) + "\n\n")
+}
+
+// Reconciliation fences the original command; it never replays uncertain work
+// or creates another command. New text is a separate explicit submission.
+func (a *app) reconcileRunChatAction(w http.ResponseWriter, r *http.Request, record RunRecord) {
+	m, err := scanChat(a.s.db.QueryRow(`SELECT `+chatColumns+` FROM run_chat WHERE id=? AND mode=? AND local_id=? AND status='ambiguous'`, r.FormValue("chat_id"), record.Mode, record.ID))
+	if err != nil {
+		a.responseError(w, r, "Message changed; reload before reconciling.", http.StatusConflict)
+		return
+	}
+	var cmd reportprotocol.Chat
+	if json.Unmarshal([]byte(m.Request), &cmd) != nil {
+		a.responseError(w, r, "Command unavailable.", http.StatusConflict)
+		return
+	}
+	cmd.Reconcile = true
+	cmd.Token = runapitoken.Sign(a.workflow.runAPI.key, cmd.Target.AgentID, time.Now())
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	receipt, err := reportprotocol.SendChat(ctx, a.workflow.runAPI.conn, cmd)
+	if err != nil || receipt.Status != "failed" || receipt.Failure != "reconciled_not_replayed" {
+		a.responseError(w, r, "Owner has not confirmed safe reconciliation; no new execution started.", http.StatusConflict)
+		return
+	}
+	raw, _ := json.Marshal(receipt)
+	_, err = a.s.db.Exec(`UPDATE run_chat SET status='failed',failure=?,receipt_json=?,updated_at=? WHERE id=? AND status='ambiguous'`, receipt.Failure, string(raw), time.Now().UnixMilli(), m.ID)
+	if err != nil {
+		a.responseError(w, r, "Unable to save reconciliation; retry the same action.", http.StatusServiceUnavailable)
+		return
+	}
+	http.Redirect(w, r, record.path("chat"), http.StatusSeeOther)
 }

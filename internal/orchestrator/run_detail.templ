@@ -78,30 +78,33 @@ templ runDetailPage(d runDetail, csrf string) {
 			</div>
 		}
 		@runDetailContent(d)
-		if d.Tab=="chat" && d.Record.Mode!="Planning" {
-			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface", Attributes: templ.Attributes{"data-signals:_can-send": strconv.FormatBool(d.Policy.Send)}}) {
-				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-indicator:run-sending data-on:submit__prevent={ "!$runSending && @post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'})" }>
-					<input type="hidden" name="_csrf" value={ csrf }/>
+ @runChatReconciliation(d,csrf)
+		if d.Tab=="chat" {
+			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface", Attributes: templ.Attributes{"data-signals:_can-send": strconv.FormatBool(d.Policy.Send),"data-signals:_message-id": "'"+d.MessageID+"'", "data-signals:_interaction": "'"+d.Interaction+"'"}}) {
+				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-indicator:run-sending data-on:submit__prevent={ "!$runSending && ($_retryText !== null && $_retryText !== $runDraft && ($_messageId = crypto.randomUUID()), $_retryText = $runDraft, @post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'}))" }>
+					<input type="hidden" name="message_id" id="run-message-id" value={d.MessageID} data-bind:_message-id/>
+ <input type="hidden" name="interaction" id="run-interaction" value={d.Interaction} data-bind:_interaction/>
+ <input type="hidden" name="_csrf" value={ csrf }/>
 					@label.Label(label.Props{For: "run-draft", Class: "sr-only"}) {
 						Message / follow-up
 					}
-					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 1, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "65536", "required": true, "data-on:keydown": "evt.key === 'Enter' && evt.ctrlKey && !evt.isComposing && (evt.preventDefault(), $_canSend && !$runSending && el.form.requestSubmit())"}})
+					@textarea.Textarea(textarea.Props{ID: "run-draft", Name: "text", Rows: 1, Placeholder: "Message the agent", Attributes: templ.Attributes{"data-bind:run-draft": "", "maxlength": "64000", "required": true, "data-on:keydown": "evt.key === 'Enter' && evt.ctrlKey && !evt.isComposing && (evt.preventDefault(), $_canSend && !$runSending && el.form.requestSubmit())"}})
 				</form>
 				@runDetailControls(d, csrf)
 			}
 		} else {
 			@runDetailControls(d, csrf)
 		}
-		<div hidden data-effect="$runConfirmedDraft !== '' && ($runDraft === $runConfirmedDraft && ($runDraft = ''), $runConfirmedDraft = '')"></div>
+		<div hidden data-effect="$runAcceptedMessage !== '' && ($runDraft === $runConfirmedDraft && ($runDraft = ''), $_messageId = crypto.randomUUID(), $_retryText = null, $runAcceptedMessage = '', $runConfirmedDraft = '')"></div>
 	</div>
 }
 
 templ runDetailControls(d runDetail, csrf string) {
-	<div id="run-detail-controls" class="run-controls">
-		if d.Tab == "chat" && d.Record.Mode != "Planning" {
-			<span class="meta">Ctrl+Enter to send</span>
+	<div id="run-detail-controls" class="run-controls" data-interaction={ d.Interaction } data-effect={"!$runDraft && ($_interaction = '"+d.Interaction+"')"}>
+		if d.Tab == "chat" {
+			<span class="meta">Ctrl+Enter to send · Messages persist before delivery</span>
 		}
-		if d.Tab=="chat" && d.Record.Mode != "Planning" {
+		if d.Tab=="chat" {
 			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!$_canSend || $runSending"}}) {
 				if d.Policy.Mode=="queue" {
 					Send follow-up
@@ -133,6 +136,9 @@ templ runDetailContent(d runDetail) {
  { d.Record.label() }
  }
  }
+ if d.Observation.Snapshot!=nil {
+ <div class="meta">Observed conversation: { string(d.Observation.Snapshot.State) }</div>
+ }
  if d.Record.RunState != "" {
 			<div class="run-observed-state">
 				@badge.Badge() {
@@ -144,6 +150,7 @@ templ runDetailContent(d runDetail) {
 			@runTrace(d)
 		} else {
 			@runChat(d)
+ @runChatDelivery(d)
 		}
 	</div>
 }
@@ -262,4 +269,44 @@ templ runTrace(d runDetail) {
 		@runTraceTableView(eventTrace("Durable events", "durable", d.Observation.Durable))
 		@runTraceTableView(eventTrace("Live events", "live", d.Observation.Live))
 	</div>
+}
+
+// Delivery records are separate from immutable workflow status and remote
+// transcript. A status row never claims an unavailable conversation recovered.
+templ runChatDelivery(d runDetail) {
+ <section aria-label="Message delivery" class="space-y-2">
+ for _, message := range d.Chat {
+ <article id={ "chat-delivery-"+message.ID } class="rounded border p-3">
+ if !message.InTranscript {
+ <p class="whitespace-pre-wrap break-words">{ message.Text }</p>
+ }
+ @badge.Badge() {
+ { message.Status }
+ }
+ <span class="meta">{ message.Classification }</span>
+ if message.Status=="ambiguous" {
+ <p>Execution is unconfirmed. Reload to reconcile without replaying this message.</p>
+ }
+ if message.Failure != "" {
+ <p role="status">{ message.Failure }</p>
+ }
+ </article>
+ }
+ </section>
+}
+
+templ runChatReconciliation(d runDetail, csrf string) {
+ <div class="space-y-2">
+ for _, message := range d.Chat {
+ if message.Status=="ambiguous" {
+ <form method="post" action={ detailAction(d,"reconcile") }>
+ <input type="hidden" name="_csrf" value={ csrf }/>
+ <input type="hidden" name="chat_id" value={ message.ID }/>
+ @button.Button(button.Props{Type:button.TypeSubmit,Variant:button.VariantOutline}) {
+ Reconcile uncertain message (do not replay)
+ }
+ </form>
+ }
+ }
+ </div>
 }

@@ -172,6 +172,17 @@ func (w *Workflow) GuideBlocked(cardID, text, expected string) error {
 	if cancelling {
 		return errors.New("cancellation requested; guidance cannot be delivered")
 	}
+	if err = queueBlockedReply(tx, a, expected, text); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	w.logAttempt(log.InfoLevel, "Blocker guidance queued", a)
+	return nil
+}
+
+func queueBlockedReply(tx *sql.Tx, a Attempt, expected, text string) error {
 	res, err := tx.Exec(`UPDATE workflow_interactions SET status='queued',reply=? WHERE report_id=? AND task_id=? AND status='pending'`, text, expected, a.TaskID)
 	if err != nil {
 		return err
@@ -182,10 +193,6 @@ func (w *Workflow) GuideBlocked(cardID, text, expected string) error {
 	if _, err = tx.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND state='blocked'`, guidanceQueuedNotice, time.Now().UnixMilli(), a.ID); err != nil {
 		return err
 	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	w.logAttempt(log.InfoLevel, "Blocker guidance queued", a)
 	return nil
 }
 

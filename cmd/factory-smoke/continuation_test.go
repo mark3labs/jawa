@@ -96,7 +96,7 @@ func TestManagedCompletionContinuesSavedPrompt(t *testing.T) {
 	}
 	// A fresh host/factory must restore the saved prompt through the wrapper.
 	err = newAgent(nil).WithRuntime(t.Context(), func(ctx context.Context, rt *bonnie.Runtime) error {
-		run, err := rt.Runner().Start(ctx, runID, runtime.Input{Text: prompt})
+		run, err := rt.Runner().StartRetry(ctx, runID, runtime.Input{Text: prompt})
 		if err != nil {
 			return err
 		}

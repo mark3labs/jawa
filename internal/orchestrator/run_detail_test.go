@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/google/uuid"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/runtime"
@@ -86,34 +87,25 @@ func TestRunDetailRoutesAndReadOnly(t *testing.T) {
 	status(t, request(a, "GET", "/runs/abc", nil, session), 404)
 	status(t, request(a, "GET", "/runs/"+attempt.ID+"/chat", nil, session), 405)
 	status(t, request(a, "POST", "/runs/"+attempt.ID+"/chat", url.Values{"text": {"hello"}}, session), 403)
-	status(t, request(a, "POST", "/runs/"+attempt.ID+"/chat", url.Values{"text": {"hello"}, "_csrf": {csrf.Value}}, session, csrf), 409)
+	status(t, request(a, "POST", "/runs/"+attempt.ID+"/chat", url.Values{"text": {"hello"}, "message_id": {uuid.NewString()}, "_csrf": {csrf.Value}}, session, csrf), 303)
 }
-func TestRunPolicyDoesNotResumeUnreportedCompletion(t *testing.T) {
+func TestRunPolicyAcceptsRetainedPinnedRuns(t *testing.T) {
 	a := testApp(t)
 	attempt := pinnedDetailAttempt(t, a)
-	snap := &bonnieclient.Snapshot{RunID: attempt.RunID, TurnID: "turn-1", State: runtime.RunRunning}
-	if p := a.workflow.runPolicy(attempt, snap, true); !p.Send || p.Mode != "steer" || !p.Stop {
-		t.Fatal(p)
-	}
-	for _, state := range []runtime.RunState{runtime.RunWaiting, runtime.RunFailed, runtime.RunCancelled, runtime.RunRetired, runtime.RunCompleted} {
-		snap.State = state
-		if p := a.workflow.runPolicy(attempt, snap, true); p.Send {
-			t.Fatal("enabled", state, p)
+	for _, state := range []runtime.RunState{runtime.RunRunning, runtime.RunWaiting, runtime.RunFailed, runtime.RunInterrupted, runtime.RunCancelled, runtime.RunRetired, runtime.RunCompleted} {
+		for _, online := range []bool{true, false} {
+			snap := &bonnieclient.Snapshot{RunID: attempt.RunID, TurnID: "turn-1", State: state}
+			p := a.workflow.runPolicy(attempt, snap, online)
+			if !p.Send {
+				t.Fatalf("%s online=%v: %+v", state, online, p)
+			}
+			if p.Stop != (online && state == runtime.RunRunning) {
+				t.Fatal(p)
+			}
 		}
 	}
-	attempt.Ready = true
-	snap.State = runtime.RunCompleted
-	if p := a.workflow.runPolicy(attempt, snap, true); !p.Send || p.Mode != "queue" {
+	if p := a.workflow.runPolicy(attempt, nil, false); !p.Send {
 		t.Fatal(p)
-	}
-	if p := a.workflow.runPolicy(attempt, snap, false); p.Send {
-		t.Fatal("offline enabled")
-	}
-	if err := a.workflow.cancelAudit(attempt, "turn-1", "uncertain", ""); err != nil {
-		t.Fatal(err)
-	}
-	if p := a.workflow.runPolicy(attempt, snap, true); p.Send {
-		t.Fatal("pending cancellation enabled")
 	}
 }
 func TestRunDisplayEscapesUntrustedContent(t *testing.T) {

@@ -218,7 +218,7 @@ func TestPlanningRunDetailRoutesAndDeliveries(t *testing.T) {
 				t.Fatal("missing", want)
 			}
 		}
-		for _, absent := range []string{`id="run-composer"`, "Send message", "Stop current turn", "Copy branch", "Agent unreachable", "Planning is observation-only"} {
+		for _, absent := range []string{"Stop current turn", "Copy branch", "Agent unreachable", "Planning is observation-only"} {
 			if strings.Contains(html, absent) {
 				t.Fatal("mutation visible", absent)
 			}
@@ -228,7 +228,11 @@ func TestPlanningRunDetailRoutesAndDeliveries(t *testing.T) {
 		}
 	}
 	for _, action := range []string{"chat", "stop"} {
-		status(t, request(a, "POST", r.basePath()+"/"+action, url.Values{"_csrf": {csrf.Value}, "text": {"hello"}}, session, csrf), http.StatusForbidden)
+		want := http.StatusSeeOther
+		if action == "stop" {
+			want = http.StatusConflict
+		}
+		status(t, request(a, "POST", r.basePath()+"/"+action, url.Values{"_csrf": {csrf.Value}, "text": {"hello"}, "message_id": {uuid.NewString()}}, session, csrf), want)
 	}
 	for _, path := range []string{"/runs/" + r.ID, "/runs/planning/" + uuid.NewString(), r.basePath() + "/events/extra", "/runs/planning/invalid"} {
 		status(t, request(a, "GET", path, nil, session), 404)

@@ -118,6 +118,17 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		return ack, err
 	}
 
+	var followup bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM run_chat WHERE task_id=? AND classification='followup' AND request_json<>'')`, r.TaskID).Scan(&followup); err != nil {
+		return ack, err
+	}
+	if followup {
+		return ack, errors.New("follow-up has no workflow authority")
+	}
+	continuation, err := chatContinuation(tx, r.TaskID)
+	if err != nil {
+		return ack, err
+	}
 	t, planningErr := sqlc.New(tx).GetPlanningTurn(ctx, r.TaskID)
 	if planningErr != nil && !errors.Is(planningErr, sql.ErrNoRows) {
 		return ack, planningErr
@@ -132,6 +143,17 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if r.Kind == reportprotocol.CompleteTask && sessionState != "approved" {
 			return ack, errors.New("completeTask is not allowed before planning approval")
 		}
+		if continuation {
+			record, e := resolveChat(ctx, tx, "Planning", t.ID)
+			if e != nil {
+				return ack, e
+			}
+			class, e := classifyChat(tx, record)
+			if e != nil {
+				return ack, e
+			}
+			continuation = class == "continuation"
+		}
 		current, err := planningTurnCurrent(tx, t)
 		if err != nil {
 			return ack, err
@@ -143,7 +165,7 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued'))`, t.ID).Scan(&pending); err != nil {
 			return ack, err
 		}
-		if pending || !current || t.OutcomeJson != "" || !planningIdentityMatches(t, r.AgentID, r.RunID, r.AttemptID) {
+		if pending || (!current && !continuation) || (t.OutcomeJson != "" && !continuation) || !planningIdentityMatches(t, r.AgentID, r.RunID, r.AttemptID) {
 			return ack, errors.New("planning task is stale, terminal, cancelled or owned by another execution")
 		}
 	} else {
@@ -158,11 +180,11 @@ func (w *Workflow) acceptReport(ctx context.Context, r reportprotocol.Request) (
 		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
 			return ack, err
 		}
-		if !current || a.Ready || (a.OutcomeJSON != "" && !resumableOutcome(a)) || a.RunState == "failed" || a.RunState == "cancelled" || !matches(a, r.AgentID, r.RunID, r.AttemptID) {
+		if !current || a.Ready || a.RunState == abandonedRunState || (!continuation && ((a.OutcomeJSON != "" && !resumableOutcome(a)) || a.RunState == "failed" || a.RunState == "cancelled")) || !matches(a, r.AgentID, r.RunID, r.AttemptID) {
 			return ack, errors.New("build task is stale, terminal, cancelled or owned by another execution")
 		}
 		var cancelling bool
-		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_cancel_requests WHERE task_id=? AND status IN ('pending','requested','uncertain'))`, a.TaskID).Scan(&cancelling); err != nil {
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_cancel_requests WHERE id=(SELECT max(id) FROM workflow_cancel_requests WHERE task_id=?) AND status IN ('pending','requested','uncertain'))`, a.TaskID).Scan(&cancelling); err != nil {
 			return ack, err
 		}
 		if cancelling {

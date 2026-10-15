@@ -29,6 +29,7 @@ type Bridge struct {
 	resumeWG      sync.WaitGroup
 	resumeStopped bool
 	// Protected by submitMu, from durable admission through receipt persistence.
+	chatInFlight   map[string]bool
 	resumeInFlight map[reportprotocol.FailedResume]bool
 	mu             sync.RWMutex
 	runner         *runtime.Runner
@@ -37,6 +38,25 @@ type Bridge struct {
 }
 
 func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) error {
+	// A follow-up can resume an old suspension whose saved Context still
+	// contains the original task. Overlay conversational scope on every model
+	// request as well as enforcing report rejection independently below.
+	b.mu.RLock()
+	runner := b.runner
+	b.mu.RUnlock()
+	if runner != nil {
+		records, err := runner.Journal().Replay(ctx, scope.RunID)
+		if err != nil {
+			return err
+		}
+		if chatFollowup(records) {
+			k.OnContextPrepare(kit.HookPriorityNormal, func(h kit.ContextPrepareHook) *kit.ContextPrepareResult {
+				msgs := append([]kit.LLMMessage(nil), h.Messages...)
+				msgs = append(msgs, kit.LLMMessage{Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "Conversational follow-up only: previous task authority is revoked. Do not implement, approve, report workflow outcomes, or change external systems. Answer the latest operator message."}}})
+				return &kit.ContextPrepareResult{Messages: msgs}
+			})
+		}
+	}
 	// An interrupted SDK step may lose its tool-call result. Replay our durable
 	// intent BEFORE asking the model again, not by hoping it repeats the call.
 	if err := b.recoverIntent(ctx, scope.RunID); err != nil {
@@ -92,6 +112,10 @@ func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Ide
 	if err != nil {
 		return reportprotocol.Identity{}, errors.New("trusted NATS task admission unavailable")
 	}
+	chatRecords, chatErr := r.Journal().Replay(ctx, runID)
+	if chatErr != nil || chatFollowup(chatRecords) {
+		return reportprotocol.Identity{}, errors.New("conversational follow-up has no workflow authority")
+	}
 	var id reportprotocol.Identity
 	for _, rec := range records {
 		if rec.Kind != runtime.RecordExtensionData || rec.ExtType != "nats_task_admitted" {
@@ -129,6 +153,7 @@ type reportChannel struct {
 	bridge       *Bridge
 	cfg          natschannel.Config
 	owned        *nats.Conn
+	chatSub      *nats.Subscription
 	resumeSub    *nats.Subscription
 	resumeCancel context.CancelFunc
 }
@@ -169,11 +194,23 @@ func (c *reportChannel) Start(ctx context.Context) error {
 		}
 		return err
 	}
+	if err = c.startChat(resumeCtx, conn); err != nil {
+		cancel()
+		_ = c.resumeSub.Unsubscribe()
+		_ = c.Channel.(interface{ Shutdown(context.Context) error }).Shutdown(ctx)
+		if owned != nil {
+			owned.Close()
+		}
+		return err
+	}
 	return nil
 }
 func (c *reportChannel) Shutdown(ctx context.Context) error {
 	if c.resumeCancel != nil {
 		c.resumeCancel()
+	}
+	if c.chatSub != nil {
+		_ = c.chatSub.Unsubscribe()
 	}
 	if c.resumeSub != nil {
 		_ = c.resumeSub.Unsubscribe()
@@ -294,6 +331,9 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 	if err != nil {
 		return reportprotocol.Ack{}, err
 	}
+	if chatFollowup(records) {
+		return reportprotocol.Ack{}, errors.New("conversational follow-up has no workflow authority")
+	}
 	prior := map[string]reportprotocol.Request{}
 	receipts := map[string]reportprotocol.Ack{}
 	for _, rec := range records {
@@ -354,6 +394,9 @@ func (b *Bridge) recoverIntent(ctx context.Context, runID string) error {
 	recs, err := r.Journal().Replay(ctx, runID)
 	if err != nil {
 		return err
+	}
+	if chatFollowup(recs) {
+		return nil
 	}
 	intents := map[string]reportprotocol.Request{}
 	resolved := map[string]bool{}
@@ -424,6 +467,9 @@ func (b *Bridge) resolveReportTools(ctx context.Context, scope bonnie.RunScope) 
 	recs, err := r.Journal().Replay(ctx, scope.RunID)
 	if err != nil {
 		return err
+	}
+	if chatFollowup(recs) {
+		return nil
 	}
 	requests := map[string]reportprotocol.Request{}
 	accepted := map[string]bool{}
@@ -498,6 +544,9 @@ func (b *Bridge) restorePendingSuspensions(ctx context.Context) error {
 		recs, err := r.Journal().Replay(ctx, runID)
 		if err != nil {
 			return err
+		}
+		if chatFollowup(recs) {
+			continue
 		}
 		requests := map[string]reportprotocol.Request{}
 		consumed := map[string]bool{}
@@ -586,6 +635,9 @@ func (b *Bridge) prepareRetry(ctx context.Context, request reportprotocol.Reques
 	recs, err := r.Journal().Replay(ctx, request.RunID)
 	if err != nil {
 		return request, err
+	}
+	if chatFollowup(recs) {
+		return request, errors.New("follow-up has no workflow authority")
 	}
 	intents := map[string]reportprotocol.Request{}
 	resolved := map[string]bool{}

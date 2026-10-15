@@ -509,6 +509,8 @@ func (w *Workflow) cardAction(id string, deleteCard, acknowledgeOrphan bool) err
 }
 
 func (w *Workflow) dispatch() {
+	w.dispatchRunChat()
+	w.reconcileChatInteractions()
 	w.dispatchPlanning()
 	w.dispatchBlockerGuidance()
 	w.autoResumePass(time.Now())
@@ -556,6 +558,9 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if blocked, e := chatEvidenceBlocked(tx, ev.TaskID); e != nil || blocked {
+		return e
+	}
 	if handled, e := w.planningEvent(tx, ctx, ev); handled || e != nil {
 		if e != nil {
 			return e
@@ -641,6 +646,9 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if blocked, e := chatEvidenceBlocked(tx, out.TaskID); e != nil || blocked {
+		return e
+	}
 	if handled, e := w.planningResult(tx, ctx, out); handled || e != nil {
 		if e != nil {
 			return e
