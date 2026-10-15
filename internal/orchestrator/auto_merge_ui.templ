@@ -1,0 +1,21 @@
+package orchestrator
+
+import (
+ "github.com/axadrn/shadcn-templ/v2/components/label"
+ switchcomp "github.com/axadrn/shadcn-templ/v2/components/switch"
+)
+
+// Only the canonical mode is named; the switches are draft controls.
+templ autoMergeControls(id, mode string) {
+ <jawa-auto-merge class="block" data-mode={ mode }>
+  <input type="hidden" name="auto_merge_mode" value={ mode }/>
+  <div class="switch-field">
+   @label.Label(label.Props{For:id+"-inherit"}) { Use global }
+   @switchcomp.Switch(switchcomp.Props{ID:id+"-inherit",DefaultChecked:mode=="inherit",Attributes:templ.Attributes{"data-merge-inherit":true}})
+  </div>
+  <div class="switch-field">
+   @label.Label(label.Props{For:id+"-on"}) { Auto merge }
+   @switchcomp.Switch(switchcomp.Props{ID:id+"-on",DefaultChecked:mode=="on",Disabled:mode=="inherit",Attributes:templ.Attributes{"data-merge-on":true}})
+  </div>
+ </jawa-auto-merge>
+}

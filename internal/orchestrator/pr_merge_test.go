@@ -352,3 +352,44 @@ func TestMergeRestartRecovery(t *testing.T) {
 		t.Fatal(check, err)
 	}
 }
+
+// Both entry points must respect the other ledger before dispatching a write.
+func TestAutoAndOperatorMergeReservations(t *testing.T) {
+	for _, state := range []string{"reserved", "inflight", "uncertain"} {
+		t.Run(state, func(t *testing.T) {
+			w, c, a, snapshot := mergeFixture(t)
+			w.SetProviderMerger(func(context.Context, Attempt, string, string) string {
+				t.Error("operator write during unresolved auto merge")
+				return "merged"
+			})
+			_, err := w.s.db.Exec(`INSERT INTO auto_merge_operations(id,card_id,attempt_id,provider,repository,base_branch,pr_url,head_sha,config_token,state,next_check_at,created_at,updated_at) VALUES('auto',?,?,'github','acme/repo','main',?,?,'token',?,0,0,0)`, c.ID, a.ID, a.PRURL, strings.Repeat("a", 40), state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = w.MergePR(t.Context(), c.ID, strings.Repeat("c", 32), snapshot, "squash", "operator"); err == nil {
+				t.Fatal("operator ignored auto reservation")
+			}
+			if err = w.MarkPRMerged(t.Context(), c.ID, a.ID, a.PRURL); err == nil {
+				t.Fatal("manual marker ignored auto reservation")
+			}
+		})
+	}
+	for _, state := range []string{"pending", "uncertain"} {
+		t.Run(state, func(t *testing.T) {
+			w, c, a, snapshot := mergeFixture(t)
+			if err := w.SetCardAutoMerge(c.ID, "inherit", "on"); err != nil {
+				t.Fatal(err)
+			}
+			_, err := w.s.db.Exec(`INSERT INTO pr_merges(id,card_id,attempt_id,pr_url,snapshot,provider,repo,base_branch,head_sha,method,operator,state,created_at,updated_at) VALUES('operator',?,?,?,?, 'github','acme/repo','main',?,'squash','operator',?,0,0)`, c.ID, a.ID, a.PRURL, snapshot, strings.Repeat("a", 40), state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writes := 0
+			w.merges = &autoMergeWorker{adapter: mergeTestAdapter(t, w.s, a, "github", "success", &writes)}
+			w.autoMergePass(t.Context())
+			if writes != 0 {
+				t.Fatal("auto merge ignored operator reservation")
+			}
+		})
+	}
+}

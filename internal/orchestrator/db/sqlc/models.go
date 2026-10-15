@@ -14,6 +14,24 @@ type Admin struct {
 	PasswordHash string `json:"password_hash"`
 }
 
+type AutoMergeOperation struct {
+	ID          string `json:"id"`
+	CardID      string `json:"card_id"`
+	AttemptID   string `json:"attempt_id"`
+	Provider    string `json:"provider"`
+	Repository  string `json:"repository"`
+	BaseBranch  string `json:"base_branch"`
+	PrUrl       string `json:"pr_url"`
+	HeadSha     string `json:"head_sha"`
+	ConfigToken string `json:"config_token"`
+	State       string `json:"state"`
+	Category    string `json:"category"`
+	Retries     int64  `json:"retries"`
+	NextCheckAt int64  `json:"next_check_at"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
 type AutoResume struct {
 	TaskID       string `json:"task_id"`
 	CardID       string `json:"card_id"`
@@ -25,15 +43,16 @@ type AutoResume struct {
 }
 
 type Card struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Position    int64  `json:"position"`
-	CreatedAt   int64  `json:"created_at"`
-	IssueUrl    string `json:"issue_url"`
-	Archived    int64  `json:"archived"`
+	ID            string `json:"id"`
+	ProjectID     string `json:"project_id"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Status        string `json:"status"`
+	Position      int64  `json:"position"`
+	CreatedAt     int64  `json:"created_at"`
+	IssueUrl      string `json:"issue_url"`
+	Archived      int64  `json:"archived"`
+	AutoMergeMode string `json:"auto_merge_mode"`
 }
 
 type FailedResume struct {
@@ -50,18 +69,19 @@ type FailedResume struct {
 }
 
 type IssueSubmission struct {
-	Token       string `json:"token"`
-	ProjectID   string `json:"project_id"`
-	Provider    string `json:"provider"`
-	Repository  string `json:"repository"`
-	Title       string `json:"title"`
-	Body        string `json:"body"`
-	State       string `json:"state"`
-	IssueUrl    string `json:"issue_url"`
-	IssueNumber int64  `json:"issue_number"`
-	CardID      string `json:"card_id"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	Token         string `json:"token"`
+	ProjectID     string `json:"project_id"`
+	Provider      string `json:"provider"`
+	Repository    string `json:"repository"`
+	Title         string `json:"title"`
+	Body          string `json:"body"`
+	AutoMergeMode string `json:"auto_merge_mode"`
+	State         string `json:"state"`
+	IssueUrl      string `json:"issue_url"`
+	IssueNumber   int64  `json:"issue_number"`
+	CardID        string `json:"card_id"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
 type PlanningDelivery struct {

@@ -32,6 +32,9 @@ func (w *Workflow) MarkPRMerged(ctx context.Context, cardID, expectedAttemptID, 
 	if status != "Done" || !latest.Ready || latest.State != "ready" || latest.PRURL == "" || latest.ID != expectedAttemptID || latest.PRURL != expectedPRURL {
 		return errors.New("marking merged requires the current verified Ready pull request; refresh the board and try again")
 	}
+	if err = noUnresolvedAutoMerge(tx, cardID); err != nil {
+		return err
+	}
 	if err = noActiveAttempts(tx, cardID); err != nil {
 		return err
 	}

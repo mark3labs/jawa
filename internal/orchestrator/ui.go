@@ -26,6 +26,7 @@ type uiSnapshot struct {
 	readyOverrides map[string]readyOverride
 	pendingResumes map[string]bool
 	autoResumes    map[string]autoResumeStatus
+	autoMerges     map[string]autoMergeStatus
 	blockers       map[string]BlockerGuidance // open build blockers by card
 	projects       []Project
 	cards          []Card
@@ -79,6 +80,9 @@ func loadUISnapshot(ctx context.Context, s *Store, wf *Workflow) (uiSnapshot, er
 	err = rows.Err()
 	_ = rows.Close()
 	if err != nil {
+		return snap, err
+	}
+	if snap.autoMerges, err = s.autoMergeStatuses(); err != nil {
 		return snap, err
 	}
 	if snap.autoResumes, err = s.autoResumeStatuses(); err != nil {

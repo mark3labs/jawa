@@ -79,7 +79,7 @@ func (e providerEndpoint) requireCredentials() error {
 
 // ProviderVerifier independently reads provider state on every invocation. The
 // supplied client supplies transport only; redirects and cookies are disabled.
-func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
+func providerHTTPClient(supplied *http.Client) *http.Client {
 	c := http.Client{}
 	if supplied != nil {
 		c = *supplied
@@ -87,68 +87,86 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 	c.Timeout = 20 * time.Second
 	c.Jar = nil
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
+}
+
+// verifiedPR binds readiness evidence to the exact head and validated coordinates.
+type verifiedPR struct {
+	reader                              providerReader
+	path, repository, base, branch, sha string
+	number                              int
+	merged                              bool
+}
+
+func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
+	c := providerHTTPClient(supplied)
 	return func(ctx context.Context, a Attempt) (bool, error) {
-		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		p, root, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
-		if err != nil {
-			return false, err
-		}
-		expected, err := assignedBranch(a)
-		if err != nil {
-			return false, err
-		}
-		overrides, err := s.providerSettings()
-		if err != nil {
-			return false, errors.New("provider: dashboard settings unavailable")
-		}
-		allowNoCI := os.Getenv("JAWA_ALLOW_NO_CI") == "true"
-		if value, ok := overrides["allow-no-ci"]; ok {
-			allowNoCI = value == "true"
-		}
-		p.allowNoCI = allowNoCI
-		var pr providerPR
-		if err = p.read(path, &pr); err != nil {
-			return false, err
-		}
-		if err = pr.matches(owner+"/"+name, base, expected, number); err != nil {
-			return false, err
-		}
-		sha := pr.Head.SHA
-		if pr.Merged {
-			// A provider-confirmed merge is a terminal outcome; open-PR CI/review
-			// gates no longer apply. Identity is still checked and re-read below.
-		} else if p.forgejo {
-			if err = p.forgejoCI(root, base, sha); err != nil {
-				return false, err
-			}
-			if err = p.forgejoReviews(path); err != nil {
-				return false, err
-			}
-		} else {
-			if err = p.githubCI(root, base, sha); err != nil {
-				return false, err
-			}
-			if err = p.githubReviews(path, owner, name, number, sha); err != nil {
-				return false, err
-			}
-		}
-		// Close the common head-update race: all evidence above was for this SHA.
-		var latest providerPR
-		if err = p.read(path, &latest); err != nil {
-			return false, err
-		}
-		if err = latest.matches(owner+"/"+name, base, expected, number); err != nil {
-			return false, err
-		}
-		if latest.Head.SHA != sha {
-			return false, errors.New("provider: PR head changed during verification")
-		}
-		if pr.Merged && !latest.Merged {
-			return false, errors.New("provider: PR merge state changed during verification")
-		}
-		return true, nil
+		_, err := verifyProviderPR(ctx, s, c, a)
+		return err == nil, err
 	}
+}
+
+func verifyProviderPR(ctx context.Context, s *Store, c *http.Client, a Attempt) (verifiedPR, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	p, root, path, owner, name, base, number, err := providerTarget(ctx, s, c, a)
+	if err != nil {
+		return verifiedPR{}, err
+	}
+	expected, err := assignedBranch(a)
+	if err != nil {
+		return verifiedPR{}, err
+	}
+	overrides, err := s.providerSettings()
+	if err != nil {
+		return verifiedPR{}, errors.New("provider: dashboard settings unavailable")
+	}
+	allowNoCI := os.Getenv("JAWA_ALLOW_NO_CI") == "true"
+	if value, ok := overrides["allow-no-ci"]; ok {
+		allowNoCI = value == "true"
+	}
+	p.allowNoCI = allowNoCI
+	var pr providerPR
+	if err = p.read(path, &pr); err != nil {
+		return verifiedPR{}, err
+	}
+	if err = pr.matches(owner+"/"+name, base, expected, number); err != nil {
+		return verifiedPR{}, err
+	}
+	sha := pr.Head.SHA
+	if pr.Merged {
+		// A provider-confirmed merge is a terminal outcome; open-PR CI/review
+		// gates no longer apply. Identity is still checked and re-read below.
+	} else if p.forgejo {
+		if err = p.forgejoCI(root, base, sha); err != nil {
+			return verifiedPR{}, err
+		}
+		if err = p.forgejoReviews(path); err != nil {
+			return verifiedPR{}, err
+		}
+	} else {
+		if err = p.githubCI(root, base, sha); err != nil {
+			return verifiedPR{}, err
+		}
+		if err = p.githubReviews(path, owner, name, number, sha); err != nil {
+			return verifiedPR{}, err
+		}
+	}
+	// Close the common head-update race: all evidence above was for this SHA.
+	var latest providerPR
+	if err = p.read(path, &latest); err != nil {
+		return verifiedPR{}, err
+	}
+	if err = latest.matches(owner+"/"+name, base, expected, number); err != nil {
+		return verifiedPR{}, err
+	}
+	if latest.Head.SHA != sha {
+		return verifiedPR{}, errors.New("provider: PR head changed during verification")
+	}
+	if pr.Merged && !latest.Merged {
+		return verifiedPR{}, errors.New("provider: PR merge state changed during verification")
+	}
+	return verifiedPR{reader: p, path: path, repository: owner + "/" + name, base: base, branch: expected, sha: sha, number: number, merged: latest.Merged}, nil
 }
 
 // providerTarget validates immutable assignment and configured repository before any request.

@@ -48,6 +48,7 @@ type Workflow struct {
 	verifier         Verifier
 	identity         IdentityChecker
 	conflicts        *conflictMonitor
+	merges           *autoMergeWorker
 	merger           ProviderMerger
 	reports          *nats.Subscription
 	observeReport    func(context.Context, client.Target) (client.Status, error)
@@ -127,6 +128,7 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 				w.log().Warn("Planning result recovery failed")
 			}
 			w.verifyPending()
+			w.autoMergePass(w.ctx)
 			if err := w.PollPRConflicts(w.ctx); err != nil && w.ctx.Err() == nil {
 				w.log().Warn("PR conflict polling incomplete")
 			}

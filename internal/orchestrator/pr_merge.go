@@ -23,6 +23,18 @@ func noUnresolvedMerge(tx *sql.Tx, id string) error {
 	return nil
 }
 
+// Auto and operator merges share card authority, including uncertain delivery.
+func noUnresolvedAutoMerge(tx *sql.Tx, id string) error {
+	var locked bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM auto_merge_operations WHERE card_id=? AND state IN ('reserved','inflight','uncertain'))`, id).Scan(&locked); err != nil {
+		return err
+	}
+	if locked {
+		return errMergeLocked
+	}
+	return nil
+}
+
 func mergeEligible(c Card, all []Attempt, check PRCheck, pending bool) bool {
 	latest := latestAttempt(c.ID, all)
 	for _, a := range all {
@@ -73,6 +85,9 @@ func (w *Workflow) MergePR(ctx context.Context, cardID, operation, snapshot, met
 		return mergeOutcome(state)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err = noUnresolvedAutoMerge(tx, cardID); err != nil {
 		return err
 	}
 	c, p, all, pending, err := readySnapshot(tx, cardID)

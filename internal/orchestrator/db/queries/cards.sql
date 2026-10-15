@@ -8,8 +8,8 @@ ORDER BY CASE status WHEN 'Todo' THEN 0 WHEN 'Planning' THEN 1 WHEN 'Building' T
 position, created_at, id;
 
 -- name: InsertCard :exec
-INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url)
-VALUES(?,?,?,?,?,?,?,?);
+INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url,auto_merge_mode)
+VALUES(?,?,?,?,?,?,?,?,?);
 
 -- name: UpdateCardLane :execrows
 UPDATE cards SET status = ?, position = ? WHERE id = ? AND project_id = ?;

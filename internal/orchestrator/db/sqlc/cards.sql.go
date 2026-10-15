@@ -10,7 +10,7 @@ import (
 )
 
 const getCard = `-- name: GetCard :one
-SELECT id, project_id, title, description, status, position, created_at, issue_url, archived FROM cards WHERE id = ?
+SELECT id, project_id, title, description, status, position, created_at, issue_url, archived, auto_merge_mode FROM cards WHERE id = ?
 `
 
 func (q *Queries) GetCard(ctx context.Context, id string) (Card, error) {
@@ -26,6 +26,7 @@ func (q *Queries) GetCard(ctx context.Context, id string) (Card, error) {
 		&i.CreatedAt,
 		&i.IssueUrl,
 		&i.Archived,
+		&i.AutoMergeMode,
 	)
 	return i, err
 }
@@ -49,19 +50,20 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 }
 
 const insertCard = `-- name: InsertCard :exec
-INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url)
-VALUES(?,?,?,?,?,?,?,?)
+INSERT INTO cards(id,project_id,title,description,status,position,created_at,issue_url,auto_merge_mode)
+VALUES(?,?,?,?,?,?,?,?,?)
 `
 
 type InsertCardParams struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Position    int64  `json:"position"`
-	CreatedAt   int64  `json:"created_at"`
-	IssueUrl    string `json:"issue_url"`
+	ID            string `json:"id"`
+	ProjectID     string `json:"project_id"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Status        string `json:"status"`
+	Position      int64  `json:"position"`
+	CreatedAt     int64  `json:"created_at"`
+	IssueUrl      string `json:"issue_url"`
+	AutoMergeMode string `json:"auto_merge_mode"`
 }
 
 func (q *Queries) InsertCard(ctx context.Context, arg InsertCardParams) error {
@@ -74,6 +76,7 @@ func (q *Queries) InsertCard(ctx context.Context, arg InsertCardParams) error {
 		arg.Position,
 		arg.CreatedAt,
 		arg.IssueUrl,
+		arg.AutoMergeMode,
 	)
 	return err
 }
@@ -113,7 +116,7 @@ func (q *Queries) ListCardLane(ctx context.Context, arg ListCardLaneParams) ([]s
 }
 
 const listCards = `-- name: ListCards :many
-SELECT id, project_id, title, description, status, position, created_at, issue_url, archived FROM cards
+SELECT id, project_id, title, description, status, position, created_at, issue_url, archived, auto_merge_mode FROM cards
 WHERE (?1 = '' OR project_id = ?1)
 ORDER BY CASE status WHEN 'Todo' THEN 0 WHEN 'Planning' THEN 1 WHEN 'Building' THEN 2 ELSE 3 END,
 position, created_at, id
@@ -138,6 +141,7 @@ func (q *Queries) ListCards(ctx context.Context, projectID interface{}) ([]Card,
 			&i.CreatedAt,
 			&i.IssueUrl,
 			&i.Archived,
+			&i.AutoMergeMode,
 		); err != nil {
 			return nil, err
 		}

@@ -239,7 +239,7 @@ func issueRecoveryPage(r *http.Request, state, message string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			for _, name := range []string{"_csrf", "project_id", "view", "project"} {
+			for _, name := range []string{"_csrf", "project_id", "view", "project", "auto_merge_mode"} {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<input type=\"hidden\" name=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

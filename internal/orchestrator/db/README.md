@@ -108,6 +108,12 @@ attempts and planning turns. Empty defaults keep historical work shared without
 changing observed execution identity or history. Targets persist across publish
 retries/restart and are copied to fresh Retry tasks; they are not run ownership.
 
+Version `00021_auto_merge.sql` adds constrained live card/issue-draft mode
+(default inherit) and a non-cascading merge-operation ledger. Tombstones survive
+card/project deletion; no credentials/raw responses are persisted. Reserved/inflight
+rows fence card lane/delete/archive mutations and become uncertain on startup.
+Settings reset preserves card modes; absent global dashboard:auto-merge is false.
+Back up databases before migration and run only one orchestrator per database.
 Version `00020_pr_merges.sql` adds the durable operator merge audit and partial
 unique unresolved-card index. Audit rows intentionally have no cascading foreign
 keys so deletion cannot erase replay evidence. They retain operation/card/attempt,
