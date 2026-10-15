@@ -219,7 +219,7 @@ func TestBoardDialogAndDragBindings(t *testing.T) {
 func TestDialogRetainsOriginatingProject(t *testing.T) {
 	a := testApp(t)
 	session, csrf := sseCookies(t, a)
-	_, err := a.s.CreateProjectDetails("first", "github", "https://github.com/acme/first", "main")
+	first, err := a.s.CreateProjectDetails("first", "github", "https://github.com/acme/first", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestDialogRetainsOriginatingProject(t *testing.T) {
 	}
 	for _, tc := range []struct{ ref, want string }{
 		{"http://example.com/board?project=" + second.ID, second.ID},
-		{"https://untrusted.example/board?project=" + second.ID, ""},
+		{"https://untrusted.example/board?project=" + first.ID, "default"},
 	} {
 		r := httptest.NewRequest(http.MethodGet, "/dialogs/card", nil)
 		r.Header.Set("Referer", tc.ref)
@@ -239,8 +239,15 @@ func TestDialogRetainsOriginatingProject(t *testing.T) {
 		w := httptest.NewRecorder()
 		a.ServeHTTP(w, r)
 		body := assertSSE(t, w)
+		if tc.want == "default" {
+			projects, err := a.s.Projects()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.want = projects[0].ID
+		}
 		if !strings.Contains(body, `name="project" value="`+tc.want+`"`) {
-			t.Fatal("dialog lost project context")
+			t.Fatalf("dialog lost project context for %s", tc.ref)
 		}
 	}
 }

@@ -651,7 +651,7 @@ try {
  await expect(page.locator('details.run')).toHaveCount(3);
  assert.deepEqual(browserActivityRequests, [], 'browser must never poll /activity including re-login');
  assert.deepEqual(errors, [], 'no browser errors');
- console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Rocket views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
+ console.log('PASS: resumable clarify/answer/proposal/revision/approval/distinct-build full cycle; planning drag/queued badge/review guard/cancel and live detail; four separated Datastar views; setup/rotation; real BONNIE presence and inspection; menu/pointer execution and retry; provider blocker; Done rollback; shortcuts/typing guards; SSE project roots, shell/drafts/keyed history preservation; state/card filters; reset/history/delete confirmation; eight overflow-checked screenshots; shutdown and re-login. No paid/external provider calls.');
 } finally {
  if (started) await bridge('/stop').catch(() => {});
  await browser.close();
