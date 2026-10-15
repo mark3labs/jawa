@@ -1,0 +1,329 @@
+package orchestrator
+
+import (
+ "strconv"
+ "github.com/axadrn/shadcn-templ/v2/components/dialog"
+ "github.com/axadrn/shadcn-templ/v2/components/button"
+ "github.com/axadrn/shadcn-templ/v2/components/label"
+ "github.com/axadrn/shadcn-templ/v2/components/input"
+ "github.com/axadrn/shadcn-templ/v2/components/textarea"
+ "github.com/axadrn/shadcn-templ/v2/components/checkbox"
+)
+
+// One server-rendered opening owns its operation and all form defaults.
+templ dialogFrame(name, op, title string) {
+ <div id={ "dialog-" + op } data-dialog={ name } data-init="$_dialogOpen = true"
+ data-on:dialog-close__window__delay.300ms={ "evt.target.id === '" + name + "-dialog' && ($_dialogOpen = false, el.remove())" }>
+ @dialog.Dialog(dialog.Props{ID: name + "-dialog", DefaultOpen: true}) {
+ @dialog.Content(dialog.ContentProps{Class: "jawa-dialog"}) {
+ @dialogError(name, op, "")
+ @dialog.Header() { @dialog.Title() { { title } } }
+ { children... }
+ }
+ }
+ </div>
+}
+
+templ dialogSubmit(name, title string) {
+ @button.Button(button.Props{Type: button.TypeSubmit, Attributes: templ.Attributes{"data-attr:disabled": "$_" + name + "Pending"}}) { { title } }
+}
+
+templ fixDialog(d pageData, op string, c Card, message string) {
+ @dialogFrame("fix", op, "Send to Fix") {
+
+
+		@dialog.Description() {
+			Describe what needs fixing. An agent will update the existing pull request on its original branch, without merging it.
+		}
+		<form method="post" action="/cards/fix" { dialogForm("fix", "/cards/fix")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			<div class="field">
+				@label.Label(label.Props{For: "fix-message"}) {
+					Fix message (required)
+				}
+				@textarea.Textarea(textarea.Props{ID: "fix-message", Name: "message", Value: message, Rows: 5, Attributes: templ.Attributes{"required": true, "autofocus": true}})
+			</div>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Keep in Ready for review
+				}
+				@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "$_fixPending"}}) {
+					Send to Fix
+				}
+			}
+		</form>
+
+ }
+}
+
+templ guideDialog(d pageData, op string, c Card, token string) {
+ @dialogFrame("guide", op, "Reply with guidance") {
+
+
+		@dialog.Description() {
+			The agent paused on a blocker. Your guidance resumes the same run, keeping its conversation, branch and work so far.
+		}
+		<form method="post" action="/cards/guide" { dialogForm("guide", "/cards/guide")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			<input type="hidden" name="expected_interaction" value={ token }/>
+			<div class="field">
+				@label.Label(label.Props{For: "guide-message"}) {
+					Guidance (required)
+				}
+				@textarea.Textarea(textarea.Props{ID: "guide-message", Name: "message", Rows: 5, Attributes: templ.Attributes{"required": true, "maxlength": "64000", "autofocus": true}})
+			</div>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Not now
+				}
+				@button.Button(button.Props{Variant: button.VariantDefault, Type: button.TypeSubmit, Class: "btn primary", Attributes: templ.Attributes{"data-attr:disabled": "$_guidePending"}}) {
+					Send guidance
+				}
+			}
+		</form>
+
+ }
+}
+
+templ projectDialog(d pageData, op string) {
+ @dialogFrame("project", op, "New project") {
+
+		<form method="post" action="/projects" { dialogForm("project", "/projects")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+
+			<p class="muted">Connect a repository so agents can open pull requests against it.</p>
+			@textField("project-name", "name", "Name", "", true, nil)
+			<div class="field" data-signals:project-provider="'github'" data-on:change="$projectProvider = evt.target.value">
+				@label.Label(label.Props{For: "project-provider"}) {
+					Provider
+				}
+				@selectField("project-provider", "", "provider", "github", false, false, []selectOption{{Value: "github", Label: "GitHub"}, {Value: "forgejo", Label: "Forgejo"}}, nil)
+			</div>
+			<div class="field" hidden data-attr:hidden="$projectProvider !== 'forgejo'">
+				@label.Label(label.Props{For: "project-forgejo-url"}) {
+					Forgejo URL
+				}
+				@input.Input(input.Props{ID: "project-forgejo-url", Name: "forgejo_url", Type: "url", Value: "https://codeberg.org", Attributes: templ.Attributes{"data-attr:required": "$projectProvider === 'forgejo'", "data-attr:disabled": "$projectProvider !== 'forgejo'"}})
+			</div>
+			<div class="field">
+				@label.Label(label.Props{For: "project-repo"}) {
+					Repository name
+				}
+				@input.Input(input.Props{ID: "project-repo", Name: "repo_name", Placeholder: "owner/repo", Required: true, Attributes: templ.Attributes{"pattern": "[A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-]+", "aria-describedby": "project-repo-help"}})
+				<p id="project-repo-help" class="muted">Enter owner/repo, not a full URL. GitHub uses https://github.com; Forgejo uses the URL above.</p>
+			</div>
+			@textField("project-base", "base_branch", "Base branch", "main", true, nil)
+			<div class="dialog-actions">
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Cancel
+				}
+				@dialogSubmit("project", "Create project")
+			</div>
+		</form>
+
+ }
+}
+
+templ cardDialog(d pageData, op string) {
+ @dialogFrame("card", op, "New card") {
+
+		<form data-signals:card-project={ strconv.Quote(projectSelectDefault(d.projects, d.v.Project)) } data-signals="{cardTitle: '', cardDescription: '', _issues: []}" method="post" action="/cards" { dialogForm("card", "/cards")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			<input id="card-issue-submission" type="hidden" name="issue_submission" value={ newID() }/>
+			@viewFields(d.v)
+
+			<p class="muted">Describe the outcome you want. An agent plans and ships it as a pull request.</p>
+			<div class="field" data-on:change="evt.target.name === 'project_id' && ($cardProject = evt.target.value, @get('/dialogs/card/issues?project_id=' + encodeURIComponent($cardProject), {filterSignals: {include: /^$/}}))">
+				@label.Label(label.Props{For: "card-project"}) {
+					Project
+				}
+				@selectField("card-project", "", "project_id", projectSelectDefault(d.projects, d.v.Project), true, false, projectSelectItems(d.projects), nil)
+			</div>
+			@textField("card-title", "title", "Title", "", true, templ.Attributes{"data-bind:card-title": true})
+ @autoMergeControls("new-card-merge","inherit")
+ <p class="muted small">Use the live global default, or override for this card. Squash only; disabling cannot stop an in-flight write.</p>
+			<div class="field">
+				@label.Label(label.Props{For: "card-description"}) {
+					Description
+				}
+				@textarea.Textarea(textarea.Props{ID: "card-description", Name: "description", Rows: 5, Attributes: templ.Attributes{"data-bind:card-description": true}})
+			</div>
+			<div data-init="@get('/dialogs/card/issues?project_id=' + encodeURIComponent($cardProject), {filterSignals: {include: /^$/}})">
+ @cardIssueField(nil, "Loading issues… You can submit without linking an issue.", "")
+ </div>
+ <div id="card-issue-recovery"></div>
+			<div class="dialog-actions">
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Cancel
+				}
+				@dialogSubmit("card", "Create card")
+			</div>
+		</form>
+
+ }
+}
+
+templ deleteDialog(d pageData, op string, c Card, orphan bool) {
+ @dialogFrame("delete", op, "Delete this card?") {
+
+
+		@dialog.Description() {
+			This permanently removes the card and its attempt history. This cannot be undone.
+			if orphan {
+ <span>This run needs reconciliation. Deleting does not stop the agent: it may orphan a run that continues working, committing, or opening pull requests.</span>
+ }
+		}
+		<form method="post" action="/cards/delete" { dialogForm("delete", "/cards/delete")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			if orphan {
+ @label.Label(label.Props{ID:"delete-acknowledge-label", For:"delete-acknowledge"}) {
+				@checkbox.Checkbox(checkbox.Props{ID: "delete-acknowledge", Name: "acknowledge_orphan", Value: "yes", Required: true})
+				I understand that deleting may orphan a still-running agent.
+			}
+ }
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Keep card
+				}
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger", Attributes: templ.Attributes{"data-attr:disabled": "$_deletePending"}}) {
+					Delete permanently
+				}
+			}
+		</form>
+
+ }
+}
+
+templ cancelDialog(d pageData, op string, c Card) {
+ @dialogFrame("cancel", op, "Request cancellation?") {
+
+
+		@dialog.Description() {
+			This asks the agent to stop its current run; cancellation may not be confirmed. It cannot undo external actions already taken, such as commits or pull requests.
+		}
+		<form method="post" action="/cards/cancel" { dialogForm("cancel", "/cards/cancel")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Keep running
+				}
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger", Attributes: templ.Attributes{"data-attr:disabled": "$_cancelPending"}}) {
+					Request cancellation
+				}
+			}
+		</form>
+
+ }
+}
+
+templ forceDialog(d pageData, op string, c Card) {
+ @dialogFrame("force", op, "Force stop this run?") {
+
+
+		@dialog.Description() {
+			Use this when a run is stuck or its agent is gone. JAWA stops tracking the run now and ignores anything it reports later. The agent is asked to stop, but it may keep running and could still push commits or update its pull request. Afterwards you can retry, reset to Todo, or delete the card.
+		}
+		<form method="post" action="/cards/force-stop" { dialogForm("force", "/cards/force-stop")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			@label.Label(label.Props{ID:"force-acknowledge-label", For:"force-acknowledge"}) {
+				@checkbox.Checkbox(checkbox.Props{ID: "force-acknowledge", Name: "acknowledge", Value: "yes", Required: true})
+				I understand the agent may still be running.
+			}
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Keep run
+				}
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger", Attributes: templ.Attributes{"data-attr:disabled": "$_forcePending"}}) {
+					Force stop
+				}
+			}
+		</form>
+
+ }
+}
+
+templ readyDialog(d pageData, op string, c Card, token, pr string) {
+ @dialogFrame("ready", op, "Force this card to Done?") {
+
+
+		@dialog.Description() {
+			CI, review and mergeability checks will be skipped. Inspect the pull request manually before confirming. This only moves the card to Done; it does not merge the PR or make any changes on GitHub or Forgejo.
+		}
+		<form method="post" action="/cards/force-ready" { dialogForm("ready", "/cards/force-ready")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			<input type="hidden" name="card_id" value={ c.ID }/>
+			<input type="hidden" name="expected" value={ token }/>
+			if pr != "" {
+ <p><a href={ templ.SafeURL(pr) } target="_blank" rel="noopener noreferrer">{ pr }</a></p>
+ } else {
+ @label.Label(label.Props{For: "ready-pr-number"}) { PR number }
+ @input.Input(input.Props{ID: "ready-pr-number", Type: "number", Name: "pr_number", Required: true, Attributes: templ.Attributes{"min": "1", "step": "1"}})
+ }
+ @label.Label(label.Props{For:"ready-reason"}) {
+				Reason (optional, at most 1000 bytes)
+				@textarea.Textarea(textarea.Props{ID:"ready-reason", Name: "reason", Attributes: templ.Attributes{"maxlength": "1000"}})
+			}
+			@label.Label(label.Props{ID:"ready-acknowledge-label", For:"ready-acknowledge"}) {
+				@checkbox.Checkbox(checkbox.Props{ID: "ready-acknowledge", Name: "acknowledge", Value: "yes", Required: true})
+				I understand that CI, review and readiness checks are bypassed and I have inspected the PR manually.
+			}
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					<span>{ "Keep in " + c.Status }</span>
+				}
+				@button.Button(button.Props{Variant: button.VariantDestructive, Type: button.TypeSubmit, Class: "btn danger", Attributes: templ.Attributes{"data-attr:disabled": "$_readyPending"}}) {
+					Force ready
+				}
+			}
+		</form>
+
+ }
+}
+
+templ mergeDialog(d pageData, op string, c Card, snapshot, pr, base, head string) {
+ @dialogFrame("merge", op, "Merge pull request") {
+
+
+ @dialog.Description() { This changes the remote repository. Cancelling after submission cannot undo a merge or guarantee cancellation. Repository rules may reject your chosen strategy. }
+ <p>Repository / PR: <span>{ pr }</span></p>
+ <p>Target base: <code>{ base }</code></p>
+ <p class="break-all">Observed head: <code>{ head }</code></p>
+ <form method="post" action="/cards/merge" { dialogForm("merge", "/cards/merge")... }>
+ <input type="hidden" name="dialog_operation" value={ op }/>
+ <input type="hidden" name="operation" value={ op }/>
+ <input type="hidden" name="_csrf" value={d.csrf}/>
+ @viewFields(d.v)
+ <input type="hidden" name="card_id" value={ c.ID }/>
+ <input type="hidden" name="snapshot" value={ snapshot }/>
+ <div class="field">
+ @label.Label(label.Props{For:"merge-method"}) { Merge strategy }
+ @selectField("merge-method", "","method","merge",true,false,[]selectOption{{Value:"merge",Label:"Merge commit"},{Value:"squash",Label:"Squash"},{Value:"rebase",Label:"Rebase"}},nil)
+ </div>
+ @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
+ @button.Button(button.Props{Type:button.TypeButton,Variant:button.VariantOutline,Class:"btn",Attributes: dialogClose(ctx)}) { Cancel }
+ @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn primary", Attributes: templ.Attributes{"data-attr:disabled": "$_mergePending"}}) { Merge pull request }
+ }
+ </form>
+
+ }
+}

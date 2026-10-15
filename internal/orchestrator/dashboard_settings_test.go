@@ -69,7 +69,7 @@ func TestDashboardSettingsAuthCSRFValidationAndSecretDisclosure(t *testing.T) {
 	if strings.Contains(page.Body.String(), "JAWA_SECRET_SHOULD_NOT_APPEAR") {
 		t.Fatal("secret appeared in settings page")
 	}
-	assertSettingsProviderUX(t, page.Body.String())
+	assertSettingsProviderUX(t, page.Body.String()+sseRequest(a, "GET", "/dialogs/project", nil, session, csrf).Body.String())
 	if !strings.Contains(page.Body.String(), `id="runtime-auto-resume" checked name="auto-resume-failed-runs" value="true"`) {
 		t.Fatal("auto-resume not enabled by default")
 	}

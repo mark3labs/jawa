@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+ "strconv"
 	"strings"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
@@ -36,24 +37,24 @@ templ settingsContent(d pageData) {
 				}
 			}
 			@card.Content() {
-				<form method="post" action="/settings/nats" data-reset-on-success data-on:submit__prevent="@post('/settings/nats', {contentType:'form'})">
+				<form method="post" action="/settings/nats" { dsForm("/settings/nats", "settingsnats")... }>
 					<input type="hidden" name="_csrf" value={ d.csrf }/>
 					@viewFields(d.v)
 					<input type="hidden" name="url" value={ d.nats.URL }/>
 					<div class="field-grid">
-						@textField("nats-user", "username", "Username", d.nats.Username, true)
+						@textField("nats-user", "username", "Username", d.nats.Username, true, nil)
 						<div class="field">
 							@label.Label(label.Props{For: "nats-password"}) {
 								New password
 							}
-							@input.Input(input.Props{ID: "nats-password", Name: "password", Type: "password", Required: true, Placeholder: "At least 12 characters", Attributes: templ.Attributes{"minlength": "12", "autocomplete": "new-password"}})
+							@input.Input(input.Props{ID: "nats-password", Name: "password", Type: "password", Required: true, Placeholder: "At least 12 characters", Attributes: templ.Attributes{"data-signals:nats-password": "''", "data-bind:nats-password": true, "minlength": "12", "autocomplete": "new-password"}})
 						</div>
 					</div>
 					<div class="form-actions">
 						if d.natsConfigured {
-							@submit("Rotate credentials")
+							@pendingSubmit("Rotate credentials", "settingsnats")
 						} else {
-							@submit("Save credentials and continue")
+							@pendingSubmit("Save credentials and continue", "settingsnats")
 						}
 					</div>
 				</form>
@@ -167,7 +168,7 @@ templ providerRow(p providerConfig) {
 // switchField posts "true" when on. The hidden input that follows supplies
 // "false" when off; the server reads the first value, so order matters.
 templ switchField(id, name, title, hint string, on bool) {
-	<div class="switch-field">
+	<div id={ id + "-" + strconv.FormatBool(on) } class="switch-field">
 		@label.Label(label.Props{For: id}) {
 			<span class="switch-title">{ title }</span>
 			<span class="muted small">{ hint }</span>

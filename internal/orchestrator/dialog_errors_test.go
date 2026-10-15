@@ -60,18 +60,24 @@ func TestPlanningDeleteDialogError(t *testing.T) {
 	}
 }
 
-func TestDialogSuccessClearAndClose(t *testing.T) {
+func TestMutationSuccessRemovesOwnFrameLast(t *testing.T) {
 	a := testApp(t)
-	for path, name := range map[string]string{"/projects": "project", "/cards": "card", "/cards/delete": "delete", "/cards/fix": "fix", "/cards/guide": "guide", "/cards/cancel": "cancel", "/cards/force-ready": "ready", "/cards/force-stop": "force"} {
-		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(url.Values{"dialog_operation": {strings.Repeat("c", 32)}}.Encode()))
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("Datastar-Request", "true")
-		w := httptest.NewRecorder()
-		a.snapshot(w, r, true, mutationEffects{})
-		body := assertSSE(t, w)
-		for _, want := range []string{`id="` + name + `-error-` + strings.Repeat("c", 32) + `"`, `data-succeeded`, `"` + name + `Open":false`} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("%s missing %s", path, want)
+	for _, path := range []string{"/projects", "/cards", "/cards/delete", "/cards/fix", "/cards/guide", "/cards/cancel", "/cards/force-ready", "/cards/force-stop", "/cards/assign", "/cards/merge"} {
+		for _, op := range []string{strings.Repeat("c", 32), "invalid"} {
+			r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(url.Values{"dialog_operation": {op}}.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.Header.Set("Datastar-Request", "true")
+			w := httptest.NewRecorder()
+			a.snapshot(w, r, true, mutationEffects{})
+			body := assertSSE(t, w)
+			if validOperation(op) && !strings.HasSuffix(body, removeFrame("dialog-"+op)) {
+				t.Fatalf("%s: remove must be last: %s", path, body)
+			}
+			if !validOperation(op) && strings.Contains(body, "data: mode remove") {
+				t.Fatal("invalid operation removed a frame")
+			}
+			if strings.Contains(body, "Open\":false") {
+				t.Fatal("global dialog close signal")
 			}
 		}
 	}

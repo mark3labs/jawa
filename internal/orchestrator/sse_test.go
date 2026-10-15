@@ -103,7 +103,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	session, csrf := sseCookies(t, a)
 	form := url.Values{"_csrf": {csrf.Value}, "name": {"SSE project"}, "provider": {"github"}, "repo": {"https://github.com/example/repo"}, "base_branch": {"main"}}
 	body := assertSSE(t, sseRequest(a, "POST", "/projects", form, session, csrf))
-	for _, text := range []string{`id="notice"`, `id="board-content"`, `id="agent-status"`, `event: datastar-patch-signals`, `"projectOpen":false`} {
+	for _, text := range []string{`id="notice"`, `id="board-content"`, `id="agent-status"`, `event: datastar-patch-signals`, `"goto":`} {
 		if !strings.Contains(body, text) {
 			t.Fatalf("missing %q", text)
 		}
@@ -114,7 +114,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	}
 	form = url.Values{"_csrf": {csrf.Value}, "project_id": {projects[0].ID}, "title": {"SSE card"}}
 	body = assertSSE(t, sseRequest(a, "POST", "/cards", form, session, csrf))
-	if !strings.Contains(body, `"cardOpen":false`) {
+	if !strings.Contains(body, `id="board-content"`) {
 		t.Fatal(body)
 	}
 	cards, err := a.s.Cards("")
@@ -133,7 +133,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	}
 	assertSSE(t, sseRequest(a, "POST", "/cards/reset", form, session, csrf))
 	body = assertSSE(t, sseRequest(a, "POST", "/cards/delete", form, session, csrf))
-	if !strings.Contains(body, `"deleteOpen":false`) {
+	if !strings.Contains(body, `id="board-content"`) {
 		t.Fatal(body)
 	}
 	cards, err = a.s.Cards("")
@@ -162,7 +162,7 @@ func TestSSEMutationsAndErrors(t *testing.T) {
 	cancelRequest.Header.Set("Datastar-Request", "true")
 	a.snapshot(cancelResponse, cancelRequest, true, mutationEffects{flash: "Cancellation requested; awaiting confirmation."})
 	body = assertSSE(t, cancelResponse)
-	if !strings.Contains(body, `"cancelOpen":false`) || !strings.Contains(body, `"cancelCard":""`) || !strings.Contains(body, "awaiting confirmation") {
+	if !strings.Contains(body, "awaiting confirmation") {
 		t.Fatal(body)
 	}
 	body = assertSSE(t, sseRequest(a, "POST", "/cards", nil, session, csrf))

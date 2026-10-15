@@ -1,21 +1,13 @@
 package orchestrator
 
-import (
- "github.com/axadrn/shadcn-templ/v2/components/label"
- switchcomp "github.com/axadrn/shadcn-templ/v2/components/switch"
-)
+import "github.com/axadrn/shadcn-templ/v2/components/label"
 
-// Only the canonical mode is named; the switches are draft controls.
+// The named select submits the canonical mode directly.
 templ autoMergeControls(id, mode string) {
- <jawa-auto-merge class="block" data-mode={ mode }>
-  <input type="hidden" name="auto_merge_mode" value={ mode }/>
-  <div class="switch-field">
-   @label.Label(label.Props{For:id+"-inherit"}) { Use global }
-   @switchcomp.Switch(switchcomp.Props{ID:id+"-inherit",DefaultChecked:mode=="inherit",Attributes:templ.Attributes{"data-merge-inherit":true}})
-  </div>
-  <div class="switch-field">
-   @label.Label(label.Props{For:id+"-on"}) { Auto merge }
-   @switchcomp.Switch(switchcomp.Props{ID:id+"-on",DefaultChecked:mode=="on",Disabled:mode=="inherit",Attributes:templ.Attributes{"data-merge-on":true}})
-  </div>
- </jawa-auto-merge>
+ <div class="field">
+ @label.Label(label.Props{For: id}) { Auto merge }
+ @selectField(id, "", "auto_merge_mode", mode, true, false, []selectOption{
+  {Value: "inherit", Label: "Use global default"}, {Value: "on", Label: "On for this card"}, {Value: "off", Label: "Off for this card"},
+ }, nil)
+ </div>
 }

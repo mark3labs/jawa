@@ -94,14 +94,8 @@ The web UI (`internal/orchestrator/*.templ`) is built with
 - **Theme:** style through the existing tokens in `frontend/src/style.css`
   (`--color-primary`, `--color-muted`, etc., mapped to the Jawa robe-brown/sand/amber
   palette). Use Tailwind utilities and component variants. Do not add hard-coded colors or new CSS files.
-- **Component JavaScript:** `frontend/build.sh` bundles only the pinned
-  shadcn-templ runtimes in use (`baseui/lifecycle`, Select and its Base UI/Floating UI helpers, `checkbox`, `switch`). If
-  you adopt a component that ships a `.js` behavior file, add it to the
-  module list in `frontend/runtime.sh` (shared by `build.sh` and the `dev.mjs` watch). No CDN: everything is self-hosted and embedded.
-- **Interactivity** uses Datastar + Rocket (vendored in `frontend/src/datastar-rocket.js`).
-  templ owns the markup. Keep stable keyed patch roots (`board-content`,
-  `runs-content`, `agents-content`, `sidebar-nav`, `agent-status`, `notice`) intact.
-  See `SSE_UI.md`.
+- **Component JavaScript:** `frontend/runtime.sh` bundles lifecycle, Base UI/Floating UI helpers, Select, Checkbox, Switch, DropdownMenu, Dialog, CopyButton and MessageScroller from the pinned shadcn-templ module. Add any new component runtime to that shared list; no production CDN.
+- **Interactivity:** uses Datastar (vendored in `frontend/src/datastar.js`) and shadcn-templ component runtimes; prefer attributes and server-rendered fragments. The only app JS is the Sortable gesture and service-worker registration. Keep stable keyed patch roots intact. See `SSE_UI.md`.
 - For new UI or a visual redesign, follow `skills/frontend-design/SKILL.md`.
 - Keep the UI responsive (320–1440px), keyboard accessible and touch friendly.
   Update the relevant browser fixture or test when behavior changes.
@@ -149,11 +143,8 @@ Keep these accurate when you change the behavior they describe:
 - Pin tool versions (templ, sqlc, golangci-lint, BONNIE) consistently across
   CI, the `Dockerfile` and the docs when you bump them.
 
-Select fields require JavaScript; there is no native-select or noscript select
-fallback. The standalone recovery page still submits an ordinary HTTP POST.
-The shared `selectField` keeps trigger/content/input siblings for beta.14's
-input lookup. The adapter uses the pinned `templ.select.setValue` for resets
-and programmatic updates; named inputs carry committed form values. Select
-portals target the trigger's native dialog when present, preserving upstream
-portal ownership and cleanup. Provider changes bridge the committed input to
-Datastar; reset must restore both the displayed selection and provider signal.
+Selects are shadcn-templ `Select` via `selectField`, with server-rendered options.
+Fragments containing Select/DropdownMenu/Dialog are replace-patched, or option-keyed
+inside morph roots. Dialogs are shadcn `Dialog` frames rendered by
+`GET /dialogs/{name}`. Never reset forms containing mounted component declarations.
+The standalone recovery page still submits an ordinary HTTP POST.

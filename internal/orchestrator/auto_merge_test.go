@@ -288,7 +288,7 @@ func TestAutoMergeBrowserFixture(t *testing.T) {
 	if err := autoMergeControls("fixture", "inherit").Render(t.Context(), &b); err != nil {
 		t.Fatal(err)
 	}
-	b.WriteString(`<button type="submit">Save</button><button type="reset">Reset</button></form></main></body></html>`)
+	b.WriteString(`<button type="submit">Save</button></form></main></body></html>`)
 	if err := os.WriteFile(path, []byte(b.String()), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -95,7 +95,7 @@ func TestFailedResumeCardMenu(t *testing.T) {
 			for _, a := range form.Attr {
 				attrs[a.Key] = a.Val
 			}
-			if attrs["method"] != "post" || attrs["data-on:submit__prevent"] != "@post('"+tc.route+"', {contentType:'form'})" {
+			if attrs["method"] != "post" || !strings.Contains(buf.String(), "selector:&#39;#"+attrs["id"]) {
 				t.Fatal("submission behavior changed", attrs)
 			}
 		})

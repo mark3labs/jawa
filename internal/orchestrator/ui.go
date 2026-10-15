@@ -9,10 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/a-h/templ"
+	"github.com/axadrn/shadcn-templ/v2/components/dropdownmenu"
 	"maps"
 	"net/http"
 	"net/url"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/bonnie/presence"
@@ -408,12 +409,14 @@ func (d pageData) canGuide(c Card) bool {
 	return ok && !b.Queued && !b.Cancelling && latestAttempt(c.ID, d.attempts)[0].State == "blocked"
 }
 
-func guideDialogAction(cardID, token string) string {
-	return "$guideCard = " + strconv.Quote(cardID) + "; $guideToken = " + strconv.Quote(token) + "; $guideMessage = ''; $guideOpen = true"
-}
+func guideDialogAction(card, token string) string { return dialogOpen("guide", card, "") }
 
-func fixDialogAction(cardID, message string) string {
-	return "$fixCard = " + strconv.Quote(cardID) + "; $fixMessage = " + strconv.Quote(message) + "; $fixOpen = true"
+func fixDialogAction(card, message string) string {
+	extra := ""
+	if message != "" {
+		extra = "conflict"
+	}
+	return dialogOpen("fix", card, extra)
 }
 
 // PR check evidence is independent of the historical ready badge.
@@ -557,15 +560,7 @@ func (d pageData) resetReason(c Card) string {
 func (d pageData) canForceReady(c Card) bool {
 	return forceReadyReason(c, d.attempts, d.pendingResumes[c.ID]) == ""
 }
-func (d pageData) readyDialogAction(c Card) string {
-	a := latestAttempt(c.ID, d.attempts)[0]
-	p, ok := selectedProject(d.projects, c.ProjectID)
-	if !ok || p.ID != c.ProjectID {
-		return ""
-	}
-	pr, _ := forceReadyPR(c, a, p, "")
-	return "$readyCard = " + strconv.Quote(c.ID) + "; $readyToken = " + strconv.Quote(forceReadyToken(c, a, p)) + "; $readyPR = " + strconv.Quote(pr) + "; $readyLane = " + strconv.Quote(c.Status) + "; $readyNumber = ''; $readyReason = ''; $readyAcknowledged = false; $readyOpen = true"
-}
+func (d pageData) readyDialogAction(c Card) string { return dialogOpen("ready", c.ID, "") }
 func (d pageData) runLabel(a Attempt) string {
 	if _, ok := d.readyOverrides[a.ID]; ok && a.Ready {
 		return "Ready (manual)"
@@ -573,9 +568,7 @@ func (d pageData) runLabel(a Attempt) string {
 	return runLabel(a)
 }
 
-func assignmentAction(c Card, mode string) string {
-	return "$assignCard = " + strconv.Quote(c.ID) + "; $assignMode = " + strconv.Quote(mode) + "; $assignMessage = ''; $assignOpen = true"
-}
+func assignmentAction(c Card, mode string) string { return dialogOpen("assign", c.ID, mode) }
 
 func planningAssignmentLabel(d pageData, id string) string {
 	if detail, ok := d.planning[id]; ok && len(detail.Turns) > 0 {
@@ -590,15 +583,17 @@ func planningAssignmentLabel(d pageData, id string) string {
 func (d pageData) canMerge(c Card) bool {
 	return mergeEligible(c, d.attempts, d.prChecks[c.ID], false)
 }
-func (d pageData) mergeDialogAction(c Card) string {
-	a := latestAttempt(c.ID, d.attempts)[0]
-	p := Project{}
-	for _, project := range d.projects {
-		if project.ID == c.ProjectID {
-			p = project
-			break
-		}
+func (d pageData) mergeDialogAction(c Card) string { return dialogOpen("merge", c.ID, "") }
+
+func menuTrigger(ctx context.Context, extra templ.Attributes) templ.Attributes {
+	attrs := dropdownmenu.Trigger(ctx)
+	delete(attrs, "type")
+	for k, v := range extra {
+		attrs[k] = v
 	}
-	check := d.prChecks[c.ID]
-	return "$mergeCard=" + strconv.Quote(c.ID) + "; $mergeSnapshot=" + strconv.Quote(mergeSnapshot(c, a, p, check.HeadSHA, check.BaseSHA)) + "; $mergePR=" + strconv.Quote(a.PRURL) + "; $mergeBase=" + strconv.Quote(p.BaseBranch) + "; $mergeHead=" + strconv.Quote(check.HeadSHA) + "; $mergeOpen=true"
+	return attrs
+}
+func routeSlug(route string) string { return strings.ReplaceAll(strings.Trim(route, "/"), "/", "-") }
+func dsForm(route, sig string) templ.Attributes {
+	return templ.Attributes{"data-indicator:_" + sig: true, "data-on:submit__prevent": fmt.Sprintf("!$_%s && @post('%s', {contentType:'form'})", sig, route)}
 }

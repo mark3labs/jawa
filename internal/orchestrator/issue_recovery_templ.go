@@ -72,7 +72,7 @@ func issueRecoveryControls(state, message string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if state != "" && state != "completed" && state != "created" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"field\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"field\" data-on:change=\"evt.target.name === 'issue_recovery' && ($cardRecoveryAction = evt.target.value)\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -98,7 +98,7 @@ func issueRecoveryControls(state, message string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = selectField("issue-recovery-action", "issue_recovery", "", false, recoverySelectItems(state), nil).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = selectField("issue-recovery-action", "", "issue_recovery", "", false, false, recoverySelectItems(state), nil).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -275,7 +275,7 @@ func issueRecoveryPage(r *http.Request, state, message string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = textField("recovery-title", "title", "Title", r.FormValue("title"), true).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = textField("recovery-title", "title", "Title", r.FormValue("title"), true, nil).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
