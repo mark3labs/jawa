@@ -288,7 +288,7 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 // bearer used by the HTTP-over-NATS API. Never persist its short-lived token.
 func (c *reportChannel) startChat(ctx context.Context, nc *nats.Conn) error {
 	sub, err := nc.Subscribe(reportprotocol.ChatSubject(c.cfg.RootSubject, c.cfg.AgentID), func(m *nats.Msg) {
-		if !strings.HasPrefix(m.Reply, "_INBOX.") || len(m.Data) > 80000 {
+		if !strings.HasPrefix(m.Reply, "_INBOX.") || len(m.Data) > 512*1024 {
 			return
 		}
 		var cmd reportprotocol.Chat

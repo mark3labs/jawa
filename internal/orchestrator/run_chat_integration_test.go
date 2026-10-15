@@ -142,3 +142,66 @@ func TestRunChatOfflineReconnectBothModes(t *testing.T) {
 		})
 	}
 }
+
+func TestRunChatContinuationCanParkForGuidance(t *testing.T) {
+	s, nc := workflowFixture(t)
+	if err := s.SetDashboardOverrides(map[string]string{"auto-resume-failed-runs": "false"}); err != nil {
+		t.Fatal(err)
+	}
+	w, err := NewWorkflow(t.Context(), s, nc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = w.Close() }()
+	card := workflowCard(t, s)
+	if err = w.MoveCard(card.ID, "Building", 0); err != nil {
+		t.Fatal(err)
+	}
+	journal := runtime.NewMemoryJournal()
+	var b reportbridge.Bridge
+	model := testmodel.New(testmodel.Say("unreported original completion"), testmodel.Call("reportBlocker", `{"reason":"need guidance after chat"}`), testmodel.Say("continued after guidance"))
+	factory := runtime.KitAgentWithSetup(false, func(ctx context.Context, k *kit.Kit, session *runtime.Session) error {
+		return b.Setup(ctx, k, bonnie.RunScope{RunID: session.RunID(), Session: session})
+	}, model.Option(), func(o *kit.Options) {
+		o.SkipConfig, o.NoContextFiles, o.NoSkills, o.NoExtensions, o.NoAgents, o.DisableCoreTools, o.Quiet = true, true, true, true, true, true, true
+	})
+	runner := runtime.NewRunner(journal, factory)
+	ch, err := b.New(runner, channel.Config{Conn: nc, RootSubject: "bonnie", AgentID: "guidance-chat-agent", CreateStream: true, TargetedTasks: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ch.(interface{ Start(context.Context) error }).Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = ch.(interface{ Shutdown(context.Context) error }).Shutdown(ctx)
+	}()
+	var record RunRecord
+	waitWorkflow(t, func() bool {
+		a, e := w.CardResult(card.ID)
+		if e == nil && a.OutcomeJSON != "" {
+			record = buildRun(a)
+			return true
+		}
+		return false
+	})
+	if _, err = w.QueueRunChat(t.Context(), "Build", record.ID, uuid.NewString(), "continue current task", ""); err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	waitWorkflow(t, func() bool {
+		var raw string
+		e := s.db.QueryRow(`SELECT report_id,waiting_json FROM workflow_interactions WHERE task_id=? AND status='pending'`, record.TaskID).Scan(&token, &raw)
+		messages := w.chatMessages(record)
+		return e == nil && raw != "" && len(messages) == 1 && messages[0].Status == "completed"
+	})
+	if _, err = w.QueueRunChat(t.Context(), "Build", record.ID, uuid.NewString(), "exact guidance", token); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkflow(t, func() bool {
+		messages := w.chatMessages(record)
+		return len(messages) == 2 && messages[1].Status == "completed"
+	})
+}
