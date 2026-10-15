@@ -352,6 +352,9 @@ templ prRefreshForm(d pageData, projectID, cardID, label string) {
 
 templ cardPRStatus(d pageData, c Card) {
 	{{ check := d.prChecks[c.ID] }}
+ if d.canMerge(c) {
+ @button.Button(button.Props{Type:button.TypeButton,Size:button.SizeSm,Variant:button.VariantOutline,Class:"btn small",Attributes:templ.Attributes{"data-on:click":d.mergeDialogAction(c)}}) { Merge… }
+ }
 	<div class={ "card-pr-status", templ.KV("card-conflict", check.State == "conflict") } role="status" data-pr-check-state={ check.State }>
 		if check.State == "conflict" || check.State == "error" {
 			@badge.Badge(badge.Props{Variant: badge.VariantOutline, Class: "chip tone-failed", Attributes: templ.Attributes{"title": prCheckLabel(check)}}) {

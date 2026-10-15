@@ -15,6 +15,8 @@ func mutationDialog(r *http.Request) string {
 		return "card"
 	case "/cards/delete":
 		return "delete"
+	case "/cards/merge":
+		return "merge"
 	case "/cards/fix":
 		return "fix"
 	case "/cards/guide":

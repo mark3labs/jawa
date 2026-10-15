@@ -105,3 +105,32 @@ may retry only after fresh readiness; unavailable/mismatched evidence remains
 uncertain. Backoff starts at one minute, doubles to 30 minutes and honors longer
 valid Retry-After. Failures leave historical Ready untouched. Disabling during
 flight cannot guarantee stopping an external merge.
+## Explicit operator merges
+
+`POST /cards/merge` is a separate authenticated operator capability, never part of
+verification, agent completion or polling. Supported methods are exactly `merge`,
+`squash`, `rebase`. GitHub uses PUT `/repos/{owner}/{repo}/pulls/{n}/merge` with
+`sha` and `merge_method`, requiring HTTP 200 and explicit `merged:true`. Forgejo
+uses POST to that path with `head_commit_id` and `Do`; `force_merge`,
+`merge_when_checks_succeed`, `delete_branch_after_merge` are explicitly false.
+Its documented empty HTTP 200 is followed by a PR read, not treated as proof.
+Both providers require matching original head and confirmed merged/closed state.
+Redirects/cookies are disabled; total provider work is bounded to 20 seconds,
+responses to 4 MiB. One operation makes at most one write, with no transport retry.
+
+Tokens that suffice for reads may not merge: GitHub needs repository Contents
+write and appropriate PR access; Forgejo needs repository write/merge permissions
+on the supported host version. Never broaden tokens automatically or require
+write rights for ordinary verification. Administrative bypass privileges are a
+deployment risk: use least privilege. Disabled strategies/policy/permission
+refusals fail without strategy fallback. Unsupported Forgejo expected-head API
+behavior must fail closed; live host compatibility remains operator validation.
+
+Fresh identity/branch/base/head checks precede writes, and head is conditional at
+the host. Neither API provides an expected-base-SHA atomic condition: base/target
+and repository settings can still change externally between validation and merge.
+Host policy is evaluated at merge time. Lost responses, malformed success, failed
+confirmation, cancellation after initiation and crashed reservations are uncertain.
+Read-only reconciliation confirms matching merged evidence or releases a positively
+not-merged PR after the bounded write window. Unknown/error evidence retains the
+lock. No distributed exactly-once guarantee or remote cancellation is claimed.

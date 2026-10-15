@@ -234,7 +234,7 @@ func pageTitle(d pageData) string {
 }
 
 func shellSignals() string {
-	return "{runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,readyOpen:false,readyCard:'',readyToken:'',readyPR:'',readyNumber:'',readyReason:'',readyAcknowledged:false,readyLane:'',assignOpen:false,assignCard:'',assignMode:'',assignMessage:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
+	return "{mergeOpen:false,mergeCard:'',mergeSnapshot:'',mergePR:'',mergeBase:'',mergeHead:'',runDraft:'',traceFilter:'',filter:'',projectOpen:false,projectProvider:'github',cardOpen:false,deleteOpen:false,deleteCard:'',deleteOrphan:false,deleteAcknowledged:false,cancelOpen:false,cancelCard:'',forceOpen:false,forceCard:'',forceAcknowledged:false,readyOpen:false,readyCard:'',readyToken:'',readyPR:'',readyNumber:'',readyReason:'',readyAcknowledged:false,readyLane:'',assignOpen:false,assignCard:'',assignMode:'',assignMessage:'',fixOpen:false,fixCard:'',fixMessage:'',guideOpen:false,guideCard:'',guideToken:'',guideMessage:'',goto:''}"
 }
 
 func isCurrent(active bool) string {
@@ -465,6 +465,7 @@ templ dialogError(name, operation, message string) {
 
 templ dialogs(d pageData) {
 	@assignmentDialog(d)
+ @mergeDialog(d)
 	<dialog id="fix-dialog" aria-labelledby="fix-dialog-title" data-effect="window.jawaDialog(el, $fixOpen)" data-on:close="if (!el.open) $fixOpen = false" data-on:cancel="$fixOpen = false">
 		@dialogError("fix", "", "")
 		@dialog.Title(dialog.TitleProps{ID: "fix-dialog-title"}) {
@@ -805,4 +806,31 @@ templ acknowledgement(id, name, signal, required string) {
 	<span class="acknowledgement" data-effect={ "window.jawaSyncAcknowledgement(el, $" + signal + ", " + required + ")" } data-on:change={ "$" + signal + " = evt.target.checked" }>
 		@checkbox.Checkbox(checkbox.Props{ID: id, Name: name, Value: "yes", Required: required == "true", Attributes:templ.Attributes{"aria-labelledby":id+"-label"}})
 	</span>
+}
+
+templ mergeDialog(d pageData) {
+ <dialog id="merge-dialog" aria-labelledby="merge-dialog-title" data-effect="window.jawaDialog(el, $mergeOpen)" data-on:close="if (!el.open) $mergeOpen=false" data-on:cancel="$mergeOpen=false">
+ @dialogError("merge","","")
+ @dialog.Title(dialog.TitleProps{ID:"merge-dialog-title"}) { Merge pull request }
+ @dialog.Description() { This changes the remote repository. Cancelling after submission cannot undo a merge or guarantee cancellation. Repository rules may reject your chosen strategy. }
+ <p>Repository / PR: <span data-text="$mergePR"></span></p>
+ <p>Target base: <code data-text="$mergeBase"></code></p>
+ <p class="break-all">Observed head: <code data-text="$mergeHead"></code></p>
+ <form method="post" action="/cards/merge" data-on:submit__prevent="if (!el.hasAttribute('data-pending')) @post('/cards/merge', {contentType:'form', retry:'never', requestCancellation:el.closest('dialog').jawaRequest})">
+ <input type="hidden" name="dialog_operation"/>
+ <input type="hidden" name="operation"/>
+ <input type="hidden" name="_csrf" value={d.csrf}/>
+ @viewFields(d.v)
+ <input type="hidden" name="card_id" data-bind:merge-card/>
+ <input type="hidden" name="snapshot" data-bind:merge-snapshot/>
+ <div class="field">
+ @label.Label(label.Props{For:"merge-method"}) { Merge strategy }
+ @selectField("merge-method","method","merge",true,[]selectcomp.ItemData{{Value:"merge",Label:"Merge commit"},{Value:"squash",Label:"Squash"},{Value:"rebase",Label:"Rebase"}},nil)
+ </div>
+ @dialog.Footer(dialog.FooterProps{Class:"dialog-actions"}) {
+ @button.Button(button.Props{Type:button.TypeButton,Variant:button.VariantOutline,Class:"btn",Attributes:templ.Attributes{"data-on:click":"$mergeOpen=false"}}) { Cancel }
+ @button.Button(button.Props{Type:button.TypeSubmit,Class:"btn primary"}) { Merge pull request }
+ }
+ </form>
+ </dialog>
 }

@@ -15,7 +15,7 @@ type mergeAdapter struct {
 	store  *Store
 	client *http.Client
 }
-type mergeOutcome struct {
+type autoMergeOutcome struct {
 	state, category string
 	retryAfter      time.Time
 }
@@ -26,40 +26,40 @@ func newMergeAdapter(s *Store, c *http.Client) *mergeAdapter {
 func (m *mergeAdapter) prepare(ctx context.Context, a Attempt) (verifiedPR, error) {
 	return verifyProviderPR(ctx, m.store, m.client, a)
 }
-func (m *mergeAdapter) confirm(ctx context.Context, a Attempt, sha string) mergeOutcome {
+func (m *mergeAdapter) confirm(ctx context.Context, a Attempt, sha string) autoMergeOutcome {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	p, _, path, owner, name, base, number, err := providerTarget(ctx, m.store, m.client, a)
 	if err != nil {
-		return mergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
+		return autoMergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
 	}
 	branch, err := assignedBranch(a)
 	if err != nil {
-		return mergeOutcome{state: "uncertain", category: "identity_changed"}
+		return autoMergeOutcome{state: "uncertain", category: "identity_changed"}
 	}
 	var pr providerPR
 	if p.read(path, &pr) != nil || !pr.checkIdentityMatches(owner+"/"+name, base, branch, number) || pr.Head.SHA != sha {
-		return mergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
+		return autoMergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
 	}
 	if pr.Merged && pr.State == "closed" {
 		var latest providerPR
 		if p.read(path, &latest) == nil && latest.checkIdentityMatches(owner+"/"+name, base, branch, number) && latest.Head.SHA == sha && latest.Merged && latest.State == "closed" {
-			return mergeOutcome{state: "merged"}
+			return autoMergeOutcome{state: "merged"}
 		}
-		return mergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
+		return autoMergeOutcome{state: "uncertain", category: "confirmation_unavailable"}
 	}
 	if !pr.Merged && pr.State == "open" {
-		return mergeOutcome{state: "deferred", category: "confirmed_open"}
+		return autoMergeOutcome{state: "deferred", category: "confirmed_open"}
 	}
-	return mergeOutcome{state: "uncertain", category: "closed_unmerged"}
+	return autoMergeOutcome{state: "uncertain", category: "closed_unmerged"}
 }
-func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) mergeOutcome {
+func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) autoMergeOutcome {
 	phase, cancel := context.WithTimeout(ctx, 20*time.Second)
 	// Re-resolve credentials and assignment, never carry credentials in the ledger.
 	p, _, path, _, _, _, _, err := providerTarget(phase, m.store, m.client, a)
 	if err != nil || path != v.path || p.api != v.reader.api || p.forgejo != v.reader.forgejo {
 		cancel()
-		return mergeOutcome{state: "deferred", category: "configuration_unavailable"}
+		return autoMergeOutcome{state: "deferred", category: "configuration_unavailable"}
 	}
 	method := http.MethodPut
 	payload := map[string]any{"sha": v.sha, "merge_method": "squash"}
@@ -71,13 +71,13 @@ func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) me
 	req, err := http.NewRequestWithContext(phase, method, p.api+path+"/merge", bytes.NewReader(body))
 	if err != nil {
 		cancel()
-		return mergeOutcome{state: "deferred", category: "configuration_unavailable"}
+		return autoMergeOutcome{state: "deferred", category: "configuration_unavailable"}
 	}
 	req.Header.Set("Authorization", p.authPrefix+p.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := m.client.Do(req)
-	outcome := mergeOutcome{state: "uncertain", category: "delivery_uncertain"}
+	outcome := autoMergeOutcome{state: "uncertain", category: "delivery_uncertain"}
 	if err == nil {
 		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 		_ = resp.Body.Close()
@@ -96,15 +96,15 @@ func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) me
 					}
 				}
 			case http.StatusUnauthorized, http.StatusForbidden:
-				outcome = mergeOutcome{state: "rejected", category: "permissions_or_protection"}
+				outcome = autoMergeOutcome{state: "rejected", category: "permissions_or_protection"}
 			case http.StatusMethodNotAllowed:
-				outcome = mergeOutcome{state: "rejected", category: "squash_or_protection"}
+				outcome = autoMergeOutcome{state: "rejected", category: "squash_or_protection"}
 			case http.StatusConflict:
-				outcome = mergeOutcome{state: "deferred", category: "sha_conflict"}
+				outcome = autoMergeOutcome{state: "deferred", category: "sha_conflict"}
 			case http.StatusUnprocessableEntity:
-				outcome = mergeOutcome{state: "rejected", category: "protection_pending"}
+				outcome = autoMergeOutcome{state: "rejected", category: "protection_pending"}
 			case http.StatusTooManyRequests:
-				outcome = mergeOutcome{state: "deferred", category: "rate_limited"}
+				outcome = autoMergeOutcome{state: "deferred", category: "rate_limited"}
 			}
 			if resp.StatusCode == 429 || resp.StatusCode == 403 {
 				if seconds, e := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 32); e == nil && seconds > 0 {
@@ -126,4 +126,100 @@ func (m *mergeAdapter) dispatch(ctx context.Context, a Attempt, v verifiedPR) me
 		}
 	}
 	return outcome
+}
+
+// A merger reports only sanitized states. Once a write starts, anything other
+// than a definite refusal needs read-only reconciliation, never a write retry.
+type ProviderMerger func(context.Context, Attempt, string, string) string
+
+func validMergeMethod(method string) bool {
+	return method == "merge" || method == "squash" || method == "rebase"
+}
+
+func ProviderPRMerger(s *Store, supplied *http.Client) ProviderMerger {
+	c := http.Client{}
+	if supplied != nil {
+		c = *supplied
+	}
+	c.Timeout, c.Jar = 20*time.Second, nil
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return func(ctx context.Context, a Attempt, head, method string) string {
+		if !validMergeMethod(method) || !providerSHA.MatchString(head) {
+			return "rejected"
+		}
+		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		p, _, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
+		if err != nil {
+			return "rejected"
+		}
+		branch, err := assignedBranch(a)
+		if err != nil {
+			return "rejected"
+		}
+		var pr providerPR
+		if p.read(path, &pr) != nil || !pr.checkIdentityMatches(owner+"/"+name, base, branch, number) || pr.Head.SHA != head {
+			return "rejected"
+		}
+		if pr.conflictState(p.forgejo) == "merged" {
+			return "merged"
+		}
+		if pr.conflictState(p.forgejo) != "clear" {
+			return "rejected"
+		}
+		verb := http.MethodPut
+		payload := map[string]any{"sha": head, "merge_method": method}
+		if p.forgejo {
+			verb = http.MethodPost
+			payload = map[string]any{"Do": method, "head_commit_id": head, "force_merge": false, "merge_when_checks_succeed": false, "delete_branch_after_merge": false}
+		}
+		body, _ := json.Marshal(payload)
+		req, err := http.NewRequestWithContext(ctx, verb, p.api+path+"/merge", bytes.NewReader(body))
+		if err != nil {
+			return "rejected"
+		}
+		req.Header.Set("Authorization", p.authPrefix+p.token)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Content-Type", "application/json")
+		// Exactly one write attempt. Do not use the read parser: Forgejo's documented
+		// successful response has no JSON body. Redirects are never followed.
+		resp, err := c.Do(req)
+		if err != nil {
+			return "uncertain"
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			switch resp.StatusCode {
+			case 401, 403, 404, 405, 409, 422:
+				return "rejected"
+			default:
+				return "uncertain"
+			}
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+		if err != nil || len(data) > 4<<20 {
+			return "uncertain"
+		}
+		if !p.forgejo {
+			var result struct {
+				Merged *bool `json:"merged"`
+			}
+			if json.Unmarshal(data, &result) != nil || result.Merged == nil {
+				return "uncertain"
+			}
+			if !*result.Merged {
+				return "rejected"
+			}
+		} else if len(bytes.TrimSpace(data)) != 0 {
+			// Some hosts send JSON; reject malformed success rather than guess.
+			if !json.Valid(data) {
+				return "uncertain"
+			}
+		}
+		var confirmed providerPR
+		if p.read(path, &confirmed) != nil || !confirmed.checkIdentityMatches(owner+"/"+name, base, branch, number) || confirmed.Head.SHA != head || confirmed.conflictState(p.forgejo) != "merged" {
+			return "uncertain"
+		}
+		return "merged"
+	}
 }

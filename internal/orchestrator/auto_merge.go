@@ -86,7 +86,7 @@ func mergeConfig(q readyQuery, a Attempt) (token, provider, repo, base string, e
 	token = hex.EncodeToString(sum[:])
 	return
 }
-func mergeEligible(tx *sql.Tx, a Attempt) error {
+func autoMergeEligible(tx *sql.Tx, a Attempt) error {
 	var eligible bool
 	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM workflow_attempts a JOIN cards c ON c.id=a.card_id WHERE a.id=? AND a.pr_url=? AND a.ready=1 AND a.state='ready' AND a.error<>? AND c.status='Done' AND c.archived=0 AND a.number=(SELECT max(number) FROM workflow_attempts WHERE card_id=c.id)
  AND NOT EXISTS(SELECT 1 FROM workflow_ready_overrides WHERE attempt_id=a.id)
@@ -194,7 +194,7 @@ func (w *Workflow) autoMergeOne(ctx context.Context, adapter *mergeAdapter, id s
 	if err != nil {
 		return
 	}
-	err = mergeEligible(tx, a)
+	err = autoMergeEligible(tx, a)
 	_ = tx.Rollback()
 	if err != nil {
 		return
@@ -214,7 +214,7 @@ func (w *Workflow) autoMergeOne(ctx context.Context, adapter *mergeAdapter, id s
 	}
 	defer func() { _ = tx.Rollback() }()
 	current, _, _, _, err := mergeConfig(tx, a)
-	if err != nil || current != token || mergeEligible(tx, a) != nil {
+	if err != nil || current != token || autoMergeEligible(tx, a) != nil {
 		return
 	}
 	var unresolved bool
@@ -241,7 +241,7 @@ func (w *Workflow) autoMergeOne(ctx context.Context, adapter *mergeAdapter, id s
 	}
 	current, _, _, _, err = mergeConfig(dispatchTx, a)
 	if err == nil && current == token {
-		err = mergeEligible(dispatchTx, a)
+		err = autoMergeEligible(dispatchTx, a)
 	} else {
 		err = errors.New("policy changed")
 	}
@@ -268,7 +268,7 @@ func (w *Workflow) recordMergePreparation(a Attempt, token, provider, repo, base
 	_ = w.s.db.QueryRow(`SELECT retries FROM auto_merge_operations WHERE attempt_id=? AND provider=? AND repository=? AND base_branch=? AND pr_url=? AND head_sha=''`, a.ID, provider, repo, base, a.PRURL).Scan(&retries)
 	_, _ = w.s.db.Exec(`INSERT INTO auto_merge_operations(id,card_id,attempt_id,provider,repository,base_branch,pr_url,head_sha,config_token,state,category,next_check_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'',?,'deferred','readiness_pending',?,?,?) ON CONFLICT(attempt_id,provider,repository,base_branch,pr_url,head_sha) DO UPDATE SET config_token=excluded.config_token,next_check_at=excluded.next_check_at,updated_at=excluded.updated_at,retries=auto_merge_operations.retries+1`, newID(), a.CardID, a.ID, provider, repo, base, a.PRURL, token, now+mergeBackoff(retries).Milliseconds(), now, now)
 }
-func (w *Workflow) finishMergeOperation(op string, a Attempt, sha string, retries int, out mergeOutcome) {
+func (w *Workflow) finishMergeOperation(op string, a Attempt, sha string, retries int, out autoMergeOutcome) {
 	now := time.Now()
 	due := now.Add(mergeBackoff(retries))
 	if out.retryAfter.After(due) {

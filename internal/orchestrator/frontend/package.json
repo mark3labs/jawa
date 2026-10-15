@@ -6,6 +6,7 @@
   "scripts": {
     "build": "sh ./build.sh",
     "test:auto-merge": "node auto-merge.mjs",
+    "test:merge": "node merge.mjs",
     "test:ui": "node ui-regressions.mjs",
     "test:components": "node components.mjs",
     "test:browser": "node --test browser.test.mjs",

@@ -419,6 +419,10 @@ func fixDialogAction(cardID, message string) string {
 // PR check evidence is independent of the historical ready badge.
 func prCheckLabel(check PRCheck) string {
 	switch check.State {
+	case "pending":
+		return "Merge in progress. Closing the dialog does not cancel remote work."
+	case "uncertain":
+		return "Merge outcome uncertain. Refresh ready PRs to reconcile; do not retry blindly."
 	case "checking":
 		return "Checking PR status… (queued or in progress)"
 	case "clear":
@@ -581,4 +585,20 @@ func planningAssignmentLabel(d pageData, id string) string {
 		}
 	}
 	return planningLabel(planningState(d, id))
+}
+
+func (d pageData) canMerge(c Card) bool {
+	return mergeEligible(c, d.attempts, d.prChecks[c.ID], false)
+}
+func (d pageData) mergeDialogAction(c Card) string {
+	a := latestAttempt(c.ID, d.attempts)[0]
+	p := Project{}
+	for _, project := range d.projects {
+		if project.ID == c.ProjectID {
+			p = project
+			break
+		}
+	}
+	check := d.prChecks[c.ID]
+	return "$mergeCard=" + strconv.Quote(c.ID) + "; $mergeSnapshot=" + strconv.Quote(mergeSnapshot(c, a, p, check.HeadSHA, check.BaseSHA)) + "; $mergePR=" + strconv.Quote(a.PRURL) + "; $mergeBase=" + strconv.Quote(p.BaseBranch) + "; $mergeHead=" + strconv.Quote(check.HeadSHA) + "; $mergeOpen=true"
 }

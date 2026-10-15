@@ -94,3 +94,24 @@ outcome, separately from Ready. Interrupted reservations become uncertain on
 restart and reconcile read-only before safe fresh-verification retry. Persisted
 backoff is one minute exponentially up to 30 minutes (longer Retry-After honored).
 There is no cross-provider exactly-once guarantee; one orchestrator per database.
+## Operator PR merge reservations
+
+`MergePR` admits only a non-archived Done card's latest ready PR with applicable
+clear head/base evidence, no manual merged marker, active attempt or pending
+resume. A rendered snapshot hashes current attempt/project configuration and
+observed revisions. An opaque operation ID durably binds card/snapshot/method;
+exact repeats return recorded outcomes, never replay provider writes. A short
+write transaction reserves one unresolved operation per card before provider I/O.
+Fix (including assigned Fix), delete/reset, archive and local Mark as merged share
+the reservation guard. No transaction spans network I/O.
+
+`pr_merges` retains sanitized pending/merged/rejected/uncertain audit and operator
+identity without tokens or raw provider responses, even after card deletion.
+Restart marks pending reservations uncertain. Poll/explicit refresh perform only
+read reconciliation after the 25-second reservation window; unknown/failed checks
+retain uncertainty. Fresh explicit confirmation is required after rejection.
+Finalization attaches merged evidence only to matching latest attempt/configuration;
+lane, ordering, readiness, manual provenance and archive state are unchanged.
+Poll evidence uses durable operation generation/status predicates, not mutexes
+alone, so checks begun before reservation cannot overwrite final evidence.
+Provider writes and SQLite cannot commit atomically; no exactly-once claim is made.

@@ -25,7 +25,19 @@ func (s *Store) setCardArchived(ctx context.Context, id string, archived bool) (
 	if archived {
 		flag = 1
 	}
-	return sqlc.New(s.db).SetCardArchived(ctx, sqlc.SetCardArchivedParams{ID: id, Archived: flag})
+	tx, err := s.writeTx()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err = noUnresolvedMerge(tx, id); err != nil {
+		return 0, err
+	}
+	n, err := sqlc.New(tx).SetCardArchived(ctx, sqlc.SetCardArchivedParams{ID: id, Archived: flag})
+	if err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 func cardFromQuery(row sqlc.Card) Card {
