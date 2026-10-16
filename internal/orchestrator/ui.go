@@ -592,9 +592,7 @@ func (d pageData) mergeDialogAction(c Card) string { return dialogOpen("merge", 
 func menuTrigger(ctx context.Context, extra templ.Attributes) templ.Attributes {
 	attrs := dropdownmenu.Trigger(ctx)
 	delete(attrs, "type")
-	for k, v := range extra {
-		attrs[k] = v
-	}
+	maps.Copy(attrs, extra)
 	return attrs
 }
 func routeSlug(route string) string { return strings.ReplaceAll(strings.Trim(route, "/"), "/", "-") }

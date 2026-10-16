@@ -106,10 +106,7 @@ func mergeBackoff(retries int) time.Duration {
 	if retries < 0 {
 		retries = 0
 	}
-	delay := time.Minute * time.Duration(1<<retries)
-	if delay > 30*time.Minute {
-		delay = 30 * time.Minute
-	}
+	delay := min(time.Minute*time.Duration(1<<retries), 30*time.Minute)
 	return delay
 }
 

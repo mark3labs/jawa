@@ -41,7 +41,7 @@ runs the same commands, so run them before declaring work done:
 go build -o ./bin/jawa .
 go vet ./...
 go test -race ./...
-golangci-lint run ./...          # CI pins v2.14.0
+golangci-lint run ./...          # CI pins v2.15.0
 ```
 
 For a fast loop, scope tests, e.g. `go test ./internal/orchestrator -run TestName -count=1`.

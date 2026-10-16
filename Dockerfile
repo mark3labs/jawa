@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-ARG GO_VERSION=1.27.0
+ARG GO_VERSION=1.27.1
 ARG RUST_VERSION=1
-ARG BUN_VERSION=1.3.0
-ARG UV_VERSION=0.9.2
+ARG BUN_VERSION=1.4.3
+ARG UV_VERSION=0.13.1
 
 FROM oven/bun:${BUN_VERSION} AS bun
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
@@ -18,11 +18,11 @@ FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.29.0
+RUN go install github.com/mark3labs/bonnie/cmd/bonnie@v0.30.0
 COPY . .
 RUN bonnie build --output /out/jawa
-RUN GOBIN=/out go install golang.org/x/tools/gopls@v0.23.0 \
-    && GOBIN=/out go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+RUN GOBIN=/out go install golang.org/x/tools/gopls@v0.24.0 \
+    && GOBIN=/out go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
 # Keep the Go toolchain available for coding tasks, not just the agent build.
 FROM golang:${GO_VERSION}-bookworm AS runtime

@@ -77,8 +77,8 @@ func (m *mcpService) snapshot(ctx context.Context) (pageData, error) {
 // storage records: those also carry private execution and discussion content.
 func projectCard(d pageData, c Card) mcpCard {
 	out := mcpCard{
-		mcpCardSummary: mcpCardSummary{ID: c.ID, Key: cardKey(d.projects, c), ProjectID: c.ProjectID, Title: c.Title, Lane: c.Status, LaneLabel: laneName(c.Status), Position: c.Position, Archived: c.Archived, Status: "Todo", Tone: "idle", Agent: d.cardAgent(c), UpdatedAt: d.cardActivity(c)},
-		Description:    c.Description, IssueURL: safeActivityURL(c.IssueURL), AutoMerge: c.AutoMergeMode,
+		ID: c.ID, Key: cardKey(d.projects, c), ProjectID: c.ProjectID, Title: c.Title, Lane: c.Status, LaneLabel: laneName(c.Status), Position: c.Position, Archived: c.Archived, Status: "Todo", Tone: "idle", Agent: d.cardAgent(c), UpdatedAt: d.cardActivity(c),
+		Description: c.Description, IssueURL: safeActivityURL(c.IssueURL), AutoMerge: c.AutoMergeMode,
 	}
 	if out.AutoMerge == "" {
 		out.AutoMerge = "inherit"

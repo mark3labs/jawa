@@ -23,7 +23,7 @@ func TestAutoMergePolicy(t *testing.T) {
 			}
 		}
 	}
-	for n := 0; n < 20; n++ {
+	for n := range 20 {
 		d := mergeBackoff(n)
 		if d < time.Minute || d > 30*time.Minute {
 			t.Fatal(d)

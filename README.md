@@ -402,7 +402,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.29.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.30.0
 bonnie chat
 ```
 
@@ -693,7 +693,7 @@ The native/enhanced form sends `card_id`, `expected_attempt_id`,
 ineligible submissions fail without writing metadata. Already effectively
 merged cards omit the action.
 
-### Run detail (BONNIE v0.29.0)
+### Run detail (BONNIE v0.30.0)
 
 Open a pinned attempt in **Runs** to view **Chat** and **Trace** through the
 agent's outbound NATS connection. No browser NATS credentials or agent TCP

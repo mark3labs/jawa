@@ -242,8 +242,12 @@ func TestManualPRMergeRacingFix(t *testing.T) {
 	go func() { <-start; done <- w.MarkPRMerged(context.Background(), c.ID, a.ID, a.PRURL) }()
 	go func() { <-start; done <- w.FixCard(c.ID, "repair") }()
 	close(start)
-	<-done
-	<-done
+	// Either operation may lose the race; verify the resulting state below.
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Logf("racing operation: %v", err)
+		}
+	}
 	latest, err := w.CardResult(c.ID)
 	if err != nil || latest.ID == a.ID {
 		t.Fatal("repair not queued", err)

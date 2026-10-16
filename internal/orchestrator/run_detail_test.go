@@ -156,7 +156,10 @@ func TestWorkerDirectACLAfterReload(t *testing.T) {
 		}
 		for range 2 {
 			select {
-			case <-errors:
+			case err := <-errors:
+				if err == nil {
+					t.Fatal("expected asynchronous denial error")
+				}
 			case <-time.After(time.Second):
 				t.Fatal("missing asynchronous denial")
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
 	"net/url"
 	"strings"
 	"time"
@@ -143,9 +144,7 @@ func (m *mcpService) actResult(ctx context.Context, tool, cardID string, timeout
 		return mcpRejected(err)
 	}
 	result := map[string]any{"ok": true}
-	for k, v := range extra {
-		result[k] = v
-	}
+	maps.Copy(result, extra)
 	if extra["deleted"] != true && cardID != "" {
 		card, err := m.card(actx, cardID)
 		if err != nil {

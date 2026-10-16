@@ -128,10 +128,15 @@ func cliSmokeAgent(t *testing.T, binary, entry, api string) {
 	defer func() {
 		_ = cmd.Process.Signal(os.Interrupt)
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Logf("agent shutdown: %v", err)
+			}
 		case <-time.After(10 * time.Second):
 			_ = cmd.Process.Kill()
-			<-done
+			if err := <-done; err != nil {
+				t.Logf("agent killed: %v", err)
+			}
 		}
 		output, _ := os.ReadFile(logFile.Name())
 		t.Logf("agent log:\n%s", output)

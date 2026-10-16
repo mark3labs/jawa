@@ -597,7 +597,9 @@ func Command() *cobra.Command {
 			if listenErr != nil {
 				logger.Error("Failed to listen for MCP", "address", mcpListen, "err", listenErr)
 				_ = srv.Close()
-				<-done
+				if serveErr := <-done; serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+					logger.Error("HTTP server stopped unexpectedly", "err", serveErr)
+				}
 				return listenErr
 			}
 			mcpSrv = newMCPHTTPServer(ctx, s, workflow, logger)
@@ -612,7 +614,9 @@ func Command() *cobra.Command {
 			if shutdownErr != nil {
 				_ = server.Close()
 			}
-			<-finished
+			if serveErr := <-finished; serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				return errors.Join(shutdownErr, serveErr)
+			}
 			return shutdownErr
 		}
 		select {
