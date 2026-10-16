@@ -22,13 +22,15 @@ const mcpInstructions = `Jawa orchestrates coding agents on a kanban board.
 Lanes: Todo -> Planning (optional) -> Building -> Done ("Ready for review": a verified PR); Fix repairs an existing PR.
 Agents run asynchronously. Write tools only queue or record work and return at once.
 To follow progress, call get_card, or wait_for_card with the card's last "version", until lane/status changes.
+Use the actions listed on each card. They carry the exact tokens the server expects.
+Creation tools require an idempotency_key; reuse it to retry safely.
 Only the information shown on cards and the card/plan page is available; run transcripts are not.`
 
 type mcpService struct {
 	s           *Store
 	w           *Workflow
 	logger      *log.Logger
-	issueClient *http.Client //nolint:unused // Reserved provider stub injection point for issue #106.
+	issueClient *http.Client
 }
 
 type mcpKeyContext struct{}
@@ -60,6 +62,7 @@ func newMCPHandler(s *Store, w *Workflow, logger *log.Logger) http.Handler {
 func (m *mcpService) handler() http.Handler {
 	srv := server.NewMCPServer("jawa", "1", server.WithToolCapabilities(false), server.WithRecovery(), server.WithInstructions(mcpInstructions))
 	m.registerReadTools(srv)
+	m.registerLifecycleTools(srv)
 	transport := server.NewStreamableHTTPServer(srv, server.WithEndpointPath(mcpEndpoint), server.WithStateLess(true), server.WithDisableLocalhostProtection(true))
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Cache-Control", "no-store")

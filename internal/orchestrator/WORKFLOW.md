@@ -141,3 +141,11 @@ ambiguous, not permission to run again; subsequent commands stay pending until
 safe operator reconciliation. No automatic new-ID replay or external exactly-once
 claim. Original failure evidence is retained until host-confirmed continuation.
 See README Run detail for compatibility, security and operational limitations.
+
+## Remote MCP lifecycle
+
+MCP lifecycle tools call the same Workflow methods as dashboard mutations, with
+identical revision, interaction, resume and auto-merge CAS tokens. They add no
+new transitions: writes queue durable work or record a decision and return a
+refreshed card; clients follow progress through get_card/wait_for_card. Creation
+shares transactional insert helpers and the dashboard's issue submission ledger.

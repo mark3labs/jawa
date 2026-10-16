@@ -118,14 +118,20 @@ func TestMCPListsReadTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{"list_projects": true, "list_agents": true, "list_cards": true, "get_card": true, "wait_for_card": true}
-	if len(tools.Tools) != len(want) {
+	if len(tools.Tools) != len(want)+15 {
 		t.Fatal(tools.Tools)
 	}
 	for _, tool := range tools.Tools {
-		if !want[tool.Name] || tool.Annotations.ReadOnlyHint == nil || !*tool.Annotations.ReadOnlyHint {
+		if !want[tool.Name] {
+			continue
+		}
+		if tool.Annotations.ReadOnlyHint == nil || !*tool.Annotations.ReadOnlyHint {
 			t.Fatalf("unexpected tool: %+v", tool)
 		}
 		delete(want, tool.Name)
+	}
+	if len(want) != 0 {
+		t.Fatal("missing read tools", want)
 	}
 }
 func TestAPIKeyStoreNeverPersistsSecret(t *testing.T) {

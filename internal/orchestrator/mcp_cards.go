@@ -35,6 +35,8 @@ type mcpCardSummary struct {
 	Version   string    `json:"version"`
 }
 type mcpCard struct {
+	Actions     []mcpAction      `json:"actions"`
+	Unavailable []mcpUnavailable `json:"unavailable,omitempty"`
 	mcpCardSummary
 	Description string       `json:"description,omitempty"`
 	IssueURL    string       `json:"issue_url,omitempty"`
@@ -118,6 +120,7 @@ func projectCard(d pageData, c Card) mcpCard {
 	if detail, ok := d.planning[c.ID]; ok {
 		out.Planning = &mcpPlanning{State: planningDisplayState(detail), Label: planningAssignmentLabel(d, c.ID), Revision: detail.Session.Revision, ApprovedRevision: detail.Session.ApprovedRevision, Spec: detail.Session.Spec, Questions: detail.Questions, CanApprove: detail.CanApprove}
 	}
+	out.Actions, out.Unavailable = cardActions(d, c)
 	b, _ := json.Marshal(out)
 	hash := sha256.Sum256(b)
 	out.Version = hex.EncodeToString(hash[:])[:16]

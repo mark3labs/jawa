@@ -853,6 +853,34 @@ information is exposed, never transcripts, traces, run chat, planning discussion
 prompts or credentials. Browser-origin clients are rejected. See the
 [MCP contract](internal/orchestrator/MCP.md) for JSON shapes and timeout policy.
 
+Lifecycle tools also create projects/cards, configure card auto-merge, plan,
+build, answer blockers, resume/retry, cancel, reset and reorder. Writes require
+completed NATS setup in Settings and return immediately with refreshed state.
+Use each card's `actions`: send its exact `args`, adding fields in `needs`.
+Creation requires an `idempotency_key`; reuse it with identical arguments on retry.
+
+Worked asynchronous example (MCP tool calls, with application-side loops):
+
+1. `create_project({name:"Demo", provider:"github", repo_name:"acme/demo",
+   idempotency_key:"demo-project"})` → retain `project.id`.
+2. `create_card({project_id: project.id, title:"Add health endpoint",
+   idempotency_key:"health-v1"})` → retain `card.id` and `card.version`.
+3. Call the card's `start_planning` action with its prefilled `args`.
+4. Loop `wait_for_card({card_id:card.id, version:card.version})`, replacing
+   `card` with each response's card (even when `changed:false`). When a
+   `reply_planning` action appears, add your `reply` to its args and call it.
+   Continue until `approve_plan` appears; inspect `card.planning.spec` first.
+5. Call `approve_plan` with that action's exact args (including `revision`).
+   Its response is in Building with a durable queued attempt.
+6. Loop `wait_for_card` with the latest version until lane Done. Handle any
+   blocker/failure with its listed actions rather than assuming success.
+   Done means a provider-verified PR ready for review, not necessarily merged.
+
+For uncertain provider issue creation, check the repository and recover using
+`create_card` with the same key/draft plus `issue_recovery:"link"` and a
+`recovery_url`, or `issue_recovery:"unlinked"`; omit `create_issue` on recovery.
+Never blindly create a second issue. See the MCP contract for recovery details.
+
 ## Explicit agent assignment
 
 Card menus offer **Plan with agent** and **Build with agent** in Todo,

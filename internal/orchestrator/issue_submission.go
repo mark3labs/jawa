@@ -1,10 +1,12 @@
 package orchestrator
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -116,21 +118,29 @@ func canonicalRecoveryIssue(p Project, raw string) (string, error) {
 }
 
 func (a *app) submitIssueCard(r *http.Request) error {
-	mode, modeErr := submittedAutoMergeMode(r.FormValue("auto_merge_mode"))
+	// ServeHTTP already parses forms; also preserve direct callers' lazy parsing.
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	return submitIssueCardForm(r.Context(), a.s, a.issueClient, r.Form)
+}
+
+func submitIssueCardForm(ctx context.Context, s *Store, issueClient *http.Client, form url.Values) error {
+	mode, modeErr := submittedAutoMergeMode(form.Get("auto_merge_mode"))
 	if modeErr != nil {
 		return modeErr
 	}
-	title, body := strings.TrimSpace(r.FormValue("title")), r.FormValue("description")
+	title, body := strings.TrimSpace(form.Get("title")), form.Get("description")
 	if title == "" {
 		return uiError("Title is required.")
 	}
-	projects, err := a.s.Projects()
+	projects, err := s.Projects()
 	if err != nil {
 		return uiError("Unable to load projects.")
 	}
 	var p Project
 	for _, candidate := range projects {
-		if candidate.ID == r.FormValue("project_id") {
+		if candidate.ID == form.Get("project_id") {
 			p = candidate
 			break
 		}
@@ -139,27 +149,27 @@ func (a *app) submitIssueCard(r *http.Request) error {
 		return uiError("Unknown project.")
 	}
 	// Explicit rejection retry changes identity only after checking the previous definite rejection.
-	if r.FormValue("issue_recovery") == "retry" {
-		tx, e := a.s.writeTx()
+	if form.Get("issue_recovery") == "retry" {
+		tx, e := s.writeTx()
 		if e != nil {
 			return uiError("Unable to load rejected submission.")
 		}
-		previous, e := readIssueSubmission(tx, r.FormValue("issue_submission"))
+		previous, e := readIssueSubmission(tx, form.Get("issue_submission"))
 		_ = tx.Rollback()
 		if e != nil || previous.State != "rejected" || previous.Project != p.ID || previous.Provider != p.Provider || previous.Repository != p.Repo {
 			return uiError("Only a definitely rejected submission can be explicitly retried.")
 		}
-		r.Form.Set("issue_submission", tokenHash(previous.Token+":explicit-rejected-retry"))
-		r.Form.Set("issue_recovery", "")
-		r.Form.Set("create_issue", "yes")
+		form.Set("issue_submission", tokenHash(previous.Token+":explicit-rejected-retry"))
+		form.Set("issue_recovery", "")
+		form.Set("create_issue", "yes")
 	}
-	create := r.FormValue("create_issue") != ""
-	intent := r.FormValue("issue_recovery")
-	linked := strings.TrimSpace(r.FormValue("issue_url"))
+	create := form.Get("create_issue") != ""
+	intent := form.Get("issue_recovery")
+	linked := strings.TrimSpace(form.Get("issue_url"))
 	if create && (linked != "" || intent != "") {
 		return uiError("Choose either issue creation or linking/recovery, not both.")
 	}
-	recoveryURL := strings.TrimSpace(r.FormValue("recovery_url"))
+	recoveryURL := strings.TrimSpace(form.Get("recovery_url"))
 	if !create {
 		switch intent {
 		case "link":
@@ -175,19 +185,19 @@ func (a *app) submitIssueCard(r *http.Request) error {
 				return uiError("Unlinked recovery cannot include an issue URL.")
 			}
 		default:
-			if !a.hasIssueSubmission(r.FormValue("issue_submission")) {
+			if !s.hasIssueSubmission(form.Get("issue_submission")) {
 				return uiError("Choose explicit issue recovery.")
 			}
 		}
 	}
-	settings, err := a.s.providerSettings()
+	settings, err := s.providerSettings()
 	if err != nil {
 		return uiError("Unable to load provider settings.")
 	}
 	// Validate targets/credentials before a new reservation. Existing outcomes remain recoverable without credentials.
-	token := r.FormValue("issue_submission")
+	token := form.Get("issue_submission")
 	var count int
-	if err = a.s.db.QueryRow(`SELECT count(*) FROM issue_submissions WHERE token=?`, token).Scan(&count); err != nil {
+	if err = s.db.QueryRow(`SELECT count(*) FROM issue_submissions WHERE token=?`, token).Scan(&count); err != nil {
 		return uiError("Unable to load submission.")
 	}
 	if !create && count == 0 {
@@ -198,7 +208,7 @@ func (a *app) submitIssueCard(r *http.Request) error {
 			return err
 		}
 	}
-	row, fresh, err := a.s.reserveIssueSubmissionOptions(token, p, title, body, mode)
+	row, fresh, err := s.reserveIssueSubmissionOptions(token, p, title, body, mode)
 	if err != nil {
 		return uiError("Unable to reserve submission, or its token belongs to a different draft. Restore the original draft to recover; no issue was retried.")
 	}
@@ -209,7 +219,7 @@ func (a *app) submitIssueCard(r *http.Request) error {
 		return nil
 	}
 	if row.State == "created" {
-		if err = a.s.finalizeIssueSubmission(token, "", false); err != nil {
+		if err = s.finalizeIssueSubmission(token, "", false); err != nil {
 			return uiError("Issue was created, but the card could not be saved. Submit again to retry only local card saving.")
 		}
 		return nil
@@ -222,7 +232,7 @@ func (a *app) submitIssueCard(r *http.Request) error {
 		if intent != "link" && intent != "unlinked" {
 			return uiError("Choose explicit linking or unlinked recovery.")
 		}
-		if err = a.s.finalizeIssueSubmission(token, recoveryURL, true); err != nil {
+		if err = s.finalizeIssueSubmission(token, recoveryURL, true); err != nil {
 			return uiError("The recovery card could not be saved. Keep this draft and retry local recovery.")
 		}
 		return nil
@@ -230,7 +240,7 @@ func (a *app) submitIssueCard(r *http.Request) error {
 	if !fresh {
 		return uiError("Issue creation was already attempted. Refresh issues / check repository and recover, or explicitly retry a rejected request with a new submission token.")
 	}
-	issue, createErr := createProjectIssue(r.Context(), p, title, body, a.issueClient, settings)
+	issue, createErr := createProjectIssue(ctx, p, title, body, issueClient, settings)
 	state := "created"
 	if createErr != nil {
 		state = "uncertain"
@@ -239,19 +249,21 @@ func (a *app) submitIssueCard(r *http.Request) error {
 			state = "rejected"
 		}
 	}
-	if err = a.s.recordIssueOutcome(token, state, issue); err != nil {
+	if err = s.recordIssueOutcome(token, state, issue); err != nil {
 		return uiError("Unable to record issue result. Do not retry creation. Check repository and restart for recovery.")
 	}
 	if createErr != nil {
 		return createErr
 	}
-	if err = a.s.finalizeIssueSubmission(token, "", false); err != nil {
+	if err = s.finalizeIssueSubmission(token, "", false); err != nil {
 		return uiError("Issue was created, but the card could not be saved. Submit again to retry only local card saving.")
 	}
 	return nil
 }
 
-func (a *app) hasIssueSubmission(token string) bool {
+func (a *app) hasIssueSubmission(token string) bool { return a.s.hasIssueSubmission(token) }
+
+func (s *Store) hasIssueSubmission(token string) bool {
 	var n int
-	return a.s.db.QueryRow(`SELECT count(*) FROM issue_submissions WHERE token=?`, token).Scan(&n) == nil && n > 0
+	return s.db.QueryRow(`SELECT count(*) FROM issue_submissions WHERE token=?`, token).Scan(&n) == nil && n > 0
 }
