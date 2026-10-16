@@ -2,6 +2,8 @@
 
 The production orchestrator installs `workflow.SetVerifier(ProviderVerifier(store, nil))` at startup; nil uses the default HTTP transport. The existing workflow polls blocked completed attempts, including after restart; the adapter fetches fresh evidence on every invocation and never caches readiness. Ordinary readiness is historical; optional auto-merge independently revalidates Done candidates.
 
+MCP `merge_pr` uses the same provider merge adapter and permissions as dashboard merges.
+
 ## Configuration and credentials
 
 - GitHub: `JAWA_GITHUB_TOKEN`, falling back to `GITHUB_TOKEN` when unset/empty. Only github.com is supported. The token needs repository/PR, checks/status, branch protection read access and GraphQL review-thread access. The token also needs access to effective branch rules (`GET /repos/{owner}/{repo}/rules/branches/{base}`), including organization rulesets. Unavailable or incomplete policies fail closed. A 404 on classic required-status-checks is accepted as no classic status policy, but effective rules must still be readable.

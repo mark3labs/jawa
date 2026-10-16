@@ -24,6 +24,8 @@ Agents run asynchronously. Write tools only queue or record work and return at o
 To follow progress, call get_card, or wait_for_card with the card's last "version", until lane/status changes.
 Use the actions listed on each card. They carry the exact tokens the server expects.
 Creation tools require an idempotency_key; reuse it to retry safely.
+Done means Ready for review: a verified PR. Merge with merge_pr using the listed snapshot; archive when finished.
+force_ready, force_stop and delete_card are operator overrides and require acknowledge: true.
 Only the information shown on cards and the card/plan page is available; run transcripts are not.`
 
 type mcpService struct {
@@ -63,6 +65,7 @@ func (m *mcpService) handler() http.Handler {
 	srv := server.NewMCPServer("jawa", "1", server.WithToolCapabilities(false), server.WithRecovery(), server.WithInstructions(mcpInstructions))
 	m.registerReadTools(srv)
 	m.registerLifecycleTools(srv)
+	m.registerShipTools(srv)
 	transport := server.NewStreamableHTTPServer(srv, server.WithEndpointPath(mcpEndpoint), server.WithStateLess(true), server.WithDisableLocalhostProtection(true))
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Cache-Control", "no-store")

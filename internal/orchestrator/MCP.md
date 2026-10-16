@@ -79,6 +79,103 @@ version from the returned card; `changed:false` is an ordinary polling timeout.
 Alternatively poll `get_card`. Lifecycle writes below return immediately after
 queuing work or recording a decision; they do not wait for an agent.
 
+## Complete tool reference
+
+All 29 tools are listed here. Arguments in brackets are optional. `R` means
+read-only, `D` destructive, `I` idempotent hint; `—` means no positive hint.
+Timeouts bound requests, not asynchronous agent work. The endpoint and underlying
+provider methods may impose shorter bounds; client cancellation always applies.
+
+| Tool | Args | Mapped method/helper | Timeout | Hints |
+| --- | --- | --- | --- | --- |
+| list_projects | none | Store.Projects | 10s | R |
+| list_agents | none | Workflow.Agents | 10s | R |
+| list_cards | [project_id, lane, include_archived] | snapshot / card projections | 10s | R |
+| get_card | card_id | card | 10s | R |
+| wait_for_card | card_id, version, [timeout_seconds] | card polling | 30s outer; 1–25s wait | R |
+| create_project | name, idempotency_key, [provider, repo, repo_name, forgejo_url, base_branch] | replayOrRun / insertProjectDetails | 20s | I |
+| create_card | project_id, title, idempotency_key, [description, issue_url, auto_merge, create_issue, issue_recovery, recovery_url] | replayOrRun / insertCardOptions / submitIssueCardForm | 20s; 30s issue | I |
+| set_auto_merge | card_id, mode, expected_mode | SetCardAutoMerge | 20s | — |
+| start_planning | card_id, [agent] | MoveCard / PlanWithAgent | 20s | — |
+| reply_planning | card_id, reply, expected_interaction | ReplyPlanning | 20s | — |
+| approve_plan | card_id, revision, [agent] | ApprovePlanning / ApprovePlanningWithAgent | 20s | — |
+| retry_planning | card_id | RetryPlanning | 20s | — |
+| cancel_planning | card_id | CancelPlanning | 20s | D |
+| start_build | card_id, [agent] | MoveCard / BuildWithAgent | 20s | — |
+| retry_build | card_id | Retry | 20s | — |
+| resume_failed | card_id, expected_resume | resumeFailed | 20s | — |
+| guide_blocked | card_id, message, expected_interaction | GuideBlocked | 20s | — |
+| cancel_run | card_id | CancelCard | 20s | D |
+| reset_card | card_id | ResetCard | 20s | D |
+| move_card | card_id, position | MoveCard (same lane only) | 20s | — |
+| refresh_pr_checks | project_id, [card_id] | RefreshPRChecks | 35s | — |
+| fix_card | card_id, message, [agent] | FixCard / FixWithAgent | 20s | — |
+| merge_pr | card_id, snapshot, method, idempotency_key | MergePR | 25s | D, I |
+| mark_pr_merged | card_id, expected_attempt_id, expected_pr_url | MarkPRMerged | 20s | I |
+| archive_card | card_id | Store.SetCardArchived(true) | 20s | I |
+| restore_card | card_id | Store.SetCardArchived(false) | 20s | I |
+| force_ready | card_id, expected, pr_number, acknowledge, [reason] | ForceReady | 20s | D |
+| force_stop | card_id, acknowledge | ForceStop | 20s | D |
+| delete_card | card_id, acknowledge, [acknowledge_orphan] | DeleteCard / DeleteUnreconciledCard | 20s | D |
+
+### Shipping and operator overrides
+
+Done means **Ready for review**, not merged. `refresh_pr_checks` returns
+`{ok:true,result:{targeted,checked,queued},card?}`; card is included when scoped
+to a card. A queued count means background checks are still pending: poll the
+card and refresh as necessary. `fix_card` queues a repair attempt on the same PR.
+`mark_pr_merged` records the same manual marker as the dashboard, not a provider
+merge. Archive/restore only change visibility, even with active work.
+
+An authenticated API key is an operator. `merge_pr` and `force_ready` pass
+`mcp:<key name>` to the workflow, stored in `pr_merges.operator` and
+`workflow_ready_overrides.operator`. Logs still contain only `api_key_id`, never
+key names or secrets.
+
+`merge_pr` requires a valid idempotency key and the listed snapshot. Method is
+`merge`, `squash` or `rebase`. The durable operation ID is the first 32 lowercase
+hex characters of SHA-256 over `"mcp-merge\\x00" + key.ID + "\\x00" + idempotency_key`.
+Retries with the same key/arguments return the original outcome and never merge
+twice. Changing card, method or snapshot with that key is rejected. This uses
+`pr_merges`, not `mcp_requests`. Success notes “Pull request merged.” Rejection
+uses the dashboard merge error. Pending/uncertain outcomes say:
+
+> Merge is pending or its outcome is uncertain. Do not retry with a new idempotency_key. Call refresh_pr_checks for this project, then get_card.
+
+`force_ready`, `force_stop` and `delete_card` require `acknowledge:true` only after
+a human-equivalent decision. Force-ready bypasses CI/review readiness but does
+not merge; identity verification still applies. Its reason is at most 1000 UTF-8
+bytes; `pr_number` is a string (empty to use the recorded PR). Force-stop fences
+reports but cannot prove the agent stopped. Deletion returns
+`{ok:true,deleted:true,card_id:...}` without reloading. For execution conflicts,
+the listed `acknowledge_orphan:true` selects unreconciled deletion. No override
+changes typed-report or provider verification rules.
+
+### Full lifecycle (text sequence diagram)
+
+```text
+MCP client -> create_project / create_card (reuse creation keys on retries)
+MCP client -> start_planning -> queues planner [asynchronous]
+Planner -> clarify / proposeSpec [typed reports]
+MCP client -> wait_for_card(version) loop -> questions or proposed revision
+MCP client -> reply_planning (if needed) -> resumes planner [asynchronous]
+MCP client -> approve_plan(listed revision) -> queues build [asynchronous]
+Build agent -> completeTask -> provider verification [asynchronous]
+MCP client -> wait_for_card(version) loop -> Done / Ready for review
+MCP client -> fix_card(message) -> queues repair [optional, asynchronous]
+Repair agent -> completeTask -> provider verification [asynchronous]
+MCP client -> wait_for_card(version) loop -> Done / Ready for review
+MCP client -> refresh_pr_checks -> checks now or queues checks [asynchronous]
+MCP client -> get_card / wait_for_card loop -> merge_pr action with snapshot
+MCP client -> merge_pr(snapshot, method, same retry key) -> provider merge
+MCP client -> get_card -> Merged (uncertain? refresh_pr_checks, never new key)
+MCP client -> archive_card -> hidden from ordinary list_cards
+```
+
+`changed:false` is a normal wait timeout; retain the returned version and loop.
+A blocker requires a listed guidance/reply action, not assuming progress from
+natural text. Re-fetch actions after any rejected or stale request.
+
 ## Bounds and logging
 
 Ordinary read calls have a 10-second context timeout; wait calls have a 30-second
@@ -139,8 +236,8 @@ Do not edit tokens. Add any arguments listed in `needs` (for example `reply`,
 currently be used. Actions are presentation, not authorization: Workflow always
 revalidates, and a concurrent change can make an action stale. Refresh on rejection.
 Action/token changes alter the card version, waking `wait_for_card`.
-PR review/merge, archive, deletion, force operations, editing and run chat are not
-exposed by these tools.
+PR review/merge, archive/restore and operator overrides are exposed below.
+Editing card text and run chat are not exposed.
 
 ### Idempotency and issue recovery
 

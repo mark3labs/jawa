@@ -3,7 +3,8 @@
 `OpenStore` runs all database migrations. `NewWorkflow(ctx, store, conn) (*Workflow, error)` starts durable BONNIE v0.22 event/result readers and an outbox dispatcher. Caller owns Store and NATS connection: use the embedded server's trusted in-process connection, not public credentials. Close workflow before closing either dependency. Before dispatch, Workflow installs a Core NATS request/reply subscriber on `bonnie.reports.submit`. Close cancels and joins its goroutines (including report commits) and does not delete consumers.
 
 Route board mutations through `Workflow.MoveCard(id, status, position)` instead of Store.MoveCard. Todo -> Building atomically snapshots the task, inserts a queued attempt, and reorders lanes in one SQLite write transaction. Reordering Building does not create another attempt. Leaving Building is refused; `CancelCard(ctx, id)` requests cancellation only after confirming the latest attempt's exact agent/run/remote-attempt identity and active turn. A request is not confirmation: only an agent-confirmed cancellation is applied as cancelled, and cancellation cannot undo external actions already taken. Ordinary manual Done is forbidden. The sole exception is authenticated,
-explicitly acknowledged `ForceReady`: an inactive latest unready Building/Fix
+explicitly acknowledged `ForceReady`: an authenticated API key is also an operator,
+attributed `mcp:<key name>` in the audit. An inactive latest unready Building/Fix
 attempt with no pending resumes, older active attempts or execution conflict can
 be bound to a server-selected PR after identity-only provider validation. A
 rendered snapshot/configuration token is required and rechecked in the final
@@ -95,6 +96,9 @@ restart and reconcile read-only before safe fresh-verification retry. Persisted
 backoff is one minute exponentially up to 30 minutes (longer Retry-After honored).
 There is no cross-provider exactly-once guarantee; one orchestrator per database.
 ## Operator PR merge reservations
+
+An authenticated API key is also an operator, attributed `mcp:<key name>` for
+MCP merges; all admission, provider and reservation rules below are unchanged.
 
 `MergePR` admits only a non-archived Done card's latest ready PR with applicable
 clear head/base evidence, no manual merged marker, active attempt or pending

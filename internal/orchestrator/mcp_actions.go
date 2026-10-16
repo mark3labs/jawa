@@ -71,6 +71,57 @@ func cardActions(d pageData, c Card) ([]mcpAction, []mcpUnavailable) {
 			un = append(un, mcpUnavailable{"reset_card", d.resetReason(c)})
 		}
 	}
+	if c.Archived {
+		add("restore_card", nil)
+	} else {
+		add("archive_card", nil)
+	}
+	if c.Status == "Done" {
+		if canAction(c, d.attempts, "fix") {
+			a, check := latest[0], d.prChecks[c.ID]
+			if check.State != "merged" {
+				add("mark_pr_merged", map[string]any{"expected_attempt_id": a.ID, "expected_pr_url": a.PRURL})
+			}
+			if check.State == "conflict" {
+				add("fix_card", map[string]any{"message": conflictFixMessage})
+				acts[len(acts)-1].Note = "prefilled conflict repair message; edit freely"
+			} else {
+				add("fix_card", nil, "message")
+			}
+			add("refresh_pr_checks", map[string]any{"project_id": c.ProjectID})
+			if d.canMerge(c) {
+				p, _ := selectedProject(d.projects, c.ProjectID)
+				add("merge_pr", map[string]any{"snapshot": mergeSnapshot(c, a, p, check.HeadSHA, check.BaseSHA), "method": "merge"}, "idempotency_key")
+				acts[len(acts)-1].Note = "method may be merge, squash or rebase; reuse the same idempotency_key to retry"
+			}
+		} else {
+			un = append(un, mcpUnavailable{"fix_card", "Fix requires a verified pull request and no active attempt."})
+		}
+	}
+	if d.canForceReady(c) {
+		a := latest[0]
+		p, _ := selectedProject(d.projects, c.ProjectID)
+		pr, _ := forceReadyPR(c, a, p, "")
+		add("force_ready", map[string]any{"expected": forceReadyToken(c, a, p)}, "pr_number", "acknowledge")
+		acts[len(acts)-1].Note = "Bypasses CI and review checks; does not merge. set acknowledge: true only after a human-equivalent decision"
+		if pr != "" {
+			acts[len(acts)-1].Note += " Known PR: " + pr
+		}
+	}
+	if canAction(c, d.attempts, "force-stop") {
+		add("force_stop", nil, "acknowledge")
+		acts[len(acts)-1].Note = "set acknowledge: true only after a human-equivalent decision"
+	}
+	if canAction(c, d.attempts, "delete") {
+		args := map[string]any{}
+		if cardNeedsReconciliation(c, d.attempts) {
+			args["acknowledge_orphan"] = true
+		}
+		add("delete_card", args, "acknowledge")
+		acts[len(acts)-1].Note = "set acknowledge: true only after a human-equivalent decision"
+	} else {
+		un = append(un, mcpUnavailable{"delete_card", actionReason(c, d.attempts, "delete")})
+	}
 	add("set_auto_merge", map[string]any{"expected_mode": c.AutoMergeMode}, "mode")
 	add("move_card", nil, "position")
 	return acts, un

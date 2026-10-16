@@ -201,7 +201,7 @@ func TestMCPPlanningLifecycle(t *testing.T) {
 	c := mcpTestClient(t, url, secret)
 	card := workflowCard(t, w.s)
 	started := mcpResultCard(t, mcpCall(t, c, "start_planning", map[string]any{"card_id": card.ID}))
-	if started.Lane != "Planning" || len(started.Actions) != 3 {
+	if started.Lane != "Planning" || len(started.Actions) != 5 {
 		t.Fatal(started)
 	}
 	mcpReject(t, c, "start_build", map[string]any{"card_id": card.ID}, "approve_plan")
@@ -395,7 +395,7 @@ func TestMCPAgentTargeting(t *testing.T) {
 // Compare the rendered dashboard menu, not a second copy of its state predicates.
 func TestMCPActionsMatchDashboardMenu(t *testing.T) {
 	routes := map[string]string{"/cards/plan": "start_planning", "/cards/move": "start_build", "/cards/retry": "retry_build", "/cards/resume": "resume_failed", "/cards/cancel": "cancel_run", "/cards/reset": "reset_card", "/cards/planning/retry": "retry_planning", "/cards/planning/cancel": "cancel_planning"}
-	for _, state := range []string{"Todo", "Planning-ready", "Building-failed", "Done-ready"} {
+	for _, state := range []string{"Todo", "Planning-ready", "Building-failed", "Done-ready", "Done-merged", "Building-running", "Archived"} {
 		t.Run(state, func(t *testing.T) {
 			w := actionWorkflow(t)
 			card := workflowCard(t, w.s)
@@ -409,9 +409,15 @@ func TestMCPActionsMatchDashboardMenu(t *testing.T) {
 				}
 			case "Building-failed":
 				actionAttempt(t, w, card, "failed", "failed")
-			case "Done-ready":
-				a := actionAttempt(t, w, card, "completed", "completed")
-				if _, err := w.s.db.Exec(`UPDATE workflow_attempts SET ready=1 WHERE id=?; UPDATE cards SET status='Done' WHERE id=?`, a.ID, card.ID); err != nil {
+			case "Done-ready", "Done-merged":
+				w, card, _, _ = mergeFixture(t)
+				if state == "Done-merged" {
+					mustExec(t, w, `UPDATE workflow_pr_checks SET state='merged'`)
+				}
+			case "Building-running":
+				actionAttempt(t, w, card, "running", "running")
+			case "Archived":
+				if err := w.s.SetCardArchived(card.ID, true); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -429,6 +435,32 @@ func TestMCPActionsMatchDashboardMenu(t *testing.T) {
 			actual := map[string]bool{}
 			for _, a := range acts {
 				actual[a.Tool] = true
+			}
+			// Dialog actions and PR status buttons are rendered outside ordinary POST menu routes.
+			for tool, visible := range map[string]bool{
+				"fix_card":       strings.Contains(html.String(), "Send to Fix…"),
+				"mark_pr_merged": strings.Contains(html.String(), "Mark as merged"),
+				"force_ready":    strings.Contains(html.String(), "Force ready…"),
+				"force_stop":     strings.Contains(html.String(), "Force stop…"),
+				"delete_card":    strings.Contains(html.String(), "Delete…"),
+			} {
+				if actual[tool] != visible {
+					t.Fatalf("%s parity for %s", tool, state)
+				}
+			}
+			var buttons bytes.Buffer
+			if err := cardPRStatus(d, card).Render(t.Context(), &buttons); err != nil {
+				t.Fatal(err)
+			}
+			if actual["merge_pr"] != strings.Contains(buttons.String(), "/dialogs/merge?") {
+				t.Fatalf("merge parity: %s", buttons.String())
+			}
+			buttons.Reset()
+			if err := archiveButton(d, card).Render(t.Context(), &buttons); err != nil {
+				t.Fatal(err)
+			}
+			if actual["restore_card"] != strings.Contains(buttons.String(), "Restore") || actual["archive_card"] != !card.Archived {
+				t.Fatal("archive parity")
 			}
 			for route, tool := range routes {
 				// Planning approval/replies live on the plan page, not the menu.
