@@ -221,6 +221,31 @@ func TestAPIKeyDatastarCreation(t *testing.T) {
 	}
 }
 
+func TestAPIKeyCreationSurvivesSnapshotFailure(t *testing.T) {
+	w := actionWorkflow(t)
+	// Break only the workspace read, leaving API-key persistence usable.
+	if _, err := w.s.db.Exec(`DROP TABLE auto_resumes`); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{s: w.s}
+	r := httptest.NewRequest("POST", "/settings/apikeys", strings.NewReader(url.Values{"name": {"desktop"}, "view": {"settings"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Datastar-Request", "true")
+	res := httptest.NewRecorder()
+	mutation := &mutationContext{}
+	if err := a.mutateAPIKeyCreate(res, r, mutation); err != nil {
+		t.Fatal(err)
+	}
+	body := assertSSE(t, res)
+	secret := regexp.MustCompile(`jawa_[a-f0-9]{64}`).FindString(body)
+	if secret == "" || !mutation.handled || !strings.Contains(body, "Copy your API key") || !strings.Contains(body, "selector #dialog-slot") || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("one-time secret lost on refresh failure")
+	}
+	if _, err := w.s.AuthenticateAPIKey(t.Context(), secret, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMCPGetCardMatchesBoard(t *testing.T) {
 	w, url, secret := mcpTestServer(t)
 	c := workflowCard(t, w.s)

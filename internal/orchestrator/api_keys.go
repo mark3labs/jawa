@@ -97,7 +97,9 @@ func (a *app) mutateAPIKeyCreate(w http.ResponseWriter, r *http.Request, ctx *mu
 	if datastarRequest(r) {
 		content, err := a.mutationSnapshot(r, parseViewParams(r, ""), mutationEffects{})
 		if err != nil {
-			a.responseError(w, r, "API key created, but the page could not refresh. Revoke it and try again.", http.StatusServiceUnavailable)
+			// Creation already committed. A workspace refresh failure must not
+			// discard the only copy of the new secret.
+			_ = newSSEWriter(w).write(elementsFrameMode("inner", "#dialog-slot", render(apiKeyCreatedDialog(newOperationID(), k, secret))))
 			return nil
 		}
 		stream := newSSEWriter(w)
