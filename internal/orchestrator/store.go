@@ -164,6 +164,20 @@ func validRepository(repo string) bool {
 }
 
 func (s *Store) CreateProjectDetails(name, provider, repo, base string) (Project, error) {
+	tx, err := s.writeTx()
+	if err != nil {
+		return Project{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	p, err := insertProjectDetails(tx, name, provider, repo, base)
+	if err != nil {
+		return Project{}, err
+	}
+	return p, tx.Commit()
+}
+
+// insertProjectDetails is shared by the dashboard and idempotent MCP creation.
+func insertProjectDetails(tx *sql.Tx, name, provider, repo, base string) (Project, error) {
 	name, provider, repo, base = strings.TrimSpace(name), strings.TrimSpace(provider), strings.TrimSpace(repo), strings.TrimSpace(base)
 	if name == "" {
 		return Project{}, errors.New("name required")
@@ -176,7 +190,7 @@ func (s *Store) CreateProjectDetails(name, provider, repo, base string) (Project
 		return Project{}, fmt.Errorf("invalid repository URL: %w", err)
 	}
 	p := Project{ID: newID(), Name: name, Provider: provider, Repo: repo, BaseBranch: base, CreatedAt: time.Now().UTC().Truncate(time.Second)}
-	_, err := s.db.Exec(`INSERT INTO projects(id,name,created_at,provider,repo,base_branch) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.CreatedAt.Unix(), p.Provider, p.Repo, p.BaseBranch)
+	_, err := tx.Exec(`INSERT INTO projects(id,name,created_at,provider,repo,base_branch) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.CreatedAt.Unix(), p.Provider, p.Repo, p.BaseBranch)
 	if err != nil {
 		return Project{}, err
 	}

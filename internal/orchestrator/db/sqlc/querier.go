@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	GetActiveAPIKeyByHash(ctx context.Context, tokenHash string) (GetActiveAPIKeyByHashRow, error)
 	GetCard(ctx context.Context, id string) (Card, error)
+	GetMCPRequest(ctx context.Context, arg GetMCPRequestParams) (GetMCPRequestRow, error)
 	GetPlanningRunHistory(ctx context.Context, id string) (GetPlanningRunHistoryRow, error)
 	GetPlanningSession(ctx context.Context, cardID string) (PlanningSession, error)
 	GetPlanningSessionByID(ctx context.Context, id string) (PlanningSession, error)
@@ -18,6 +19,7 @@ type Querier interface {
 	GetProject(ctx context.Context, id string) (Project, error)
 	InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) error
 	InsertCard(ctx context.Context, arg InsertCardParams) error
+	InsertMCPRequest(ctx context.Context, arg InsertMCPRequestParams) error
 	ListAPIKeys(ctx context.Context) ([]ListAPIKeysRow, error)
 	ListCardLane(ctx context.Context, arg ListCardLaneParams) ([]string, error)
 	ListCards(ctx context.Context, projectID interface{}) ([]Card, error)
