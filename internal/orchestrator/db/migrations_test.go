@@ -234,8 +234,28 @@ func TestVersionSevenPreservesReceiptsAndInteractionConstraints(t *testing.T) {
 		t.Fatal("same tool identity accepted twice")
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 22 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 23 {
 		t.Fatal(version, err)
+	}
+}
+
+func TestVersionTwentyThreeCreatesAPIKeyTables(t *testing.T) {
+	database := openTestDB(t, ":memory:")
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"api_keys", "mcp_requests"} {
+		var name string
+		if err := database.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execTest(t, database, `INSERT INTO api_keys(id,name,token_hash,prefix,created_at) VALUES('a','client','hash','prefix',1)`)
+	if _, err := database.Exec(`INSERT INTO api_keys(id,name,token_hash,prefix,created_at) VALUES('b',?,'other','prefix',1)`, strings.Repeat("x", 65)); err == nil {
+		t.Fatal("long name accepted")
+	}
+	if _, err := database.Exec(`INSERT INTO api_keys(id,name,token_hash,prefix,created_at) VALUES('b','client','hash','prefix',1)`); err == nil {
+		t.Fatal("duplicate hash accepted")
 	}
 }
 
@@ -263,7 +283,7 @@ func TestPRCheckRefreshMigrationPreservesEvidence(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,11,12,13,14,15,16,17,18,19,20,21)`)
+ DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,11,12,13,14,15,16,17,18,19,20,21)`)
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +315,7 @@ func TestAutoResumeMigrationDefaultsAndCascade(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,13,14,15,16,17,18,19,20,21);
+ DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,13,14,15,16,17,18,19,20,21);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO failed_resumes(id,task_id,card_id,planning,request_json,previous_outcome,created_at) VALUES('old','task','c',0,'{}','{}',1);`)
@@ -337,7 +357,7 @@ func TestBlockerGuidanceMigrationAllowsRepeatedBlockers(t *testing.T) {
  DROP TABLE workflow_interactions;
  DROP INDEX typed_reports_terminal;
  CREATE UNIQUE INDEX typed_reports_terminal ON typed_reports(task_id) WHERE kind IN ('complete_task','report_blocker');
- DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,15,16,17,18,19,20,21);
+ DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,15,16,17,18,19,20,21);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,created_at,updated_at) VALUES('a','c',1,'task','{}',1,1);
@@ -370,7 +390,7 @@ func TestFailedOutcomeRunStateMigrationReleasesStuckAttempts(t *testing.T) {
 	if err := Migrate(ctx, database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,16,17,18,19,20,21);
+	execTest(t, database, `DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,16,17,18,19,20,21);
  DROP TABLE workflow_ready_overrides;
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
@@ -395,7 +415,7 @@ func TestIssueSubmissionUpgradeAndTombstone(t *testing.T) {
 	if err := Migrate(context.Background(), database); err != nil {
 		t.Fatal(err)
 	}
-	execTest(t, database, `DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,18,19,20,21);
+	execTest(t, database, `DROP TABLE pr_merges; DROP TABLE issue_submissions; ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,18,19,20,21);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Todo',0,1);`)
 	if err := Migrate(context.Background(), database); err != nil {
@@ -419,7 +439,7 @@ func TestReadyOverrideMigrationFrom16(t *testing.T) {
 		t.Fatal(err)
 	}
 	execTest(t, database, `DROP TABLE workflow_ready_overrides; DROP TABLE pr_merges; DROP TABLE issue_submissions;
- ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (22,17,18,19,20,21);
+ ALTER TABLE workflow_attempts DROP COLUMN target_agent_id; ALTER TABLE planning_turns DROP COLUMN target_agent_id; DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations; ALTER TABLE cards DROP COLUMN auto_merge_mode; DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,22,17,18,19,20,21);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','card','Building',0,1);
  INSERT INTO workflow_attempts(id,card_id,number,task_id,task_json,outcome_json,created_at,updated_at) VALUES('a','c',1,'task','{}','original',1,1);
@@ -430,7 +450,7 @@ func TestReadyOverrideMigrationFrom16(t *testing.T) {
 		}
 	}
 	var version int
-	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 22 {
+	if err := database.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 23 {
 		t.Fatal(version, err)
 	}
 	var original string
@@ -506,7 +526,7 @@ func TestAutoMergeMigrationFromOperatorMergeSchema(t *testing.T) {
 	}
 	execTest(t, database, `DROP TRIGGER auto_merge_card_update; DROP TRIGGER auto_merge_card_delete; DROP TABLE auto_merge_operations;
  ALTER TABLE cards DROP COLUMN auto_merge_mode; ALTER TABLE issue_submissions DROP COLUMN auto_merge_mode;
- DROP TABLE run_chat; DELETE FROM goose_db_version WHERE version_id IN (21,22);
+ DROP TABLE run_chat; DROP TABLE mcp_requests; DROP TABLE api_keys; DELETE FROM goose_db_version WHERE version_id IN (23,21,22);
  INSERT INTO projects(id,name,created_at) VALUES('p','project',1);
  INSERT INTO cards(id,project_id,title,status,position,created_at) VALUES('c','p','existing','Done',0,1);
  INSERT INTO pr_merges VALUES('op','c','attempt','pr','snapshot','github','acme/repo','main','head','squash','operator','uncertain',1,1);`)

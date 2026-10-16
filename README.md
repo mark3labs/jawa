@@ -414,6 +414,7 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 
 | Variable | Default / purpose |
 | --- | --- |
+| `JAWA_ORCHESTRATOR_MCP_LISTEN` | Empty (disabled); optional MCP listener, e.g. `127.0.0.1:8090` |
 | `JAWA_NAME` | `jawa`; agent display name (`--name` overrides) |
 | `JAWA_GIT_USER_NAME` | Optional agent-wide Git author and committer name |
 | `JAWA_GIT_USER_EMAIL` | Optional agent-wide Git author and committer email |
@@ -549,10 +550,11 @@ Pushes publish images to GHCR with branch and commit tags; `master` updates
 ### Dashboard orchestrator overrides
 
 The authenticated Settings page saves dashboard overrides for the running
-orchestrator's HTTP/NATS listener addresses, debug logging, GitHub/Forgejo
+orchestrator's HTTP/NATS/MCP listener addresses, debug logging, GitHub/Forgejo
 provider tokens, and GitHub's `JAWA_ALLOW_NO_CI` opt-in. Dashboard
 values override explicit `orchestrator` CLI flags, which override the
-`JAWA_ORCHESTRATOR_LISTEN`, `JAWA_ORCHESTRATOR_NATS_LISTEN`, and
+`JAWA_ORCHESTRATOR_LISTEN`, `JAWA_ORCHESTRATOR_NATS_LISTEN`,
+`JAWA_ORCHESTRATOR_MCP_LISTEN` (empty disables MCP), and
 `JAWA_ORCHESTRATOR_DEBUG` environment defaults. `JAWA_ORCHESTRATOR_DATA_DIR`
 selects the bootstrap database directory; `--data-dir` overrides it. The data
 directory is needed to load these saved settings, so its selection is not a
@@ -810,6 +812,46 @@ card deletion; successful remote creation followed by a local save failure
 retries only card saving. Exact-once remote creation cannot be guaranteed across
 a lost response. Back up the private database before migration; the ledger
 retains submitted drafts and outcome evidence, never provider credentials.
+
+## MCP server (remote automation)
+
+Enable the optional separate listener with `jawa orchestrator --mcp-listen 127.0.0.1:8090`
+or `JAWA_ORCHESTRATOR_MCP_LISTEN`. It is disabled by default. Create a key in
+**Settings → MCP access** and copy the secret once; only its prefix is shown
+later. Every key has full access, with no scopes or expiry. Revoke unused or
+lost keys there; the next request is rejected.
+
+Put an HTTPS reverse proxy in front of the MCP address. For example, Caddy:
+
+```caddyfile
+jawa.example.com {
+  handle /mcp {
+    reverse_proxy 127.0.0.1:8090 {
+      flush_interval -1
+    }
+  }
+}
+```
+
+Set the key securely in the client environment rather than shell history.
+Claude Code:
+
+```sh
+claude mcp add --transport http jawa https://jawa.example.com/mcp --header "Authorization: Bearer $JAWA_MCP_KEY"
+```
+
+Cursor/VS Code `mcp.json`:
+
+```json
+{"mcpServers":{"jawa":{"url":"https://jawa.example.com/mcp","headers":{"Authorization":"Bearer ${env:JAWA_MCP_KEY}"}}}}
+```
+
+The stateless Streamable HTTP endpoint exposes five read-only tools:
+`list_projects`, `list_agents`, `list_cards`, `get_card`, `wait_for_card`.
+Poll with a card's `version` to follow asynchronous work. Only card/plan-page
+information is exposed, never transcripts, traces, run chat, planning discussion,
+prompts or credentials. Browser-origin clients are rejected. See the
+[MCP contract](internal/orchestrator/MCP.md) for JSON shapes and timeout policy.
 
 ## Explicit agent assignment
 

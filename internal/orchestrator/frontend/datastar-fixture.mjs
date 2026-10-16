@@ -77,7 +77,7 @@ export async function runScenario(scenario) {
   try {
     await page.goto(base);
     if (['dialogs', 'merge', 'fix', 'ui'].includes(scenario)) {
-      for (const name of scenario === 'merge' ? ['merge'] : scenario === 'fix' ? ['fix'] : ['project', 'card', 'delete', 'cancel', 'force', 'ready', 'guide', 'fix', 'merge', 'assign']) {
+      for (const name of scenario === 'merge' ? ['merge'] : scenario === 'fix' ? ['fix'] : ['project', 'card', 'delete', 'cancel', 'force', 'ready', 'guide', 'fix', 'merge', 'assign', 'apikeys']) {
         const first = await open(name);
         assert.match(first, /^[a-f0-9]{32}$/);
         assert.equal(await page.locator(`[id="${name}-error-${first}"]`).count(), 1);

@@ -450,7 +450,7 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	return nil
 }
 func Command() *cobra.Command {
-	var dir, listen, natsListen string
+	var dir, listen, natsListen, mcpListen string
 	var debug bool
 	providerDefaults := map[string]string{}
 	cmd := &cobra.Command{Use: "orchestrator", Short: "Run the local orchestrator", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -459,8 +459,8 @@ func Command() *cobra.Command {
 			logger.SetLevel(log.DebugLevel)
 		}
 		logger.Info("Starting orchestrator")
-		runtimeDefaults := map[string]string{"listen": listen, "nats-listen": natsListen, "debug": strconv.FormatBool(debug), "allow-no-ci": cmd.Flags().Lookup("allow-no-ci").Value.String()}
-		for _, key := range []string{"debug", "listen", "nats-listen"} {
+		runtimeDefaults := map[string]string{"listen": listen, "nats-listen": natsListen, "mcp-listen": mcpListen, "debug": strconv.FormatBool(debug), "allow-no-ci": cmd.Flags().Lookup("allow-no-ci").Value.String()}
+		for _, key := range []string{"debug", "listen", "nats-listen", "mcp-listen"} {
 			if cmd.Flags().Changed(key) {
 				runtimeDefaults[key] = cmd.Flags().Lookup(key).Value.String()
 			}
@@ -498,6 +498,14 @@ func Command() *cobra.Command {
 		}
 		if v := overrides["nats-listen"]; v != "" {
 			natsListen = v
+		}
+		if v := overrides["mcp-listen"]; v != "" {
+			mcpListen = v
+		}
+		if mcpListen != "" {
+			if err := validatedListenAddress(mcpListen); err != nil {
+				return err
+			}
 		}
 		if v := overrides["debug"]; v == "true" {
 			logger.SetLevel(log.DebugLevel)
@@ -582,21 +590,52 @@ func Command() *cobra.Command {
 		done := make(chan error, 1)
 		go func() { done <- srv.Serve(listener) }()
 		logger.Info("Orchestrator ready", "http_address", listener.Addr().String())
+		var mcpSrv *http.Server
+		var mcpDone chan error
+		if mcpListen != "" {
+			mcpListener, listenErr := net.Listen("tcp", mcpListen)
+			if listenErr != nil {
+				logger.Error("Failed to listen for MCP", "address", mcpListen, "err", listenErr)
+				_ = srv.Close()
+				<-done
+				return listenErr
+			}
+			mcpSrv = newMCPHTTPServer(ctx, s, workflow, logger)
+			mcpDone = make(chan error, 1)
+			go func() { mcpDone <- mcpSrv.Serve(mcpListener) }()
+			logger.Info("MCP endpoint ready", "address", "http://"+mcpListener.Addr().String()+mcpEndpoint)
+		}
+		shutdown := func(server *http.Server, finished <-chan error) error {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			shutdownErr := server.Shutdown(shutdownCtx)
+			if shutdownErr != nil {
+				_ = server.Close()
+			}
+			<-finished
+			return shutdownErr
+		}
 		select {
+		case err = <-mcpDone:
+			_ = shutdown(srv, done)
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			return err
 		case err = <-done:
+			if mcpSrv != nil {
+				_ = shutdown(mcpSrv, mcpDone)
+			}
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
 			return err
 		case <-ctx.Done():
 			logger.Info("Shutting down orchestrator")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			err = srv.Shutdown(shutdownCtx)
-			if err != nil {
-				_ = srv.Close()
+			err = shutdown(srv, done)
+			if mcpSrv != nil {
+				err = errors.Join(err, shutdown(mcpSrv, mcpDone))
 			}
-			<-done
 			if err != nil {
 				logger.Error("HTTP shutdown failed", "err", err)
 			} else {
@@ -609,6 +648,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "data-dir", orchestratorEnv("JAWA_ORCHESTRATOR_DATA_DIR", ""), "Persistent data directory")
 	cmd.Flags().StringVar(&listen, "listen", orchestratorEnv("JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", orchestratorEnv("JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), "Authenticated embedded NATS listen address")
+	cmd.Flags().StringVar(&mcpListen, "mcp-listen", orchestratorEnv("JAWA_ORCHESTRATOR_MCP_LISTEN", ""), "MCP (Streamable HTTP) listen address; empty disables it. Requires an API key; put TLS in front")
 	providerFlags(cmd, providerDefaults)
 	cmd.AddCommand(ReconcileCommand(), ForceStopCommand())
 	return cmd

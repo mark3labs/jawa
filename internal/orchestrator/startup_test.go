@@ -51,6 +51,9 @@ func TestCommandStartupLogs(t *testing.T) {
 			t.Errorf("missing %q in logs:\n%s", message, logs)
 		}
 	}
+	if strings.Contains(logs, "MCP endpoint ready") {
+		t.Fatal("MCP enabled by default")
+	}
 	if strings.Contains(logs, "127.0.0.1:0") {
 		t.Errorf("logs should report bound ports, not requested port zero:\n%s", logs)
 	}

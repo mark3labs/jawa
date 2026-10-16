@@ -178,6 +178,9 @@ func (w *Workflow) Close() error {
 }
 func (w *Workflow) SetVerifier(v Verifier) { w.mu.Lock(); w.verifier = v; w.mu.Unlock() }
 func (w *Workflow) Agents(ctx context.Context) ([]presence.Record, error) {
+	if w == nil || w.presence == nil {
+		return nil, errors.New("agent discovery unavailable")
+	}
 	return w.presence.Discover(ctx, presence.Filter{})
 }
 

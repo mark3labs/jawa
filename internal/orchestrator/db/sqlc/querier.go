@@ -9,13 +9,16 @@ import (
 )
 
 type Querier interface {
+	GetActiveAPIKeyByHash(ctx context.Context, tokenHash string) (GetActiveAPIKeyByHashRow, error)
 	GetCard(ctx context.Context, id string) (Card, error)
 	GetPlanningRunHistory(ctx context.Context, id string) (GetPlanningRunHistoryRow, error)
 	GetPlanningSession(ctx context.Context, cardID string) (PlanningSession, error)
 	GetPlanningSessionByID(ctx context.Context, id string) (PlanningSession, error)
 	GetPlanningTurn(ctx context.Context, id string) (PlanningTurn, error)
 	GetProject(ctx context.Context, id string) (Project, error)
+	InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) error
 	InsertCard(ctx context.Context, arg InsertCardParams) error
+	ListAPIKeys(ctx context.Context) ([]ListAPIKeysRow, error)
 	ListCardLane(ctx context.Context, arg ListCardLaneParams) ([]string, error)
 	ListCards(ctx context.Context, projectID interface{}) ([]Card, error)
 	ListPendingRunChat(ctx context.Context) ([]RunChat, error)
@@ -32,7 +35,9 @@ type Querier interface {
 	MarkPlanningCancellationSent(ctx context.Context, arg MarkPlanningCancellationSentParams) error
 	NextCardPosition(ctx context.Context, arg NextCardPositionParams) (int64, error)
 	RetainPlanningDelivery(ctx context.Context, arg RetainPlanningDeliveryParams) error
+	RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (int64, error)
 	SetCardArchived(ctx context.Context, arg SetCardArchivedParams) (int64, error)
+	TouchAPIKey(ctx context.Context, arg TouchAPIKeyParams) error
 	UpdateCardLane(ctx context.Context, arg UpdateCardLaneParams) (int64, error)
 }
 

@@ -15,7 +15,7 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/dialog"
 )
 
-var dialogNames = map[string]bool{"project": true, "card": true, "delete": true, "merge": true, "fix": true, "guide": true, "cancel": true, "ready": true, "force": true, "assign": true}
+var dialogNames = map[string]bool{"apikeys": true, "project": true, "card": true, "delete": true, "merge": true, "fix": true, "guide": true, "cancel": true, "ready": true, "force": true, "assign": true}
 
 func dialogOpen(name, cardID, extra string) string {
 	q := url.Values{}
@@ -92,6 +92,8 @@ func (a *app) dialogBody(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) dialogComponent(ctx context.Context, name, op string, d pageData, q url.Values) (templ.Component, error) {
 	switch name {
+	case "apikeys":
+		return apiKeyDialog(d, op), nil
 	case "project":
 		return projectDialog(d, op), nil
 	case "card":

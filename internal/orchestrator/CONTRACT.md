@@ -11,6 +11,20 @@ independent PR readiness policy. GET /events pushes authenticated Datastar SSE e
 provides a finite refresh. Mutations return element/signal patches. Stable keyed
 DOM roots preserve filtering, drafts, disclosures, and the page shell without reloads. No browser NATS connection is used.
 
+## Settings: MCP access
+
+Settings includes an MCP access panel (`mcp-access`) for creating and revoking
+full-access personal keys. It shows prefixes, creation/last-used times and
+Active/Revoked state, never hashes or recoverable secrets. Listener address
+overrides apply after restart; empty fields retain overrides, Reset clears them.
+
+The one-time key creation response is the single exception to the rule against
+rendering credentials. Both its Datastar dialog and native fallback are no-store.
+Secrets must never enter logs, flash, signals, cookies or browser storage. The
+`apikeys` dialog name has no hyphen so pending signals and indicators agree;
+the Go and Datastar browser fixtures cover its open/close, operation IDs and
+inline errors. See MCP.md for the remote endpoint contract.
+
 ## Views and UI build
 
 Authenticated routes: `/board?project=<id>`, `/runs?state=<tab>&card=<id>`,

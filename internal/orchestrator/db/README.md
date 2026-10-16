@@ -7,6 +7,9 @@ provider API uses no global registration or dialect state.
 
 ## Migration history
 
+- `00023_mcp_api_keys.sql`: hashed personal API keys with retained revocation
+  audit and the `mcp_requests` replay ledger reserved for future write tools.
+
 - `00001_baseline.sql`: adopts the original tables with `IF NOT EXISTS`.
 - Version 2 (Go, `upgradeLegacyColumns`): adds missing legacy admin/project/card
   columns by inspecting the schema; existing values are untouched.
