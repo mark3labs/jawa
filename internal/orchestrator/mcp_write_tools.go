@@ -88,16 +88,20 @@ type mcpMoveCardArgs struct {
 const mcpNATSGate = "NATS authentication setup is required. Finish Settings in the dashboard first."
 
 func addMCPLifecycleTool[T any](m *mcpService, srv *server.MCPServer, name, description string, handler mcp.TypedToolHandlerFunc[T]) {
-	destructive := name == "cancel_run" || name == "cancel_planning" || name == "reset_card"
+	destructive := name == "cancel_run" || name == "cancel_planning" || name == "reset_card" || name == "merge_pr" || name == "force_ready" || name == "force_stop" || name == "delete_card"
 	opts := []mcp.ToolOption{mcp.WithDescription(description), mcp.WithInputSchema[T](), mcp.WithDestructiveHintAnnotation(destructive)}
-	if name == "create_project" || name == "create_card" {
+	if name == "create_project" || name == "create_card" || name == "merge_pr" || name == "archive_card" || name == "restore_card" || name == "mark_pr_merged" {
 		opts = append(opts, mcp.WithIdempotentHintAnnotation(true))
 	}
 	srv.AddTool(mcp.NewTool(name, opts...), mcp.NewTypedToolHandler(func(ctx context.Context, r mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
 		if ready, err := m.s.NATSConfigured(); err != nil || !ready {
 			return mcp.NewToolResultError(mcpNATSGate), nil
 		}
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		timeout := 30 * time.Second
+		if name == "refresh_pr_checks" {
+			timeout = 35 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		return handler(ctx, r, args)
 	}))
@@ -114,26 +118,40 @@ func mcpRejected(err error) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultError("Unable to apply request: " + strings.TrimRight(err.Error(), ". \t\n") + ". Call get_card for the current state and actions."), nil
 }
 func (m *mcpService) act(ctx context.Context, tool, cardID, note string, run func(context.Context) error) (*mcp.CallToolResult, error) {
+	return m.actResult(ctx, tool, cardID, 20*time.Second, func(ctx context.Context) (map[string]any, error) {
+		err := run(ctx)
+		if note != "" {
+			return map[string]any{"note": note}, err
+		}
+		return nil, err
+	})
+}
+
+// actResult bounds and audits writes, then attaches the current card when applicable.
+func (m *mcpService) actResult(ctx context.Context, tool, cardID string, timeout time.Duration, run func(context.Context) (map[string]any, error)) (*mcp.CallToolResult, error) {
 	if ready, err := m.s.NATSConfigured(); err != nil || !ready {
 		return mcp.NewToolResultError(mcpNATSGate), nil
 	}
 	if m.w == nil {
 		return mcp.NewToolResultError("workflow is unavailable"), nil
 	}
-	actx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	actx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	err := run(actx)
+	extra, err := run(actx)
 	m.actionLog(ctx, tool, cardID, err)
 	if err != nil {
 		return mcpRejected(err)
 	}
-	card, err := m.card(ctx, cardID)
-	if err != nil {
-		return mcp.NewToolResultError("Applied, but the card could not be reloaded; call get_card."), nil
+	result := map[string]any{"ok": true}
+	for k, v := range extra {
+		result[k] = v
 	}
-	result := map[string]any{"ok": true, "card": card}
-	if note != "" {
-		result["note"] = note
+	if extra["deleted"] != true && cardID != "" {
+		card, err := m.card(actx, cardID)
+		if err != nil {
+			return mcp.NewToolResultError("Applied, but the card could not be reloaded; call get_card."), nil
+		}
+		result["card"] = card
 	}
 	return mcpJSON(result)
 }

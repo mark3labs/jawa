@@ -859,6 +859,42 @@ completed NATS setup in Settings and return immediately with refreshed state.
 Use each card's `actions`: send its exact `args`, adding fields in `needs`.
 Creation requires an `idempotency_key`; reuse it with identical arguments on retry.
 
+### Ship a card end to end
+
+Use the exact `args` in the returned card's `actions`, adding fields from `needs`.
+Do not invent or edit concurrency tokens. Example tool-call recipe:
+
+1. `create_project`:
+   `{"name":"e2e","provider":"github","repo":"https://github.com/example/repo","base_branch":"main","idempotency_key":"p1"}`.
+2. `create_card`:
+   `{"project_id":"<project.id>","title":"Add feature","idempotency_key":"c1"}`.
+   Reuse creation keys with identical args on retries.
+3. `start_planning`: `{"card_id":"<card.id>"}`. Work is asynchronous.
+4. Loop `wait_for_card`:
+   `{"card_id":"<card.id>","version":"<last version>","timeout_seconds":20}`.
+   Always keep the returned version, including when `changed:false`; repeat until
+   a decision is available. Answer questions with the listed `reply_planning`
+   args plus `{"reply":"Use the existing API"}`. Review the spec, then call
+   `approve_plan` with its listed args, e.g. `{"card_id":"<id>","revision":1}`.
+5. The build runs asynchronously. Continue the wait loop until Done / **Ready
+   for review** (a verified PR, not merged). Handle blockers with listed actions.
+   Optionally call `fix_card` with `{"card_id":"<id>","message":"Tighten tests"}`
+   and wait through Fix back to Done.
+6. `refresh_pr_checks`: `{"project_id":"<project.id>","card_id":"<id>"}`.
+   If checks are queued, continue polling until `get_card` lists `merge_pr`.
+7. Call `merge_pr` with the listed snapshot:
+   `{"card_id":"<id>","snapshot":"<listed snapshot>","method":"squash","idempotency_key":"m1"}`.
+   Reuse that key and the same arguments on retries. If pending/uncertain, refresh
+   checks and get the card; **never retry with a new key**.
+8. After `get_card` shows Merged, `archive_card`: `{"card_id":"<id>"}`.
+   `restore_card` uses the same args. Archive only changes visibility.
+
+MCP merges and force-readies appear in audit as `mcp:<key name>`.
+`force_ready`, `force_stop` and `delete_card` are operator overrides requiring
+`acknowledge:true` after a human-equivalent decision. Force-ready does not merge;
+force-stop does not prove the remote agent stopped. See the
+[complete 29-tool reference and lifecycle diagram](internal/orchestrator/MCP.md).
+
 Worked asynchronous example (MCP tool calls, with application-side loops):
 
 1. `create_project({name:"Demo", provider:"github", repo_name:"acme/demo",
