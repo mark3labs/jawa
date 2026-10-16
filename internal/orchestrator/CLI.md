@@ -17,6 +17,7 @@ reports whether a credential is configured, never its value.
 | `--data-dir` | `JAWA_ORCHESTRATOR_DATA_DIR` | OS config directory + `/jawa` |
 | `--listen` | `JAWA_ORCHESTRATOR_LISTEN` | `127.0.0.1:8080` |
 | `--nats-listen` | `JAWA_ORCHESTRATOR_NATS_LISTEN` | `127.0.0.1:4222` |
+| `--mcp-listen` | `JAWA_ORCHESTRATOR_MCP_LISTEN` | empty (disabled) |
 | `--debug` | `JAWA_ORCHESTRATOR_DEBUG` | `false` |
 | `--allow-no-ci` | `JAWA_ALLOW_NO_CI` | `false` |
 | `--github-token` | `JAWA_GITHUB_TOKEN`, falling back to `GITHUB_TOKEN` | empty |

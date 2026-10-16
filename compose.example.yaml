@@ -13,8 +13,11 @@ services:
       - 0.0.0.0:8080
       - --nats-listen
       - 0.0.0.0:4222
+      # - --mcp-listen
+      # - 0.0.0.0:8090
     ports:
       - "127.0.0.1:8080:8080"
+      # - "127.0.0.1:8090:8090"
     environment:
       JAWA_GITHUB_TOKEN: "${JAWA_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
       JAWA_FORGEJO_TOKEN: "${JAWA_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"

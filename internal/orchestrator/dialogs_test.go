@@ -55,7 +55,7 @@ func TestDialogBodyIneligibleCard(t *testing.T) {
 	a := testApp(t)
 	session, csrf := sseCookies(t, a)
 	for name := range dialogNames {
-		if name == "card" || name == "project" {
+		if name == "card" || name == "project" || name == "apikeys" {
 			continue
 		}
 		body := assertSSE(t, sseRequest(a, "GET", "/dialogs/"+name+"?card_id=missing", nil, session, csrf))
@@ -150,6 +150,13 @@ func TestDatastarBrowserFixture(t *testing.T) {
 	d.v = viewParams{View: viewSettings}
 	d.nats.Username = "worker"
 	d.nats.URL = "nats://127.0.0.1:4222"
+	var settings bytes.Buffer
+	if err := appPage(d).Render(t.Context(), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(settings.String(), `id="mcp-access"`) {
+		t.Fatal("MCP access panel missing")
+	}
 	write("settings.html", appPage(d))
 	d.v = viewParams{View: viewPlanning, Card: "planning"}
 	write("planning.html", appPage(d))
@@ -161,6 +168,8 @@ func TestDatastarBrowserFixture(t *testing.T) {
 		op := strings.Repeat("a", 32)
 		var component templ.Component
 		switch name {
+		case "apikeys":
+			component = apiKeyDialog(d, op)
 		case "project":
 			component = projectDialog(d, op)
 		case "card":

@@ -30,6 +30,8 @@ type mutationContext struct {
 }
 
 var mutations = map[string]mutation{
+	"/settings/apikeys":            {allowBeforeNATS: true, run: (*app).mutateAPIKeyCreate},
+	"/settings/apikeys/revoke":     {allowBeforeNATS: true, run: (*app).mutateAPIKeyRevoke},
 	"/cards/auto-merge":            {needsWorkflow: true, run: (*app).mutateCardAutoMerge},
 	"/cards/assign":                {needsWorkflow: true, run: (*app).mutateAssignment},
 	"/prs/refresh":                 {run: (*app).mutatePRsRefresh},
@@ -287,7 +289,7 @@ func (a *app) mutateSettingsOrchestrator(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		return err
 	}
-	for _, key := range []string{"listen", "nats-listen"} {
+	for _, key := range []string{"listen", "nats-listen", "mcp-listen"} {
 		if value := strings.TrimSpace(r.FormValue(key)); value != "" {
 			if e := validatedListenAddress(value); e != nil {
 				err = fmt.Errorf("invalid %s address", key)

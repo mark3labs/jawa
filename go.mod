@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/bonnie v0.29.0
 	github.com/mark3labs/kit v0.129.1
+	github.com/mark3labs/mcp-go v1.2.1
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/nats-io/nats-server/v2 v2.15.1
 	github.com/nats-io/nats.go v1.54.0
@@ -103,7 +104,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/landlock-lsm/go-landlock v0.10.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/mark3labs/mcp-go v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect

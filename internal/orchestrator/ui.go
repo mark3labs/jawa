@@ -44,6 +44,7 @@ type uiSnapshot struct {
 
 // pageData is everything a view needs to render. Views never query storage.
 type pageData struct {
+	apiKeys            []APIKey
 	workflowDiscussion []WorkflowExchange
 	detail             *runDetail
 	csrf               string
@@ -155,6 +156,9 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 	d := pageData{csrf: csrf, v: v, dashboard: dashboard, defaults: defaults, uiSnapshot: snap}
 	if v.View == viewPlanning {
 		d.workflowDiscussion, err = s.workflowDiscussion(v.Card)
+	}
+	if err == nil && v.View == viewSettings {
+		d.apiKeys, err = s.APIKeys(ctx)
 	}
 	return d, err
 }

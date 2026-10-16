@@ -14,6 +14,16 @@ type Admin struct {
 	PasswordHash string `json:"password_hash"`
 }
 
+type ApiKey struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	TokenHash  string `json:"token_hash"`
+	Prefix     string `json:"prefix"`
+	CreatedAt  int64  `json:"created_at"`
+	LastUsedAt int64  `json:"last_used_at"`
+	RevokedAt  int64  `json:"revoked_at"`
+}
+
 type AutoMergeOperation struct {
 	ID          string `json:"id"`
 	CardID      string `json:"card_id"`
@@ -82,6 +92,15 @@ type IssueSubmission struct {
 	CardID        string `json:"card_id"`
 	CreatedAt     int64  `json:"created_at"`
 	UpdatedAt     int64  `json:"updated_at"`
+}
+
+type McpRequest struct {
+	KeyID          string `json:"key_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	Tool           string `json:"tool"`
+	ArgsHash       string `json:"args_hash"`
+	Result         string `json:"result"`
+	CreatedAt      int64  `json:"created_at"`
 }
 
 type PlanningDelivery struct {

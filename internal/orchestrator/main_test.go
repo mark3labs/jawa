@@ -17,6 +17,7 @@ func TestMain(m *testing.M) {
 	storeTestPragmas = `PRAGMA synchronous=OFF;`
 	passwordHashCost = bcrypt.MinCost
 	ssePollInterval = 25 * time.Millisecond
+	mcpWaitPollInterval = 25 * time.Millisecond
 	workflowLoopInterval = 10 * time.Millisecond
 	if err := buildStoreTemplate(); err != nil {
 		fmt.Fprintln(os.Stderr, "store template:", err)

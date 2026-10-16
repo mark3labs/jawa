@@ -1,0 +1,157 @@
+package orchestrator
+
+import (
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
+	"github.com/axadrn/shadcn-templ/v2/components/button"
+	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/copybutton"
+	"github.com/axadrn/shadcn-templ/v2/components/dialog"
+	"github.com/axadrn/shadcn-templ/v2/components/empty"
+	"github.com/axadrn/shadcn-templ/v2/components/table"
+)
+
+templ apiKeysPanel(d pageData) {
+	@card.Card(card.Props{Class: "panel", ID: "mcp-access"}) {
+		@card.Header() {
+			@card.Title() {
+				MCP access 
+			}
+			@card.Description() {
+				API keys let MCP clients automate cards, planning, builds, fixes and merges. Every key has full access. Put an HTTPS reverse proxy in front of the MCP address. 
+			}
+		}
+		@card.Content() {
+			if addr := dashboardValue(d, "mcp-listen", "JAWA_ORCHESTRATOR_MCP_LISTEN", ""); addr != "" {
+				<p><code>{ "http://" + addr + "/mcp" }</code></p>
+				<p class="muted">Behind your proxy: https://&lt;your-host&gt;/mcp</p>
+			} else {
+				<p class="muted">Disabled. Set an MCP address under Server (or --mcp-listen) and restart.</p>
+			}
+			if len(d.apiKeys) == 0 {
+				@empty.Empty() {
+					@empty.Header() {
+						@empty.Title() {
+							No API keys yet
+						}
+					}
+				}
+			} else {
+				@table.Table() {
+					@table.Header() {
+						@table.Row() {
+							for _, title := range []string{"Name", "Key", "Created", "Last used", "Status", "Actions"} {
+								@table.Head() {
+									{ title }
+								}
+							}
+						}
+					}
+					@table.Body() {
+						for _, k := range d.apiKeys {
+							@table.Row() {
+								@table.Cell() {
+									{ k.Name }
+								}
+								@table.Cell() {
+									<code>{ k.Prefix + "…" }</code>
+								}
+								@table.Cell() {
+									@relTime(k.CreatedAt, d.now)
+								}
+								@table.Cell() {
+									if k.LastUsedAt.IsZero() {
+										Never
+									} else {
+										@relTime(k.LastUsedAt, d.now)
+									}
+								}
+								@table.Cell() {
+									@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+										if k.RevokedAt.IsZero() {
+											Active
+										} else {
+											Revoked
+										}
+									}
+								}
+								@table.Cell() {
+									if k.RevokedAt.IsZero() {
+										<form method="post" action="/settings/apikeys/revoke" { dsForm("/settings/apikeys/revoke", "apikeysrevoke"+k.ID)... }>
+											<input type="hidden" name="_csrf" value={ d.csrf }/>
+											@viewFields(d.v)
+											<input type="hidden" name="key_id" value={ k.ID }/>
+											@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline, Class: "btn small danger"}) {
+												Revoke 
+											}
+										</form>
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			@button.Button(button.Props{Type: button.TypeButton, Class: "btn", Attributes: templ.Attributes{"data-on:click": dialogOpen("apikeys", "", "")}}) {
+				New API key 
+			}
+		}
+	}
+}
+
+templ apiKeyDialog(d pageData, op string) {
+	@dialogFrame("apikeys", op, "New API key") {
+		@dialog.Description() {
+			Name the client that will use this key, for example "laptop Claude Code". 
+		}
+		<form method="post" action="/settings/apikeys" { dialogForm("apikeys", "/settings/apikeys")... }>
+			<input type="hidden" name="dialog_operation" value={ op }/>
+			<input type="hidden" name="_csrf" value={ d.csrf }/>
+			@viewFields(d.v)
+			@textField("apikey-name", "name", "Name", "", true, templ.Attributes{"maxlength": "64", "autocomplete": "off"})
+			@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+					Cancel 
+				}
+				@dialogSubmit("apikeys", "Create key")
+			}
+		</form>
+	}
+}
+
+templ apiKeySecret(k APIKey, secret string) {
+	<p>This key is shown once and cannot be recovered. If you lose it, revoke it and create a new one.</p>
+	<p>{ k.Name }</p>
+	<pre class="snippet" id="apikey-secret">{ secret }</pre>
+	@copybutton.CopyButton(copybutton.Props{Value: secret, Attrs: templ.Attributes{"aria-label": "Copy API key"}})
+	<pre class="snippet">{ `claude mcp add --transport http jawa https://<your-host>/mcp --header "Authorization: Bearer <key>"` }</pre>
+}
+
+templ apiKeyCreatedDialog(op string, k APIKey, secret string) {
+	@dialogFrame("apikeys", op, "Copy your API key") {
+		@dialog.Description() {
+			This key is shown once and cannot be recovered. If you lose it, revoke it and create a new one. 
+		}
+		@apiKeySecret(k, secret)
+		@dialog.Footer(dialog.FooterProps{Class: "dialog-actions"}) {
+			@button.Button(button.Props{Type: button.TypeButton, Class: "btn", Attributes: dialogClose(ctx)}) {
+				Close 
+			}
+		}
+	}
+}
+
+templ apiKeyCreatedPage(k APIKey, secret string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		@head("Copy your API key · Jawa")
+		<body class="style-nova auth-body">
+			<main class="auth-wrap">
+				@card.Card(card.Props{Class: "auth-card recovery-card"}) {
+					<h1>Copy your API key</h1>
+					@apiKeySecret(k, secret)
+					<a href="/settings">Back to Settings</a>
+				}
+			</main>
+		</body>
+	</html>
+}

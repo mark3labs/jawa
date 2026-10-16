@@ -132,6 +132,7 @@ Keep these accurate when you change the behavior they describe:
 | Blocker guidance, failed or auto resume | `internal/orchestrator/BLOCKER_GUIDANCE.md`, `FAILED_RESUME.md` |
 | Runs and Agents views | `internal/orchestrator/ACTIVITY.md` |
 | Orchestrator and submit CLI flags | `internal/orchestrator/CLI.md`, `cmd/submit/CLI.md` |
+| Remote MCP API, API keys | `internal/orchestrator/MCP.md` |
 | Migrations and sqlc | `internal/orchestrator/db/README.md` |
 
 ## Conventions

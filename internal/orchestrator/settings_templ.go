@@ -549,6 +549,10 @@ func settingsContent(d pageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = monoField("runtime-mcp-listen", "mcp-listen", "MCP address (empty = disabled)", dashboardValue(d, "mcp-listen", "JAWA_ORCHESTRATOR_MCP_LISTEN", "")).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 				templ_7745c5c3_Err = monoField("runtime-listen", "listen", "Dashboard address", dashboardValue(d, "listen", "JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080")).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -597,6 +601,10 @@ func settingsContent(d pageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		templ_7745c5c3_Err = apiKeysPanel(d).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<div class=\"settings-reset\"><div><strong>Reset dashboard overrides</strong><p class=\"muted small\">Restores every value above, including saved tokens, to CLI flags, environment variables or built-in defaults.</p></div><form method=\"post\" action=\"/settings/orchestrator/reset\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -604,7 +612,7 @@ func settingsContent(d pageData) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.csrf)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 127, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 129, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -684,7 +692,7 @@ func providerRow(p providerConfig) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 142, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 144, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -697,7 +705,7 @@ func providerRow(p providerConfig) templ.Component {
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(p.Detail)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 143, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 145, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
@@ -773,7 +781,7 @@ func providerRow(p providerConfig) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 157, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 159, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -816,7 +824,7 @@ func providerRow(p providerConfig) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 162, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 164, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -870,7 +878,7 @@ func switchField(id, name, title, hint string, on bool) templ.Component {
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(id + "-" + strconv.FormatBool(on))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 171, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 173, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 		if templ_7745c5c3_Err != nil {
@@ -899,7 +907,7 @@ func switchField(id, name, title, hint string, on bool) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 173, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 175, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -912,7 +920,7 @@ func switchField(id, name, title, hint string, on bool) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(hint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 174, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 176, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -939,7 +947,7 @@ func switchField(id, name, title, hint string, on bool) templ.Component {
 		var templ_7745c5c3_Var40 string
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 177, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 179, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 		if templ_7745c5c3_Err != nil {
@@ -993,7 +1001,7 @@ func monoField(id, name, title, value string) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 184, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 186, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
