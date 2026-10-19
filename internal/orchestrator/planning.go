@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -165,7 +166,14 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 		}
 		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, AgentID: t.AgentID, TargetAgentID: t.TargetAgentID, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
 		active = active || planningTurnActive(t.State)
+		// Natural output is discussion context only, never a proposal or completion
+		// report. Read the retained result so failures from older deployments also
+		// expose the planner's last response without a backfill or remote owner.
+		if t.State == "failed" && t.OutcomeJson != "" && strings.TrimSpace(t.Result) != "" {
+			d.Discussion = append(d.Discussion, PlanningMessage{ID: t.ID + "-result", SessionID: t.SessionID, Role: "assistant", Content: t.Result, CreatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
+		}
 	}
+	sort.SliceStable(d.Discussion, func(i, j int) bool { return d.Discussion[i].CreatedAt.Before(d.Discussion[j].CreatedAt) })
 	interactions, err := q.ListPlanningInteractions(ctx, p.ID)
 	if err != nil {
 		return d, err

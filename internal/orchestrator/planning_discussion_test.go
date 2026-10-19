@@ -9,6 +9,40 @@ import (
 	"jawa/internal/reportprotocol"
 )
 
+func TestPlanningDiscussionFallbackRunChat(t *testing.T) {
+	t.Parallel()
+	a := testApp(t)
+	_, csrf := setupTest(t, a)
+	r := planningHistoryFixture(t, a)
+	if _, err := a.s.db.Exec(`UPDATE planning_turns SET agent_id='planner',run_id='planner-run',remote_attempt_id='remote' WHERE id=?`, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	c := Card{ID: r.CardID, Status: "Planning", Title: "Discuss without typed reply"}
+	detail := PlanningDetail{Session: PlanningSession{State: "running"}, Discussion: []PlanningMessage{{Role: "assistant", Content: "Current discussion"}}}
+	data := pageData{csrf: csrf.Value, v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, planningChat: &planningChatDetail{Record: r, MessageID: "message-id", Messages: []RunChatMessage{{ID: "queued-id", Text: "Waiting to deliver", Status: "queued", Classification: "continuation"}}}}
+	var out bytes.Buffer
+	if err := planningContent(data).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	for _, want := range []string{`action="/runs/planning/` + r.ID + `/chat"`, `name="message_id"`, `value="message-id"`, `name="interaction"`, `placeholder="Message the planning run"`, "Waiting to deliver", `class="cn-button`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(html, `action="/cards/planning/reply"`) {
+		t.Fatal("typed reply shown without an interaction")
+	}
+	data.planning[c.ID] = PlanningDetail{Session: PlanningSession{State: "questions"}, InteractionToken: "typed-token", Questions: []string{"Question?"}}
+	out.Reset()
+	if err := planningContent(data).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `action="/cards/planning/reply"`) || strings.Contains(out.String(), `id="planning-run-chat-`+r.ID+`"`) {
+		t.Fatal("fallback competed with authoritative typed reply")
+	}
+}
+
 func TestPlanningDiscussionOnlyQuestionsAndReplies(t *testing.T) {
 	t.Parallel()
 	s, w, c := planningLocal(t)

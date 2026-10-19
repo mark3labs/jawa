@@ -371,8 +371,12 @@ source tables, not local planning receipts. Offline observations do not prevent 
 missing fields/history are silently omitted rather than reconstructed.
 
 
-Planning viewers have the same durable chat composer, including offline and
-historical runs. Chat POST uses the same CSRF/setup/auth guards as Build/Fix.
+Planning run viewers have the same durable chat composer, including offline and
+historical runs. The full-card Discussion also offers that composer for the newest
+pinned planning run when no typed planning reply is currently available; a pending
+typed reply remains the sole authoritative reply path. Discussion fallback messages
+post to the run chat endpoint with an empty interaction token and show persisted
+delivery status. Chat POST uses the same CSRF/setup/auth guards as Build/Fix.
 Planning Stop remains a card cancellation action. Specification approval requires
 the explicit card control, not chat. Follow-ups cannot regain workflow authority.
 Delivery status is separate from stored workflow status; failed/ambiguous messages

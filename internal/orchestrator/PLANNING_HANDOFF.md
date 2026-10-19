@@ -9,7 +9,7 @@
 - `CancelPlanning` revokes local authority, closes pending/queued interactions and moves to Todo atomically. Published investigations retain an exact-owner cancellation queue; remote silence does not prove execution stopped.
 - `RetryPlanning` creates fresh work only after failure, not on a normal reply/revision.
 
-Reply forms are keyed by interaction identity so SSE cannot retain an old hidden token for a new question. Approval selections refresh with the proposal; server CAS remains authoritative. Discussion content is sanitized Markdown from typed reports, never parsed natural model text. Planning report statuses distinguish pending input, queued delivery, dispatched reply and closed interactions.
+Reply forms are keyed by interaction identity so SSE cannot retain an old hidden token for a new question. Approval selections refresh with the proposal; server CAS remains authoritative. Discussion content is sanitized Markdown from typed reports and retained final responses from failed planning turns. Natural responses are display-only context, never parsed as workflow evidence. Planning report statuses distinguish pending input, queued delivery, dispatched reply and closed interactions.
 
 ## Protocol, runtime and persistence
 
@@ -42,6 +42,12 @@ Read-only scope is prompt-level; deploy restricted credentials/tools/sandbox for
 - Full Go suite/race suite, vet, golangci-lint. These offline checks do not exercise paid providers or live repository writes.
 
 ## Durable run chat
+
+The card Discussion keeps a durable message composer for the newest pinned planning
+run whenever no typed reply is pending, including failed/stopped runs. It uses the
+same admission and delivery path as run detail and shows local delivery status.
+Retained failed-turn responses are displayed without requiring the agent to be
+online, including responses saved before this UI change.
 
 All retained pinned Planning/Build/Fix run detail pages accept durable messages,
 regardless of lane or owner availability. Migration 00022 stores per-run client

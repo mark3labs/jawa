@@ -167,6 +167,17 @@ func (a RunRecord) matches(state string) bool {
 	}
 	return true
 }
+
+// latestPinnedPlanningRun selects the newest addressable planning execution for a card.
+func latestPinnedPlanningRun(runs []RunRecord, cardID string) (RunRecord, bool) {
+	for _, run := range runs {
+		if run.Mode == "Planning" && run.CardID == cardID && run.pinned() {
+			return run, true
+		}
+	}
+	return RunRecord{}, false
+}
+
 func filterHistory(runs []RunRecord, v viewParams) []RunRecord {
 	out := make([]RunRecord, 0, len(runs))
 	for _, a := range runs {

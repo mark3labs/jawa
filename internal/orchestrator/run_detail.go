@@ -15,6 +15,12 @@ import (
 	"time"
 )
 
+type planningChatDetail struct {
+	Record    RunRecord
+	MessageID string
+	Messages  []RunChatMessage
+}
+
 type runDetail struct {
 	Record      RunRecord
 	Tab         string

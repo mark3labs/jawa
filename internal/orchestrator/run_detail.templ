@@ -99,6 +99,19 @@ templ runDetailPage(d runDetail, csrf string) {
 	</div>
 }
 
+templ planningChatComposer(chat planningChatDetail, csrf string) {
+	<p class="meta">Send a message to continue this run with its saved context. Messages remain queued while the agent is unavailable.</p>
+	<form data-ignore-morph id={ "planning-run-chat-" + chat.Record.ID } method="post" action={ chat.Record.basePath() + "/chat" } data-signals:planning-run-message-id={ "'" + chat.MessageID + "'" } data-indicator:run-sending data-on:submit__prevent={ "!$runSending && ($_retryText !== null && $_retryText !== $planningRunDraft && ($planningRunMessageId = crypto.randomUUID()), $_retryText = $planningRunDraft, @post('" + chat.Record.basePath() + "/chat', {contentType:'form', retry:'never'}))" }>
+		<input type="hidden" name="_csrf" value={ csrf }/>
+		<input type="hidden" name="message_id" value={ chat.MessageID } data-bind:planning-run-message-id/>
+		<input type="hidden" name="interaction" value=""/>
+		@label.Label(label.Props{For: "planning-run-draft", Class: "sr-only"}) { Message the planner }
+		@textarea.Textarea(textarea.Props{ID: "planning-run-draft", Name: "text", Rows: 1, Placeholder: "Message the planning run", Attributes: templ.Attributes{"data-bind:planning-run-draft": "", "maxlength": "64000", "required": true, "data-on:keydown": "evt.key === 'Enter' && evt.ctrlKey && !evt.isComposing && (evt.preventDefault(), el.form.requestSubmit())"}})
+		@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Attributes: templ.Attributes{"data-attr:disabled": "$runSending"}}) { Send message }
+	</form>
+	<div hidden data-effect="$runAcceptedMessage !== '' && ($planningRunDraft === $runConfirmedDraft && ($planningRunDraft = ''), $planningRunMessageId = crypto.randomUUID(), $_retryText = null, $runAcceptedMessage = '', $runConfirmedDraft = '')"></div>
+}
+
 templ runDetailControls(d runDetail, csrf string) {
 	<div id="run-detail-controls" class="run-controls" data-interaction={ d.Interaction } data-effect={"!$runDraft && ($_interaction = '"+d.Interaction+"')"}>
 		if d.Tab == "chat" {

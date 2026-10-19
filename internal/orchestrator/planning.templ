@@ -222,7 +222,12 @@ templ planningContent(d pageData) {
 								</div>
 								@pendingSubmit("Send reply", "cardsplanningreply")
 							</form>
+						} else if d.planningChat != nil {
+							@planningChatComposer(*d.planningChat, d.csrf)
 						}
+					}
+					if d.planningChat != nil {
+						@runChatDelivery(runDetail{Chat: d.planningChat.Messages})
 					}
 					for i, exchange := range d.workflowDiscussion {
 						if i == 0 || d.workflowDiscussion[i-1].AttemptID != exchange.AttemptID {

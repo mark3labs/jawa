@@ -46,6 +46,7 @@ type uiSnapshot struct {
 type pageData struct {
 	apiKeys            []APIKey
 	workflowDiscussion []WorkflowExchange
+	planningChat       *planningChatDetail
 	detail             *runDetail
 	csrf               string
 	v                  viewParams
@@ -156,6 +157,17 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 	d := pageData{csrf: csrf, v: v, dashboard: dashboard, defaults: defaults, uiSnapshot: snap}
 	if v.View == viewPlanning {
 		d.workflowDiscussion, err = s.workflowDiscussion(v.Card)
+		if err == nil {
+			if wf != nil {
+				if detail, ok := d.planning[v.Card]; ok && !planningCanReply(detail) {
+					if record, found := latestPinnedPlanningRun(d.runs, v.Card); found {
+						chat := planningChatDetail{Record: record, MessageID: newID()}
+						chat.Messages = wf.chatMessages(record)
+						d.planningChat = &chat
+					}
+				}
+			}
+		}
 	}
 	if err == nil && v.View == viewSettings {
 		d.apiKeys, err = s.APIKeys(ctx)

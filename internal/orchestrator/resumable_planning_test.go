@@ -127,13 +127,23 @@ func TestPlanningUnexpectedCompletionWithProposalFailsAndCancellationRevokesOutb
 	if _, err := w.acceptReport(t.Context(), r); err != nil {
 		t.Fatal(err)
 	}
-	out := client.Outcome{TaskID: r.TaskID, AgentID: r.AgentID, RunID: r.RunID, AttemptID: r.AttemptID, State: runtime.RunCompleted}
+	out := client.Outcome{TaskID: r.TaskID, AgentID: r.AgentID, RunID: r.RunID, AttemptID: r.AttemptID, State: runtime.RunCompleted, Response: "Here is my recommendation; please reply with your preference."}
 	if err := w.result(t.Context(), out); err != nil {
 		t.Fatal(err)
 	}
 	d = planningDetails(t, w, c.ID)
 	if d.Session.State != "failed" || d.InteractionToken != "" {
 		t.Fatal(d)
+	}
+	if len(d.Discussion) != 2 || d.Discussion[1].Content != out.Response || d.Session.Spec != "" || d.CanApprove {
+		t.Fatalf("last output must remain visible without becoming planning evidence: %+v", d)
+	}
+	// Replayed outcomes must not duplicate the last response.
+	if err := w.result(t.Context(), out); err != nil {
+		t.Fatal(err)
+	}
+	if replay := planningDetails(t, w, c.ID); len(replay.Discussion) != 2 {
+		t.Fatal(replay.Discussion)
 	}
 	if err := w.RetryPlanning(c.ID); err != nil {
 		t.Fatal(err)
