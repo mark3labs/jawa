@@ -11,6 +11,7 @@ import (
 	"jawa/internal/reportprotocol"
 	"jawa/internal/runapitoken"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,6 +20,28 @@ type planningChatDetail struct {
 	Record    RunRecord
 	MessageID string
 	Messages  []RunChatMessage
+}
+
+// planningDiscussion merges ordinary messages without exposing transport bookkeeping.
+func planningDiscussion(detail PlanningDetail, chat *planningChatDetail) []PlanningMessage {
+	if chat == nil {
+		return detail.Discussion
+	}
+	return planningChatDiscussion(chat.Messages, detail.Discussion)
+}
+
+func planningChatDiscussion(chat []RunChatMessage, typed []PlanningMessage) []PlanningMessage {
+	out := append([]PlanningMessage(nil), typed...)
+	for _, message := range chat {
+		// Interaction delivery already writes its user message to planning_messages
+		// atomically with the Answer outbox. Queued messages are not there yet.
+		if message.Classification == "interaction" {
+			continue
+		}
+		out = append(out, PlanningMessage{ID: message.ID, Role: "user", Content: message.Text, CreatedAt: time.UnixMilli(message.CreatedAt).UTC()})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
 }
 
 type runDetail struct {

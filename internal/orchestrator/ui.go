@@ -160,7 +160,7 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 		d.workflowDiscussion, err = s.workflowDiscussion(v.Card)
 		if err == nil {
 			if wf != nil {
-				if detail, ok := d.planning[v.Card]; ok && !planningCanReply(detail) {
+				if _, ok := d.planning[v.Card]; ok {
 					if record, found := latestPinnedPlanningRun(d.runs, v.Card); found {
 						chat := planningChatDetail{Record: record, MessageID: uuid.NewString()}
 						chat.Messages = wf.chatMessages(record)

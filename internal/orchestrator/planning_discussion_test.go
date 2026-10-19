@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"jawa/internal/reportprotocol"
 )
@@ -50,6 +51,23 @@ func TestPlanningDiscussionFallbackRunChat(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `action="/cards/planning/reply"`) || strings.Contains(out.String(), `id="planning-run-chat-`+r.ID+`"`) {
 		t.Fatal("fallback competed with authoritative typed reply")
+	}
+}
+
+func TestPlanningChatDiscussionProjection(t *testing.T) {
+	typed := []PlanningMessage{{Role: "user", Content: "typed reply"}, {Role: "assistant", Content: "typed question"}}
+	typed[0].ID = "interaction-one"
+	typed[0].CreatedAt = time.UnixMilli(20)
+	typed[1].ID = "interaction-two"
+	typed[1].CreatedAt = time.UnixMilli(40)
+	chat := []RunChatMessage{
+		{ID: "one", Text: "hello", Status: "queued", CreatedAt: 10},
+		{ID: "two", Text: "typed reply", Interaction: "interaction-one", Classification: "interaction", Status: "delivered", CreatedAt: 20},
+		{ID: "three", Text: "hello", Status: "delivered", CreatedAt: 30},
+	}
+	got := planningChatDiscussion(chat, typed)
+	if len(got) != 4 || got[0].Content != "hello" || got[1].Content != "typed reply" || got[2].Content != "hello" || got[3].Content != "typed question" || got[0].Role != "user" || got[2].CreatedAt.UnixMilli() != 30 {
+		t.Fatalf("projection: %+v", got)
 	}
 }
 

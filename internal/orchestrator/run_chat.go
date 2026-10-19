@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	client "github.com/mark3labs/bonnie/client/nats"
+	"github.com/mark3labs/bonnie/runtime"
 	"jawa/internal/orchestrator/db/sqlc"
 	"jawa/internal/reportprotocol"
 	"jawa/internal/runapitoken"
@@ -272,6 +273,11 @@ func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
 		_, _ = w.s.db.Exec(`UPDATE run_chat SET failure='owner_unreachable_or_unsupported' WHERE id=?`, m.ID)
 		return
 	} // Offline/old agents remain visibly pending, never fallback.
+	w.applyChatReceipt(ctx, m, cmd, receipt)
+}
+
+// applyChatReceipt projects only host-confirmed execution into the existing workflow.
+func (w *Workflow) applyChatReceipt(ctx context.Context, m RunChatMessage, cmd reportprotocol.Chat, receipt reportprotocol.ChatReceipt) {
 	tx, err := w.s.writeTx()
 	if err != nil {
 		return
@@ -291,6 +297,35 @@ func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
 	if err != nil {
 		return
 	}
+	if receipt.Status == "active" && !cmd.Followup {
+		r, e := resolveChat(ctx, tx, m.Mode, m.LocalID)
+		if e != nil {
+			return
+		}
+		class, e := classifyChat(tx, r)
+		if e != nil {
+			return
+		}
+		if class == "continuation" {
+			// Host confirmation revives only failed work, never a newer typed interaction.
+			if m.Mode == "Planning" {
+				result, e := tx.Exec(`UPDATE planning_turns SET state='running',outcome_json='',error='',updated_at=? WHERE id=? AND state='failed' AND NOT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued'))`, time.Now().UnixMilli(), m.LocalID, m.TaskID)
+				if e != nil {
+					return
+				}
+				changed, e := result.RowsAffected()
+				if e != nil {
+					return
+				}
+				if changed > 0 {
+					_, err = tx.Exec(`UPDATE planning_sessions SET state='running',error='',updated_at=? WHERE id=(SELECT session_id FROM planning_turns WHERE id=?) AND state='failed'`, time.Now().UnixMilli(), m.LocalID)
+				}
+			} else {
+				_, err = tx.Exec(`UPDATE workflow_attempts SET state='running',run_state='running',outcome_json='',error='',updated_at=? WHERE id=? AND ready=0 AND state='failed' AND NOT EXISTS(SELECT 1 FROM workflow_interactions WHERE task_id=workflow_attempts.task_id AND status IN ('pending','queued'))`, time.Now().UnixMilli(), m.LocalID)
+			}
+		}
+	}
+
 	if receipt.Status == "completed" && !cmd.Followup && receipt.Outcome != nil {
 		reported, e := acceptedReport(tx, m.TaskID)
 		if e != nil {
@@ -307,11 +342,24 @@ func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
 			}
 			if class == "continuation" {
 				if m.Mode == "Planning" {
-					// Preserve the old failure until host-confirmed execution. The normal
-					// planning projection then handles trusted outcomes and suspensions.
-					_, err = tx.Exec(`UPDATE planning_turns SET outcome_json='',state=CASE WHEN EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued')) THEN 'waiting' ELSE 'running' END WHERE id=?`, m.TaskID, m.TaskID)
-					if err == nil {
-						_, err = w.planningResultDelivery(tx, ctx, *receipt.Outcome, true)
+					var pending bool
+					if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued'))`, m.TaskID).Scan(&pending); err == nil {
+						if pending && receipt.Outcome.State == runtime.RunWaiting {
+							// Retain the typed report's ready/questions projection and only
+							// clear stale natural failure evidence so the exact trusted
+							// suspension can be attached to its still-open interaction.
+							_, err = tx.Exec(`UPDATE planning_turns SET outcome_json='' WHERE id=? AND state IN ('waiting','running','failed')`, m.TaskID)
+							if err == nil {
+								_, err = w.planningResultDelivery(tx, ctx, *receipt.Outcome, true)
+							}
+						} else if !pending {
+							// Host confirms execution. Remove only superseded failure evidence;
+							// ordinary result projection can then record a fresh natural failure.
+							_, err = tx.Exec(`UPDATE planning_turns SET outcome_json='',state='running',error='' WHERE id=? AND state NOT IN ('cancelled','completed')`, m.TaskID)
+							if err == nil {
+								_, err = w.planningResultDelivery(tx, ctx, *receipt.Outcome, true)
+							}
+						}
 					}
 				} else {
 					data, _ := json.Marshal(receipt.Outcome)

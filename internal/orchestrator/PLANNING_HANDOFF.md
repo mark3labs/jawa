@@ -45,7 +45,10 @@ Read-only scope is prompt-level; deploy restricted credentials/tools/sandbox for
 
 The card Discussion keeps a durable message composer for the newest pinned planning
 run whenever no typed reply is pending, including failed/stopped runs. It uses the
-same admission and delivery path as run detail and shows local delivery status.
+same admission and delivery path as run detail. Replies appear as ordinary user
+messages in Discussion, not delivery-status cards. Host-confirmed continuations
+restore the existing running state; a committed proposal or clarification remains
+authoritative when the chat receipt arrives.
 Retained failed-turn responses are displayed without requiring the agent to be
 online, including responses saved before this UI change.
 

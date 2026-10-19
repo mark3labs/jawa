@@ -287,21 +287,15 @@ templ runTrace(d runDetail) {
 // Delivery records are separate from immutable workflow status and remote
 // transcript. A status row never claims an unavailable conversation recovered.
 templ runChatDelivery(d runDetail) {
- <section aria-label="Message delivery" class="space-y-2">
+ <section aria-label="Messages" class="space-y-2">
  for _, message := range d.Chat {
- <article id={ "chat-delivery-"+message.ID } class="rounded border p-3">
+ <article id={ "chat-delivery-"+message.ID } class="run-chat-message run-role-user">
  if !message.InTranscript {
- <p class="whitespace-pre-wrap break-words">{ message.Text }</p>
- }
- @badge.Badge() {
- { message.Status }
- }
- <span class="meta">{ message.Classification }</span>
- if message.Status=="ambiguous" {
- <p>Execution is unconfirmed. Reload to reconcile without replaying this message.</p>
+ <strong class="run-message-role">User</strong>
+ <div class="run-prose">{ message.Text }</div>
  }
  if message.Failure != "" {
- <p role="status">{ message.Failure }</p>
+ <p class="meta">{ message.Failure }</p>
  }
  </article>
  }

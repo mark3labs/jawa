@@ -204,7 +204,7 @@ templ planningContent(d pageData) {
 				@card.Card(card.Props{Class: "planning-surface"}) {
 					<h2>Discussion</h2>
 					if detail, exists := d.planning[c.ID]; exists {
-						for _, message := range detail.Discussion {
+						for _, message := range planningDiscussion(detail, d.planningChat) {
 							<article class="plan-message"><h3>{ message.Role }</h3>@planningDiscussionMessage(message)</article>
 						}
 						if c.Status == "Planning" && planningCanReply(detail) {
@@ -225,9 +225,6 @@ templ planningContent(d pageData) {
 						} else if d.planningChat != nil {
 							@planningChatComposer(*d.planningChat, d.csrf)
 						}
-					}
-					if d.planningChat != nil {
-						@runChatDelivery(runDetail{Chat: d.planningChat.Messages})
 					}
 					for i, exchange := range d.workflowDiscussion {
 						if i == 0 || d.workflowDiscussion[i-1].AttemptID != exchange.AttemptID {

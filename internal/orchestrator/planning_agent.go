@@ -159,6 +159,15 @@ func (w *Workflow) planningResultDelivery(tx *sql.Tx, ctx context.Context, out c
 	if err != nil || reported {
 		return true, err
 	}
+	// A confirmed typed suspension is newer authoritative work. BONNIE may
+	// redeliver an earlier natural completion after a chat continuation; it
+	// must not cancel the proposal the same run is now waiting to review.
+	if out.State == runtime.RunCompleted {
+		var suspended bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_interactions WHERE task_id=? AND status IN ('pending','queued') AND waiting_json<>'')`, t.ID).Scan(&suspended); err != nil || suspended {
+			return true, err
+		}
+	}
 	reason := out.Error
 	if reason == "" {
 		reason = "planner finished without an accepted typed report"

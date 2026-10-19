@@ -160,6 +160,62 @@ func TestRunChatFollowupFencesWorkflowEvidence(t *testing.T) {
 	}
 }
 
+func TestRunChatPlanningProposalSurvivesHostReceipt(t *testing.T) {
+	a := testApp(t)
+	r := planningHistoryFixture(t, a)
+	w := a.workflow
+	w.observeReport = fakeReportObserver
+	first := reportRequest(t, r.TaskID, reportprotocol.Clarify, reportprotocol.Payload{Questions: []string{"Which scope?"}})
+	if ack, err := w.acceptReport(t.Context(), first); err != nil || !ack.Accepted {
+		t.Fatal(ack, err)
+	}
+	old := client.Outcome{Version: 1, TaskID: r.TaskID, AgentID: first.AgentID, RunID: first.RunID, AttemptID: first.AttemptID, State: runtime.RunCompleted, Response: "Stopped"}
+	if err := w.result(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
+	message, err := w.QueueRunChat(t.Context(), "Planning", r.ID, uuid.NewString(), "Please propose", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := reportprotocol.Chat{Version: 1, ID: message.ID, Target: client.Target{TaskID: r.TaskID, AgentID: first.AgentID, RunID: first.RunID, AttemptID: first.AttemptID}, Text: message.Text}
+	raw, _ := json.Marshal(cmd)
+	if _, err = a.s.db.Exec(`UPDATE run_chat SET status='dispatched',request_json=? WHERE id=?`, string(raw), message.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.applyChatReceipt(t.Context(), message, cmd, reportprotocol.ChatReceipt{Status: "active"})
+	d := planningDetails(t, w, r.CardID)
+	if d.Session.State != "running" || d.Session.Error != "" {
+		t.Fatalf("not investigating: %+v", d.Session)
+	}
+	proposal := reportRequest(t, r.TaskID, reportprotocol.ProposeSpec, reportprotocol.Payload{Spec: "Actual proposal", RepoCommit: strings.Repeat("a", 40)})
+	proposal, err = reportprotocol.NewRequest(reportprotocol.Identity{TaskID: r.TaskID, AgentID: first.AgentID, RunID: first.RunID, AttemptID: first.AttemptID, TurnID: first.TurnID, ToolCallID: "proposal-call"}, reportprotocol.ProposeSpec, proposal.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack, err := w.acceptReport(t.Context(), proposal); err != nil || !ack.Accepted {
+		t.Fatal(ack, err)
+	}
+	// Even a late natural completion cannot overwrite a committed proposal.
+	w.applyChatReceipt(t.Context(), message, cmd, reportprotocol.ChatReceipt{Status: "completed", Outcome: &old})
+	waiting := client.Outcome{Version: 1, TaskID: r.TaskID, AgentID: proposal.AgentID, RunID: proposal.RunID, AttemptID: proposal.AttemptID, State: runtime.RunWaiting, AnswerSubject: "bonnie.answers." + proposal.AgentID, Suspend: &runtime.SuspendRequest{TurnID: proposal.TurnID, ToolCallID: proposal.ToolCallID, Kind: "question"}}
+	w.applyChatReceipt(t.Context(), message, cmd, reportprotocol.ChatReceipt{Status: "completed", Outcome: &waiting})
+	// Redelivery from the original task must not erase the resumed suspension.
+	if err = w.result(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
+	d = planningDetails(t, w, r.CardID)
+	if d.Session.State != "ready" || !d.CanApprove || d.Session.Error != "" || d.InteractionToken != proposal.ReportID {
+		t.Fatalf("proposal lost: %+v", d)
+	}
+	var saved string
+	if err = a.s.db.QueryRow(`SELECT waiting_json FROM planning_interactions WHERE report_id=?`, proposal.ReportID).Scan(&saved); err != nil || saved == "" {
+		t.Fatal("suspension missing", err)
+	}
+	if err = w.ReplyPlanning(r.CardID, "Refine it", proposal.ReportID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRunChatExactInteractionOutboxes(t *testing.T) {
 	for _, mode := range []string{"Build", "Planning"} {
 		t.Run(mode, func(t *testing.T) {

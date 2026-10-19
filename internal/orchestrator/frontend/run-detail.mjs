@@ -71,7 +71,10 @@ try {
           assert.ok(box.height >= 44 && box.width >= 44, `Target too small: ${box.width}x${box.height}`);
         }
         if (tab === 'chat') {
-          await expect(page.locator('.run-role-user')).toContainText('Implement a readable');
+          await expect(page.locator('.run-role-user').first()).toContainText('Implement a readable');
+          await expect(page.locator('#chat-delivery-pending-message')).toContainText('Queued offline message');
+          await expect(page.locator('#chat-delivery-pending-message .cn-badge')).toHaveCount(0);
+          await expect(page.locator('#chat-delivery-pending-message')).not.toContainText('followup');
           await expect(page.locator('.run-role-assistant').first()).toContainText('Investigation');
           assert.ok(await page.getByText('Message content',{exact:true}).count() > 0);
         } else {
