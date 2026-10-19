@@ -106,7 +106,17 @@ export async function runScenario(scenario) {
     }
     if (['issues', 'recovery'].includes(scenario)) {
       await open('card'); await expect(page.locator('#card-issue-status')).toHaveText('Choose an issue, or leave No linked issue selected.');
-      await page.locator('#card-issue').click(); await shot('card-dialog-issues-1440'); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toBeVisible();
+      const issueSelect = page.locator('#card-issue');
+      await issueSelect.click();
+      await expect(page.getByRole('listbox')).toBeVisible();
+      await shot('card-dialog-issues-1440');
+      await page.keyboard.press('Escape');
+      await expect(issueSelect).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByRole('listbox')).toBeHidden();
+      // Closing restores trigger focus asynchronously. Reopening before that
+      // restoration can send ArrowDown to the closing popup instead.
+      await expect(issueSelect).toBeFocused();
+      await expect(page.getByRole('dialog')).toBeVisible();
       await chooseSelect(page, '#card-issue', 'https://github.com/example/fixture/issues/1');
       await expect(page.getByRole('checkbox', {name: 'Create issue', exact: true})).toBeHidden(); await page.getByRole('button', {name: 'Autofill', exact: true}).click();
       await expect(page.locator('#card-title')).toHaveValue('Issue title'); await expect(page.locator('#card-description')).toHaveValue('Issue body'); await shot('card-dialog-linked-1440');
