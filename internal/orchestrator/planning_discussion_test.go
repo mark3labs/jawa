@@ -17,6 +17,16 @@ func TestPlanningDiscussionFallbackRunChat(t *testing.T) {
 	if _, err := a.s.db.Exec(`UPDATE planning_turns SET agent_id='planner',run_id='planner-run',remote_attempt_id='remote' WHERE id=?`, r.ID); err != nil {
 		t.Fatal(err)
 	}
+	loaded, err := loadPageData(t.Context(), a.s, a.workflow, csrf.Value, viewParams{View: viewPlanning, Card: r.CardID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.planningChat == nil || !validAttemptID(loaded.planningChat.MessageID) {
+		t.Fatalf("planning composer must generate an admissible UUID: %+v", loaded.planningChat)
+	}
+	if _, err := a.workflow.QueueRunChat(t.Context(), "Planning", r.ID, loaded.planningChat.MessageID, "Please continue", ""); err != nil {
+		t.Fatalf("generated message identity rejected: %v", err)
+	}
 	c := Card{ID: r.CardID, Status: "Planning", Title: "Discuss without typed reply"}
 	detail := PlanningDetail{Session: PlanningSession{State: "running"}, Discussion: []PlanningMessage{{Role: "assistant", Content: "Current discussion"}}}
 	data := pageData{csrf: csrf.Value, v: viewParams{View: viewPlanning, Card: c.ID}, cards: []Card{c}, planning: map[string]PlanningDetail{c.ID: detail}, planningChat: &planningChatDetail{Record: r, MessageID: "message-id", Messages: []RunChatMessage{{ID: "queued-id", Text: "Waiting to deliver", Status: "queued", Classification: "continuation"}}}}

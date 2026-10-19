@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mark3labs/bonnie/presence"
 )
 
@@ -161,7 +162,7 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 			if wf != nil {
 				if detail, ok := d.planning[v.Card]; ok && !planningCanReply(detail) {
 					if record, found := latestPinnedPlanningRun(d.runs, v.Card); found {
-						chat := planningChatDetail{Record: record, MessageID: newID()}
+						chat := planningChatDetail{Record: record, MessageID: uuid.NewString()}
 						chat.Messages = wf.chatMessages(record)
 						d.planningChat = &chat
 					}
