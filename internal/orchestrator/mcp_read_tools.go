@@ -33,7 +33,7 @@ func (m *mcpService) toolError(tool string, err error) (*mcp.CallToolResult, err
 	return mcp.NewToolResultError("Jawa is temporarily unavailable; try again."), nil
 }
 func addMCPReadTool[T any](srv *server.MCPServer, name, description string, timeout time.Duration, handler mcp.TypedToolHandlerFunc[T]) {
-	srv.AddTool(mcp.NewTool(name, mcp.WithDescription(description), mcp.WithInputSchema[T](), mcp.WithReadOnlyHintAnnotation(true)), mcp.NewTypedToolHandler(func(ctx context.Context, r mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
+	srv.AddTool(mcp.NewTool(name, mcp.WithDescription("JAWA orchestrator: " + description), mcp.WithInputSchema[T](), mcp.WithReadOnlyHintAnnotation(true)), mcp.NewTypedToolHandler(func(ctx context.Context, r mcp.CallToolRequest, args T) (*mcp.CallToolResult, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		return handler(ctx, r, args)

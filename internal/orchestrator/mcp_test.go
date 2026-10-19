@@ -122,6 +122,9 @@ func TestMCPListsReadTools(t *testing.T) {
 		t.Fatal(tools.Tools)
 	}
 	for _, tool := range tools.Tools {
+		if !strings.HasPrefix(tool.Description, "JAWA orchestrator: ") {
+			t.Errorf("tool %s description does not identify JAWA: %q", tool.Name, tool.Description)
+		}
 		if !want[tool.Name] {
 			continue
 		}

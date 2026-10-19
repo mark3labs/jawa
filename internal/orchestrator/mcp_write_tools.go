@@ -90,7 +90,7 @@ const mcpNATSGate = "NATS authentication setup is required. Finish Settings in t
 
 func addMCPLifecycleTool[T any](m *mcpService, srv *server.MCPServer, name, description string, handler mcp.TypedToolHandlerFunc[T]) {
 	destructive := name == "cancel_run" || name == "cancel_planning" || name == "reset_card" || name == "merge_pr" || name == "force_ready" || name == "force_stop" || name == "delete_card"
-	opts := []mcp.ToolOption{mcp.WithDescription(description), mcp.WithInputSchema[T](), mcp.WithDestructiveHintAnnotation(destructive)}
+	opts := []mcp.ToolOption{mcp.WithDescription("JAWA orchestrator: " + description), mcp.WithInputSchema[T](), mcp.WithDestructiveHintAnnotation(destructive)}
 	if name == "create_project" || name == "create_card" || name == "merge_pr" || name == "archive_card" || name == "restore_card" || name == "mark_pr_merged" {
 		opts = append(opts, mcp.WithIdempotentHintAnnotation(true))
 	}

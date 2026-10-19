@@ -60,7 +60,8 @@ also invalidate summary versions. It is a change token, not an authorization tok
 
 ## Tools and polling
 
-Read tools have the read-only annotation. Results include structured content and
+All tool descriptions begin with `JAWA orchestrator:` to identify the system they
+operate on. Read tools have the read-only annotation. Results include structured content and
 a JSON text block for older clients. Domain failures use `isError: true`, not
 JSON-RPC protocol errors. Unexpected storage errors are sanitized to
 “Jawa is temporarily unavailable; try again.”
