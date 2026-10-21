@@ -118,7 +118,7 @@ func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Ide
 	}
 	var id reportprotocol.Identity
 	for _, rec := range records {
-		if rec.Kind != runtime.RecordExtensionData || rec.ExtType != "nats_task_admitted" {
+		if rec.Kind != runtime.RecordExtensionData || rec.ExtType != admittedType {
 			continue
 		}
 		var candidate reportprotocol.Identity
@@ -369,7 +369,7 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 	if err != nil {
 		return reportprotocol.Ack{}, err
 	}
-	if _, err = r.Journal().Append(ctx, runtime.Record{RunID: request.RunID, Kind: runtime.RecordExtensionData, ExtType: intentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+	if err = appendExt(ctx, r.Journal(), request.RunID, intentType, data); err != nil {
 		return reportprotocol.Ack{}, err
 	}
 	ack, err := (reportprotocol.Client{Conn: conn, Root: root}).Submit(ctx, request)
@@ -377,7 +377,7 @@ func (b *Bridge) submit(ctx context.Context, request reportprotocol.Request) (re
 	// not. A corrected report is allowed only after a definite rejection.
 	if ack.ReportID == request.ReportID && ack.Version == reportprotocol.Version {
 		receipt, _ := json.Marshal(ack)
-		_, saveErr := r.Journal().Append(context.WithoutCancel(ctx), runtime.Record{RunID: request.RunID, Kind: runtime.RecordExtensionData, ExtType: receiptType, Payload: receipt, Timestamp: time.Now().UTC()})
+		saveErr := appendExt(context.WithoutCancel(ctx), r.Journal(), request.RunID, receiptType, receipt)
 		if saveErr != nil {
 			return reportprotocol.Ack{}, saveErr
 		}
@@ -424,7 +424,7 @@ func (b *Bridge) recoverIntent(ctx context.Context, runID string) error {
 		ack, err := (reportprotocol.Client{Conn: conn, Root: root}).Submit(ctx, request)
 		if ack.ReportID == request.ReportID && ack.Version == reportprotocol.Version {
 			data, _ := json.Marshal(ack)
-			if _, saveErr := r.Journal().Append(context.WithoutCancel(ctx), runtime.Record{RunID: runID, Kind: runtime.RecordExtensionData, ExtType: receiptType, Payload: data, Timestamp: time.Now().UTC()}); saveErr != nil {
+			if saveErr := appendExt(context.WithoutCancel(ctx), r.Journal(), runID, receiptType, data); saveErr != nil {
 				return saveErr
 			}
 		}

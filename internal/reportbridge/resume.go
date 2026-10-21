@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
-	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/runtime"
 	"github.com/nats-io/nats.go"
 	"jawa/internal/reportprotocol"
@@ -34,29 +32,20 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 	b.mu.RLock()
 	r, c := b.runner, b.cfg
 	b.mu.RUnlock()
-	if req.Version != 1 || req.ID == "" || len(req.ID) > 128 || req.Target.AgentID != c.AgentID || req.Target.TaskID == "" || req.Target.RunID == "" || req.Target.AttemptID == "" || req.TurnID == "" {
+	if !validTarget(req.Version, req.ID, req.Target, c.AgentID) || req.TurnID == "" {
 		reply.Error = "invalid resume target"
 		return reply
 	}
-	records, err := r.Journal().Replay(ctx, admissionKey(c))
+	found, err := b.ownsTarget(ctx, r, c, req.Target)
 	if err != nil {
 		reply.Error = "admission unavailable"
 		return reply
-	}
-	found := false
-	for _, rec := range records {
-		if rec.ExtType == "nats_task_admitted" {
-			var t client.Target
-			if json.Unmarshal(rec.Payload, &t) == nil && t == req.Target {
-				found = true
-			}
-		}
 	}
 	if !found {
 		reply.Error = "unknown task ownership"
 		return reply
 	}
-	records, err = r.Journal().Replay(ctx, req.Target.RunID)
+	records, err := r.Journal().Replay(ctx, req.Target.RunID)
 	if err != nil {
 		reply.Error = "journal unavailable"
 		return reply
@@ -65,74 +54,14 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		reply.Error = "follow-up has no workflow authority"
 		return reply
 	}
-	for _, rec := range records {
-		if rec.ExtType == chatIntentType {
-			var chat reportprotocol.Chat
-			if json.Unmarshal(rec.Payload, &chat) == nil && b.chatInFlight[chat.ID] {
-				reply.Error = "chat execution active"
-				return reply
-			}
-		}
+	if b.hasActiveChat(records) {
+		reply.Error = "chat execution active"
+		return reply
 	}
-	var old *reportprotocol.FailedResume
-	var receipt *reportprotocol.FailedResumeReply
-	// Completion and legacy terminal blockers end the task. A blocker committed
-	// as awaiting guidance only parks the run, so a later failure stays resumable.
-	reportIntents := map[string]reportprotocol.Request{}
-	reportAcks := map[string]reportprotocol.Ack{}
-	intents := map[string]reportprotocol.FailedResume{}
-	for _, rec := range records {
-		if rec.ExtType == resumeIntentType {
-			var v reportprotocol.FailedResume
-			if json.Unmarshal(rec.Payload, &v) == nil {
-				v.Reconcile = false
-				intents[v.ID] = v
-				if v.ID == req.ID {
-					old = &v
-				}
-			}
-		}
-		if rec.ExtType == resumeReceiptType {
-			var v reportprotocol.FailedResumeReply
-			if json.Unmarshal(rec.Payload, &v) == nil {
-				// A receipt only resolves the intent whose pinned identity it
-				// validates, including when handling a different command ID.
-				intent, exists := intents[v.ID]
-				if exists && v.Version == 1 && v.Target == intent.Target &&
-					(v.Status == "ambiguous" || v.Status == "rejected" ||
-						(v.Status == "completed" && validCompletedResumeReceipt(intent, v))) {
-					delete(intents, v.ID)
-				}
-				if v.ID == req.ID {
-					if old == nil || *old != req || v.Version != 1 || v.Target != req.Target {
-						reply.Error = "resume identity conflict"
-						return reply
-					}
-					// Recovery can supersede a legacy receipt. Do not let the
-					// first receipt hide a later durable resolution.
-					receipt = &v
-				}
-			}
-		}
-		if rec.ExtType == intentType {
-			var v reportprotocol.Request
-			if json.Unmarshal(rec.Payload, &v) == nil {
-				reportIntents[v.ReportID] = v
-			}
-		}
-		if rec.ExtType == receiptType {
-			var v reportprotocol.Ack
-			if json.Unmarshal(rec.Payload, &v) == nil {
-				reportAcks[v.ReportID] = v
-			}
-		}
-	}
-	terminalIntent := false
-	for id, v := range reportIntents {
-		ack, resolved := reportAcks[id]
-		if v.Kind == reportprotocol.CompleteTask || (v.Kind == reportprotocol.ReportBlocker && (!resolved || ack.Terminal(v.Kind))) {
-			terminalIntent = true
-		}
+	old, receipt, intents, terminalIntent, err := resumeHistory(records, req)
+	if err != nil {
+		reply.Error = err.Error()
+		return reply
 	}
 	if receipt != nil {
 		if reconcile && receipt.Status == "completed" && !validCompletedResumeReceipt(req, *receipt) {
@@ -169,7 +98,7 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		// The intent must precede its receipt so a failed receipt append cannot
 		// allow a delayed original to start the run.
 		data, _ := json.Marshal(req)
-		if _, err := r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: resumeIntentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+		if err := appendExt(ctx, r.Journal(), req.Target.RunID, resumeIntentType, data); err != nil {
 			log.Error("Failed to persist reconciliation intent", "run_id", req.Target.RunID, "resume_id", req.ID)
 			reply.Error = "resume intent unavailable"
 			return reply
@@ -199,27 +128,19 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 		return reply
 	}
 	run, err := r.Snapshot(ctx, req.Target.RunID)
-	if err != nil || run.State != runtime.RunFailed || r.IsActive(req.Target.RunID) || run.TurnID != req.TurnID || len(records) == 0 || records[len(records)-1].Seq != req.Seq {
+	if err != nil || !matchesResumeObservation(r, req, run, records) {
 		reply.Error = "run changed or is not an idle execution failure"
 		return reply
 	}
 	// Preserve the last journalled context; empty input continues the saved
 	// conversation without duplicating the original task prompt.
-	var lines []string
-	for _, rec := range records {
-		if rec.Kind == runtime.RecordContext {
-			var saved struct {
-				Context []string `json:"context"`
-			}
-			if json.Unmarshal(rec.Payload, &saved) != nil {
-				reply.Error = "invalid saved context"
-				return reply
-			}
-			lines = saved.Context
-		}
+	lines, err := savedContext(records, true)
+	if err != nil {
+		reply.Error = "invalid saved context"
+		return reply
 	}
 	data, _ := json.Marshal(req)
-	if _, err = r.Journal().Append(ctx, runtime.Record{RunID: req.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: resumeIntentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+	if err = appendExt(ctx, r.Journal(), req.Target.RunID, resumeIntentType, data); err != nil {
 		reply.Error = "resume intent unavailable"
 		return reply
 	}
@@ -241,12 +162,9 @@ func (b *Bridge) admitResume(ctx context.Context, req reportprotocol.FailedResum
 			done.Status = "ambiguous"
 			done.Error = "resume execution could not be confirmed"
 		} else {
-			done.Outcome = &client.Outcome{Version: 1, TaskID: req.Target.TaskID, AgentID: req.Target.AgentID, RunID: req.Target.RunID, AttemptID: req.Target.AttemptID, State: result.State, Response: result.Response, Suspend: result.Suspend}
+			done.Outcome = runOutcome(req.Target, c, result.State, result.Response, result.Suspend)
 			if result.Err != nil {
 				done.Outcome.Error = result.Err.Error()
-			}
-			if result.Suspend != nil {
-				done.Outcome.AnswerSubject = c.RootSubject + ".answers." + c.AgentID
 			}
 		}
 		// Do not publish completed unless replay supplies a valid outcome cursor.
@@ -351,10 +269,8 @@ func saveResumeReceipt(ctx context.Context, r *runtime.Runner, done *reportproto
 	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	record := runtime.Record{RunID: done.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: resumeReceiptType, Payload: data, Timestamp: time.Now().UTC()}
 	return retryResumeJournal(saveCtx, "append", done, func() error {
-		_, err := r.Journal().Append(saveCtx, record)
-		return err
+		return appendExt(saveCtx, r.Journal(), done.Target.RunID, resumeReceiptType, data)
 	})
 }
 
@@ -384,29 +300,77 @@ func retryResumeJournal(ctx context.Context, operation string, done *reportproto
 }
 
 func (c *reportChannel) startResume(ctx context.Context, nc *nats.Conn) error {
-	sub, err := nc.Subscribe(reportprotocol.ResumeSubject(c.cfg.RootSubject, c.cfg.AgentID), func(m *nats.Msg) {
-		if !strings.HasPrefix(m.Reply, "_INBOX.") || len(m.Data) > 4096 {
-			return
-		}
-		var req reportprotocol.FailedResume
-		if json.Unmarshal(m.Data, &req) != nil {
-			return
-		}
-		reply := c.bridge.admitResume(ctx, req)
-		data, e := json.Marshal(reply)
-		if e == nil {
-			_ = m.Respond(data)
-		}
+	sub, err := subscribeControl(ctx, nc, reportprotocol.ResumeSubject(c.cfg.RootSubject, c.cfg.AgentID), 4096, func(ctx context.Context, req reportprotocol.FailedResume) any {
+		return c.bridge.admitResume(ctx, req)
 	})
-	if err != nil {
-		return err
-	}
 	c.resumeSub = sub
-	flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err = nc.FlushWithContext(flushCtx); err != nil {
-		_ = sub.Unsubscribe()
+	if err != nil && sub != nil {
 		return errors.New("resume control unavailable")
 	}
-	return nil
+	return err
+}
+
+// resumeHistory replays intent/receipt order without resolving an unconfirmed
+// command against a receipt with a different pinned identity.
+func resumeHistory(records []runtime.Record, req reportprotocol.FailedResume) (*reportprotocol.FailedResume, *reportprotocol.FailedResumeReply, map[string]reportprotocol.FailedResume, bool, error) {
+	var old *reportprotocol.FailedResume
+	var receipt *reportprotocol.FailedResumeReply
+	// Completion and legacy terminal blockers end the task. A blocker committed
+	// as awaiting guidance only parks the run, so a later failure stays resumable.
+	reportIntents := map[string]reportprotocol.Request{}
+	reportAcks := map[string]reportprotocol.Ack{}
+	intents := map[string]reportprotocol.FailedResume{}
+	for _, rec := range records {
+		if rec.ExtType == resumeIntentType {
+			var v reportprotocol.FailedResume
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				v.Reconcile = false
+				intents[v.ID] = v
+				if v.ID == req.ID {
+					old = &v
+				}
+			}
+		}
+		if rec.ExtType == resumeReceiptType {
+			var v reportprotocol.FailedResumeReply
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				// A receipt only resolves the intent whose pinned identity it
+				// validates, including when handling a different command ID.
+				intent, exists := intents[v.ID]
+				if exists && v.Version == 1 && v.Target == intent.Target &&
+					(v.Status == "ambiguous" || v.Status == "rejected" ||
+						(v.Status == "completed" && validCompletedResumeReceipt(intent, v))) {
+					delete(intents, v.ID)
+				}
+				if v.ID == req.ID {
+					if old == nil || *old != req || v.Version != 1 || v.Target != req.Target {
+						return nil, nil, nil, false, errors.New("resume identity conflict")
+					}
+					// Recovery can supersede a legacy receipt. Do not let the
+					// first receipt hide a later durable resolution.
+					receipt = &v
+				}
+			}
+		}
+		if rec.ExtType == intentType {
+			var v reportprotocol.Request
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				reportIntents[v.ReportID] = v
+			}
+		}
+		if rec.ExtType == receiptType {
+			var v reportprotocol.Ack
+			if json.Unmarshal(rec.Payload, &v) == nil {
+				reportAcks[v.ReportID] = v
+			}
+		}
+	}
+	terminalIntent := false
+	for id, v := range reportIntents {
+		ack, resolved := reportAcks[id]
+		if v.Kind == reportprotocol.CompleteTask || (v.Kind == reportprotocol.ReportBlocker && (!resolved || ack.Terminal(v.Kind))) {
+			terminalIntent = true
+		}
+	}
+	return old, receipt, intents, terminalIntent, nil
 }
