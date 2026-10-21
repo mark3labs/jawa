@@ -757,13 +757,23 @@ details pre { margin-top: 10px; }
 .run-detail-view .planning-markdown pre, .run-detail-view pre.result { max-width: 100%; min-width: 0; overflow-x: auto; white-space: pre; padding: .75rem; font-size: .8rem; background: var(--bg); border-radius: .375rem; }
 .run-detail-view .planning-markdown table { display: block; max-width: 100%; overflow-x: auto; }
 .run-detail-view .planning-markdown code:not(pre code) { overflow-wrap: anywhere; white-space: pre-wrap; }
-.run-tool { border-left: 2px solid var(--line-strong); padding-left: .75rem; min-width: 0; }
-.run-tool > summary { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
-.run-tool > summary strong { color: var(--text-2); }
-.run-tool-summary { font-family: var(--mono); color: var(--text-2); overflow-wrap: anywhere; min-width: 0; }
-.run-tool-error { border-left-color: var(--red); }
-.run-tool-warning { border-left-color: var(--rust); }
-.run-tool-section { margin-left: .5rem; }
+/* Trace rows (trace.templ): native summaries keep the 44px touch target, so
+   rows stack without the registry's gap. */
+.run-detail-view [data-slot=trace-collapsible-trigger] { list-style: none; padding-block: 0; font-size: inherit; color: var(--color-muted-foreground); }
+.run-detail-view [data-slot=trace-collapsible-trigger]::-webkit-details-marker { display: none; }
+/* The Trace chevron replaces the app's global summary marker. */
+.run-detail-view details > [data-slot=trace-collapsible-trigger]::before { content: none; }
+.run-detail-view [data-slot=trace-collapsible-trigger]:hover, .run-detail-view details[open] > [data-slot=trace-collapsible-trigger] { color: var(--text); }
+.run-detail-view [data-slot=trace-collapsible-trigger]:has([data-status=error]) { color: var(--color-destructive); }
+.run-step { min-height: 2rem; align-items: center; }
+.run-step-object { font-family: var(--mono); font-size: .9em; }
+.run-chat-message.run-continued { margin-top: -1rem; }
+.run-reasoning-text { font-size: .875rem; color: var(--text-3); }
+.run-tool-section { margin-top: .25rem; min-width: 0; }
+.run-section-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .75rem; color: var(--text-3); }
+.run-scroll { min-width: 0; border-radius: .375rem; }
+.run-scroll [data-slot=scroll-area-viewport] { max-height: 24rem; }
+.run-detail-view .run-scroll pre.result { margin: 0; }
 .run-code { position: relative; min-width: 0; }
 .run-code > [data-templ-copy-button] { position: absolute; top: .25rem; right: .25rem; z-index: 1; }
 .run-detail-view .run-code > pre { padding-right: 3.25rem; }
@@ -773,9 +783,6 @@ details pre { margin-top: 10px; }
 .run-diff .diff-hunk { color: var(--amber); }
 .run-diff .diff-file { color: var(--text-3); }
 .run-live-message { border-left: 2px dashed var(--line-strong); padding-left: .75rem; }
-.run-live-tool { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; font-size: .8rem; min-height: 2rem; }
-.run-live-tool .meta { font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; }
-.run-live-error { color: var(--red); }
 .run-working { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; font-size: .8rem; }
 .run-delivery-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
 .run-delivery-header .run-message-role { margin-bottom: 0; }

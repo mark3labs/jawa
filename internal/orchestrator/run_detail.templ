@@ -7,7 +7,6 @@ import (
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
 	"github.com/axadrn/shadcn-templ/v2/components/copybutton"
-	lucide "github.com/axadrn/shadcn-templ/v2/components/icon"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
 	"github.com/axadrn/shadcn-templ/v2/components/marker"
@@ -26,12 +25,6 @@ func detailVariant(active bool) button.Variant {
 		return button.VariantDefault
 	}
 	return button.VariantOutline
-}
-func resultVariant(t *runTool) badge.Variant {
-	if t.Error {
-		return badge.VariantDestructive
-	}
-	return badge.VariantOutline
 }
 func toolClass(t *runTool) string {
 	if r := t.result(); r != nil && r.Error {
@@ -208,48 +201,24 @@ templ runPayload(text string) {
 	<pre class="result"><code>@templ.Raw(newRunSection("", text).HTML)</code></pre>
 }
 
-// Sections copy from their code element, so no payload is duplicated.
+// Sections copy from their code element, so no payload is duplicated. Long
+// output scrolls inside a shadcn ScrollArea instead of the transcript.
 templ runSectionView(id string, section runSection) {
-	<details id={ id } data-preserve-attr="open" open class="run-tool-section">
-		<summary>
-			{ section.Label }
-		</summary>
-		<div class="run-code">
+	<div id={ id } class="run-tool-section">
+		<div class="run-section-head">
+			<span>{ section.Label }</span>
 			@copybutton.CopyButton(copybutton.Props{ID: id + "-copy", TargetID: id + "-code", Class: "run-copy", Attrs: templ.Attributes{"aria-label": "Copy " + section.Label}})
-			<pre class={ "result", templ.KV("run-diff", section.Diff) }><code id={ id + "-code" }>@templ.Raw(section.HTML)</code></pre>
 		</div>
-	</details>
+		@runScrollArea(id, "run-scroll") {
+			<pre class={ "result", templ.KV("run-diff", section.Diff) }><code id={ id + "-code" }>@templ.Raw(section.HTML)</code></pre>
+		}
+	</div>
 }
 
-// A call and its paired result share one disclosure.
-templ runToolView(key string, t *runTool) {
+// A call and its paired result share one Trace row.
+templ runToolView(key string, t *runTool, working bool) {
 	{{ result := t.result() }}
-	<details id={ key } data-preserve-attr="open" class={ toolClass(t) }>
-		<summary>
-			<strong>
-				{ t.Name }
-			</strong>
-			if t.Kind == "call" {
-				<span class="run-tool-summary">{ t.Summary }</span>
-			}
-			if result != nil {
-				if result.Status != "" {
-					@badge.Badge(badge.Props{Variant: resultVariant(result)}) {
-						{ result.Status }
-					}
-				}
-				if result.Summary != "" {
-					<span class="meta">
-						if t.Kind == "call" {
-							→
-						}
-						{ result.Summary }
-					</span>
-				}
-			} else {
-				<span class="meta">Awaiting result</span>
-			}
-		</summary>
+	@traceCollapsible(key, toolClass(t), toolStep(t, working), false) {
 		if t.Kind == "call" {
 			for i, section := range t.Sections {
 				@runSectionView(key+"-section-"+strconv.Itoa(i), section)
@@ -260,63 +229,77 @@ templ runToolView(key string, t *runTool) {
 				@runSectionView(key+"-result-"+strconv.Itoa(i), section)
 			}
 		}
-	</details>
+	}
 }
 
-templ runParts(m runMessage) {
-	for _, part := range m.Parts {
-		if part.Paired {
-			{{ continue }}
+templ runStepPart(part runPart, working bool) {
+	if part.Tool != nil {
+		@runToolView(part.Key, part.Tool, working)
+	} else if part.Reasoning {
+		@traceCollapsible(part.Key, "run-reasoning", reasoningStep, false) {
+			<div class="planning-markdown run-reasoning-text">
+				@templ.Raw(part.HTML)
+			</div>
 		}
-		if part.Tool != nil {
-			@runToolView(part.Key, part.Tool)
-		} else if part.Unsupported {
+	} else {
+		@traceStatic(part.Key, attachmentStep(part.Attachment))
+	}
+}
+
+// Steps (tools, thinking, attachments) render as Trace rows; the reply as prose.
+templ runParts(m runMessage, working bool) {
+	for _, block := range m.blocks() {
+		if block[0].step() {
+			@traceGroup() {
+				for _, part := range block {
+					@runStepPart(part, working)
+				}
+			}
+		} else if block[0].Unsupported {
 			<p class="meta">Unsupported content · see Trace</p>
-		} else if part.Text != "" {
+		} else if block[0].Text != "" {
 			if m.Role == "assistant" {
 				<div class="planning-markdown">
-					@templ.Raw(part.HTML)
+					@templ.Raw(block[0].HTML)
 				</div>
 			} else {
 				<div class="run-prose">
-					{ part.Text }
+					{ block[0].Text }
 				</div>
 			}
 		}
 	}
 }
 
-// Each entry is its own patch unit; user messages after the first start a
+// Each entry is its own patch unit. User messages after the first start a
 // new exchange, labelled with the accepted time when a receipt places it.
-templ runChatEntry(d runDetail, i int, m runMessage, boundary bool) {
-	<div id={ m.Key } class="run-chat-entry">
-		if boundary && m.Role == "user" {
+// Consecutive assistant and tool messages read as one reply under one label.
+templ runChatEntry(d runDetail, e runChatEntryView) {
+	<div id={ e.Message.Key } class="run-chat-entry">
+		if e.Boundary {
 			@marker.Marker(marker.Props{Variant: marker.VariantSeparator, Class: "run-exchange"}) {
-				if sent := d.sentLabel(i); sent != "" {
+				if sent := d.sentLabel(e.Index); sent != "" {
 					@marker.Content() {
 						{ sent }
 					}
 				}
 			}
 		}
-		<article class={ "run-chat-message run-role-" + m.Role }>
-			if m.Role != "tool" && m.Role != "" {
+		<article class={ "run-chat-message run-role-" + e.Message.Role, templ.KV("run-continued", !e.ShowRole) }>
+			if e.ShowRole {
 				<strong class="run-message-role">
-					{ runRole(m.Role) }
+					{ runRole(e.Role) }
 				</strong>
 			}
-			@runParts(m)
+			@runParts(e.Message, d.Observation.working())
 		</article>
 	</div>
 }
 
 templ runMessages(d runDetail) {
 	<div id="run-messages" class="run-messages">
-		{{ first := d.firstChatIndex() }}
-		for i, m := range d.Messages {
-			if m.chatVisible() {
-				@runChatEntry(d, i, m, i > first)
-			}
+		for _, e := range d.chatEntries() {
+			@runChatEntry(d, e)
 		}
 	</div>
 }
@@ -343,26 +326,32 @@ templ runLive(d runDetail) {
 		if !v.empty() {
 			<article class="run-chat-message run-role-assistant run-live-message">
 				<strong class="run-message-role">Assistant</strong>
-				if v.Text != "" {
-					<div class="run-prose">
-						if v.Truncated {
-							…
+				for i, block := range v.blocks() {
+					if block[0].Kind == "text" {
+						<div class="run-prose">
+							if i == 0 && v.Truncated {
+								…
+							}
+							{ block[0].Text }
+						</div>
+					} else {
+						@traceGroup() {
+							for _, item := range block {
+								if item.Kind == "reasoning" {
+									@traceCollapsible(item.Key, "run-reasoning", runStep{Icon: reasoningStep.Icon, Verb: "Thinking", Status: "running"}, true) {
+										<div class="run-prose run-reasoning-text">
+											if i == 0 && v.Truncated {
+												…
+											}
+											{ item.Text }
+										</div>
+									}
+								} else {
+									@traceStatic(item.Key, liveStep(item))
+								}
+							}
 						}
-						{ v.Text }
-					</div>
-				}
-				for _, t := range v.Tools {
-					<div id={ t.Key } class="run-live-tool">
-						if !t.Done {
-							@spinner.Spinner()
-						} else if t.Error {
-							@lucide.CircleX(lucide.Props{Class: "size-4 run-live-error"})
-						} else {
-							@lucide.CircleCheck(lucide.Props{Class: "size-4"})
-						}
-						<strong>{ t.Name }</strong>
-						<span class="meta">{ t.Summary }</span>
-					</div>
+					}
 				}
 				if v.Working {
 					<div class="run-working meta">

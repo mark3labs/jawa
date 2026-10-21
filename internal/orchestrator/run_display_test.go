@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a-h/templ"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
@@ -17,8 +18,11 @@ func TestRunSectionsAndSummaries(t *testing.T) {
 	for _, c := range [][3]string{
 		{"custom", `{"action":"inspect"}`, "inspect"},
 		{"custom", `{"other":"huge"}`, "other: huge"},
-		{"custom", `{}`, "No arguments"},
-		{"custom", "invalid", "Arguments"},
+		{"custom", `{}`, ""},
+		{"custom", "invalid", ""},
+		{"shell_wait", `{"job_id":"ed68178e24ea9d5a"}`, "ed68178e"},
+		{"read_file", `{"path":"go.mod"}`, "go.mod"},
+		{"list_files", `{}`, "."},
 		{"shell", `{"command":"go test ./..."}`, "go test ./..."},
 		{"read", `{"path":"a.go","offset":10,"limit":5}`, "a.go · lines 10–14"},
 		{"write", `{"path":"b.go","content":"x\ny"}`, "b.go · 2 lines"},
@@ -81,11 +85,11 @@ func TestRunToolResultsPairWithCalls(t *testing.T) {
 		t.Fatal("Trace lost paired result", messages[1].preview())
 	}
 	var out bytes.Buffer
-	if err := runChatEntry(runDetail{}, 0, messages[0], false).Render(t.Context(), &out); err != nil {
+	if err := runChatEntry(runDetail{}, runChatEntryView{Message: messages[0], Role: "assistant", ShowRole: true}).Render(t.Context(), &out); err != nil {
 		t.Fatal(err)
 	}
 	html := out.String()
-	for _, want := range []string{"run-tool-error", "exit 2", "Applied edit to x.go", "Awaiting result", "run-diff", messages[0].Parts[0].Key + "-result-0-code"} {
+	for _, want := range []string{"run-tool-error", `data-status="error"`, "Failed to run", "exit 2", "Edited", "+1 −1", "Applied edit to x.go", `data-status="pending"`, "Reading", "no result", "run-diff", messages[0].Parts[0].Key + "-result-0-code", `data-slot="trace"`, `data-slot="scroll-area"`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("Chat entry missing %q", want)
 		}
@@ -105,6 +109,103 @@ func TestRunToolResultsPairWithCalls(t *testing.T) {
 	resultInfo("read", file)
 	if file.Error || file.Summary != "2 lines" {
 		t.Fatalf("file content parsed as an exit code: %+v", file)
+	}
+}
+
+func TestRunReasoningAndAttachments(t *testing.T) {
+	messages := projectRunMessages([]kit.LLMMessage{{Role: "assistant", Content: []kit.LLMMessagePart{
+		kit.LLMReasoningPart{Text: "Weigh **both** options"},
+		kit.LLMReasoningPart{Text: "  "},
+		kit.LLMToolCallPart{ToolCallID: "a", ToolName: "completeTask", Input: `{"pr_number":239}`},
+		kit.LLMFilePart{Filename: "shot.png", MediaType: "image/png", Data: []byte("x")},
+		kit.LLMTextPart{Text: "Done."},
+	}}})
+	parts := messages[0].Parts
+	if len(parts) != 4 || !parts[0].Reasoning || parts[2].Attachment != "shot.png" || parts[3].Text != "Done." {
+		t.Fatalf("parts: %+v", parts)
+	}
+	for _, p := range parts {
+		if p.Unsupported {
+			t.Fatal("known part rendered as unsupported")
+		}
+	}
+	if blocks := messages[0].blocks(); len(blocks) != 2 || len(blocks[0]) != 3 {
+		t.Fatalf("steps not grouped into one Trace: %d blocks", len(blocks))
+	}
+	if s := toolStep(parts[1].Tool, false); s.Verb != "Reporting completion" || s.Description != "no result" {
+		t.Fatalf("report step: %+v", s)
+	}
+	var out bytes.Buffer
+	if err := runParts(messages[0], false).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	for _, want := range []string{"Thought", "<strong>both</strong>", "Attached", "shot.png", "Done."} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(html, "Unsupported content") || strings.Count(html, `data-slot="trace"`) != 1 {
+		t.Fatal("Trace grouping", html)
+	}
+}
+
+func TestRunToolStepTitles(t *testing.T) {
+	for _, c := range []struct {
+		name, input, status, want string
+	}{
+		{"shell", `{"command":"make"}`, "", "Ran make"},
+		{"shell", `{"command":"make"}`, "running", "Running make"},
+		{"shell", `{"command":"make"}`, "error", "Failed to run make"},
+		{"shell_wait", `{"job_id":"ed68178e24ea"}`, "", "Waited for job ed68178e"},
+		{"edit", `{"path":"x.go"}`, "", "Edited x.go"},
+		{"grep", `{"pattern":"TODO"}`, "", "Searched for TODO"},
+		{"completeTask", `{"pr_number":3}`, "", "Reported completion"},
+		{"custom_tool", `{"query":"q"}`, "", "Called custom_tool q"},
+	} {
+		s := newStep(c.name, c.input, c.status)
+		if got := strings.TrimSpace(s.Verb + " " + s.Object); got != c.want || s.Icon == nil {
+			t.Errorf("%s/%s = %q, want %q", c.name, c.status, got, c.want)
+		}
+	}
+	if s := newStep("clarify", `{"questions":["a","b"]}`, ""); s.Description != "2 questions" {
+		t.Fatal(s)
+	}
+	if s := newStep("completeTask", `{"pr_number":3}`, ""); s.Description != "PR #3" {
+		t.Fatal(s)
+	}
+	job := &runTool{Sections: outputSections(`{"job_id":"j","running":true,"completed":false,"stdout":"building"}`)}
+	resultInfo("shell", job)
+	if job.Error || job.Status != "still running" {
+		t.Fatalf("background job: %+v", job)
+	}
+	compact := &runTool{Sections: []runSection{newRunSection("Output", "{\n  \"a\": 1\n}")}}
+	resultInfo("custom", compact)
+	if compact.Summary != `{"a":1}` {
+		t.Fatalf("JSON summarized by its first line: %q", compact.Summary)
+	}
+}
+
+// ScrollArea renders a random root ID; the wrapper makes it stable without
+// touching child content.
+func TestRunScrollAreaIsDeterministic(t *testing.T) {
+	render := func() string {
+		var out bytes.Buffer
+		children := templ.Raw("<pre>base-ui-id-ABCDEFGHIJKLMNOPQRSTUVWXYZ</pre>")
+		if err := runScrollArea("k", "run-scroll").Render(templ.WithChildren(t.Context(), children), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	first := render()
+	if first != render() || !strings.Contains(first, `data-id="base-ui-k-viewport"`) || !strings.Contains(first, `data-id="base-ui-k-scrollbar"`) {
+		t.Fatal("nondeterministic scroll area", first)
+	}
+	if !strings.Contains(first, "base-ui-id-ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		t.Fatal("child content rewritten")
+	}
+	if !strings.Contains(first, `data-slot="scroll-area-scrollbar" data-preserve-attr="hidden style"`) || !strings.Contains(first, `data-slot="scroll-area-thumb" data-preserve-attr="style"`) {
+		t.Fatal("runtime scrollbar state not preserved across morphs")
 	}
 }
 
@@ -139,11 +240,28 @@ func TestRunLiveActivity(t *testing.T) {
 		{Type: string(kit.EventToolResult), Data: data(kit.ToolResultEvent{ToolCallID: "a", ToolName: "shell", IsError: true})},
 	}
 	v := liveActivity(runObservation{Snapshot: running, Live: live})
-	if v.Text != "Hello <b>world" || !v.Working || v.Truncated || len(v.Tools) != 2 {
+	if !v.Working || v.Truncated || len(v.Items) != 3 {
 		t.Fatalf("%+v", v)
 	}
-	if !v.Tools[0].Done || !v.Tools[0].Error || v.Tools[0].Summary != "make" || v.Tools[1].Done {
-		t.Fatalf("tool lifecycle: %+v", v.Tools)
+	if v.Items[0].Kind != "text" || v.Items[0].Text != "Hello <b>world" {
+		t.Fatalf("streamed text: %+v", v.Items[0])
+	}
+	if shell := v.Items[1]; shell.Kind != "tool" || !shell.Done || !shell.Error || liveStep(shell).Verb != "Failed to run" || liveStep(shell).Object != "make" {
+		t.Fatalf("tool lifecycle: %+v", shell)
+	}
+	if read := liveStep(v.Items[2]); read.Status != "running" || read.Verb != "Reading" {
+		t.Fatalf("running tool: %+v", read)
+	}
+	if got := len(v.blocks()); got != 2 {
+		t.Fatalf("text and steps not grouped: %d blocks", got)
+	}
+	thinking := liveActivity(runObservation{Snapshot: running, Live: []runtime.Event{
+		{Type: string(kit.EventReasoningDelta), Data: data(kit.ReasoningDeltaEvent{Delta: "consider "})},
+		{Type: string(kit.EventReasoningDelta), Data: data(kit.ReasoningDeltaEvent{Delta: "options"})},
+		{Type: string(kit.EventMessageUpdate), Data: data(kit.MessageUpdateEvent{Chunk: "\n"})},
+	}})
+	if len(thinking.Items) != 1 || thinking.Items[0].Kind != "reasoning" || thinking.Items[0].Text != "consider options" {
+		t.Fatalf("live thinking: %+v", thinking.Items)
 	}
 	if liveActivity(runObservation{Snapshot: running, Unreachable: true}).Working {
 		t.Fatal("unreachable run shown as working")
@@ -160,7 +278,7 @@ func TestRunLiveActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := out.String()
-	if !strings.Contains(html, "Hello &lt;b&gt;world") || !strings.Contains(html, "Working…") || strings.Contains(html, "<b>") {
+	if !strings.Contains(html, "Hello &lt;b&gt;world") || !strings.Contains(html, "Working…") || strings.Contains(html, "<b>") || !strings.Contains(html, "shimmer") {
 		t.Fatal("live bubble", html)
 	}
 }

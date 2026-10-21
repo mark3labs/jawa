@@ -219,22 +219,35 @@ See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
 
 Chat adapts Bonnie’s ordered messages and compact role markers within Jawa’s
-theme. A tool call and its result, paired by tool call ID, share one collapsed
-row: the summary names what the call acts on (command, path, pattern) and the
-result's status and short output. Error results and nonzero exit codes mark the
-row and show a destructive badge; stderr marks it as a warning. Unified diffs in
-edit output are colored per line. Nested sections start open within closed rows
-and have copy buttons that copy from their own code element; assistant code
-blocks get the same button. Raw message/result JSON is in Trace only; unsupported
-parts show a pointer to Trace. User messages after the first start an exchange,
-labelled with the acceptance time when a delivery receipt places the message.
-All payloads are escaped (JSON and diff spans use fixed classes), and Markdown keeps
-the stricter no-remote-media sanitizer; copy buttons are added after sanitizing.
+theme; consecutive assistant and tool messages read as one reply under one role
+label. Agent steps render as shadcn Trace rows (`trace.templ`, mirroring the
+registry's base-nova `trace.tsx` classes) using native details/summary, so rows
+work without JavaScript and keep `open` across morphs. A tool call and its
+result, paired by tool call ID, share one row titled for its state, such as
+"Ran go test ./...", "Running make" or "Failed to read go.mod", with an icon per
+tool and a description for exit codes, diff stats (+N −M), line counts, PR
+numbers or question counts. A call without a result is running while the turn
+executes and pending otherwise. Error results and nonzero exit codes set the
+row's error status. Model reasoning renders as a collapsed "Thought" row with
+sanitized Markdown; reasoning with no text (signature-only) is omitted. File
+parts render as an "Attached" line; their data is never rendered. Only part
+types the projection does not know show "Unsupported content · see Trace".
+Expanded rows show argument and output sections, each with a copy button that
+copies from its own code element, inside a shadcn-templ ScrollArea capped at
+24rem. The ScrollArea wrapper replaces the component's random root ID with the
+row key so renders stay deterministic, and preserves the scrollbar state its
+runtime sets. Unified diffs in edit output are colored per line, and assistant
+code blocks get the same copy button. Raw message/result JSON is in Trace only.
+User messages after the first start an exchange, labelled with the acceptance
+time when a delivery receipt places the message. All payloads are escaped (JSON
+and diff spans use fixed classes), and Markdown keeps the stricter
+no-remote-media sanitizer; copy buttons are added after sanitizing.
 
 While a turn runs, `run-live` shows the uncommitted tail of the current turn
-from live events: streamed text (prefixed with an ellipsis when the bounded live
-buffer dropped earlier events), tool executions with running/done/error state,
-and a working indicator. The next committed snapshot replaces it. Delivery
+from live events in arrival order: streamed text, an open "Thinking" row with
+streamed reasoning, and tool executions as running/done/error Trace lines (the
+first item is prefixed with an ellipsis when the bounded live buffer dropped
+earlier events), and a working indicator. The next committed snapshot replaces it. Delivery
 records not yet in the transcript, failed or uncertain render at the transcript
 end with a status badge (Queued, Sending, Delivered, Failed, Uncertain), and
 uncertain ones carry their own reconcile form. Internal classifications are not shown.

@@ -30,7 +30,7 @@ component and cancels its request, so no response frames may follow it. Late
 responses cannot remove another opening. Failed submissions preserve drafts.
 
 Datastar owns signals and transport; shadcn-templ owns Dialog, DropdownMenu,
-Select, Checkbox, Switch, CopyButton, Toggle and MessageScroller behavior. Component
+Select, Checkbox, Switch, CopyButton, Toggle, ScrollArea and MessageScroller behavior. Component
 fragments use replace mode; selects inside live morph roots have option-keyed
 IDs. Never morph a mounted declaration when its options change.
 
@@ -71,6 +71,7 @@ All application reactivity is signal-driven; runtime helpers are component-owned
 
 - `run_detail.templ`: run-detail page, Chat/Trace history and separate controls;
   composer, filter and tab links are outside patch roots.
+- `trace.templ`: Trace rows for agent steps, ported from shadcn's Trace.
 - `run_detail.go`: pinned routing, state policy, finite actions and viewer SSE.
 - `runapi.go`: signed HTTP-over-NATS requests and bounded shared observation hubs.
 - `run_display.go`: ordered safe message/tool projection; BONNIE MIT attribution.

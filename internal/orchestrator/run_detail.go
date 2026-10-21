@@ -70,14 +70,30 @@ func (d runDetail) sentLabel(i int) string {
 	return ""
 }
 
-// firstChatIndex is the index of the first message Chat renders.
-func (d runDetail) firstChatIndex() int {
+// runChatEntryView is one rendered Chat message. Role is the displayed role:
+// tool messages continue the assistant reply they belong to.
+type runChatEntryView struct {
+	Index              int
+	Message            runMessage
+	Role               string
+	Boundary, ShowRole bool
+}
+
+func (d runDetail) chatEntries() []runChatEntryView {
+	var out []runChatEntryView
+	previous := ""
 	for i, m := range d.Messages {
-		if m.chatVisible() {
-			return i
+		if !m.chatVisible() {
+			continue
 		}
+		role := m.Role
+		if role == "tool" {
+			role = "assistant"
+		}
+		out = append(out, runChatEntryView{Index: i, Message: m, Role: role, Boundary: len(out) > 0 && m.Role == "user", ShowRole: role != previous || role == "user"})
+		previous = role
 	}
-	return len(d.Messages)
+	return out
 }
 
 func (t *runTool) result() *runTool {
@@ -388,17 +404,13 @@ func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, e
 	var keys []string
 	entries := make(map[string]string)
 	if d.Tab != "trace" {
-		first := d.firstChatIndex()
-		for i, m := range d.Messages {
-			if !m.chatVisible() {
-				continue
-			}
-			html, err := render(runChatEntry(d, i, m, i > first))
+		for _, e := range d.chatEntries() {
+			html, err := render(runChatEntry(d, e))
 			if err != nil {
 				return nil, err
 			}
-			keys = append(keys, m.Key)
-			entries[m.Key] = html
+			keys = append(keys, e.Message.Key)
+			entries[e.Message.Key] = html
 		}
 	}
 	defer func() { p.started, p.parts, p.keys, p.entries = true, parts, keys, entries }()

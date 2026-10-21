@@ -714,11 +714,13 @@ need not revoke existing streams. The agent watches changes and rechecks the key
 with bounded reads, failing closed on deletion, malformed keys or outages.
 
 Chat uses Bonnie’s ordered message/tool hierarchy in Jawa’s theme: wrapping user
-prose, sanitized assistant Markdown and collapsed tool rows. Each tool call and
-its result share one row summarizing the command, path or pattern and the result;
-failures and nonzero exit codes are marked, edit diffs are colored, and code and
-output have copy buttons. Raw JSON stays in Trace. While the agent works, its
-streamed text and running tools appear provisionally until the turn commits, and
+prose, sanitized assistant Markdown, and agent steps as compact rows modelled on
+shadcn's Trace component. Each tool call and its result share one row phrased for
+its state ("Ran go test ./...", "Failed to read go.mod") with exit codes, diff
+stats or line counts beside it; model reasoning appears as a collapsed "Thought"
+row. Expanded rows show scrollable, copyable output, and edit diffs are colored.
+Raw JSON stays in Trace. While the agent works, its streamed text, thinking and
+running tools appear provisionally until the turn commits, and
 queued, failed or uncertain messages show their delivery status inline. The
 transcript fills the window above the composer, scrolls independently, follows
 new messages only while at the bottom and offers a scroll-to-end button. The

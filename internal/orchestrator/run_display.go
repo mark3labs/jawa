@@ -3,15 +3,20 @@
 package orchestrator
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"github.com/a-h/templ"
 	"github.com/axadrn/shadcn-templ/v2/components/copybutton"
+	lucide "github.com/axadrn/shadcn-templ/v2/components/icon"
+	"github.com/axadrn/shadcn-templ/v2/components/scrollarea"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"html"
+	"io"
 	"regexp"
 	"sort"
 	"strconv"
@@ -26,11 +31,16 @@ type runMessage struct {
 }
 
 // Paired result parts are rendered inside their call in Chat; Trace keeps them.
+// Reasoning parts carry model thinking text; Attachment names a file part.
 type runPart struct {
-	Text, HTML, Key     string
-	Tool                *runTool
-	Unsupported, Paired bool
+	Text, HTML, Key, Attachment    string
+	Tool                           *runTool
+	Unsupported, Paired, Reasoning bool
 }
+
+// step reports whether the part renders as a Trace row rather than prose.
+func (p runPart) step() bool { return p.Tool != nil || p.Reasoning || p.Attachment != "" }
+
 type runTool struct {
 	Name, Kind, Summary, Raw, CallID string
 	Sections                         []runSection
@@ -66,7 +76,7 @@ func runPreview(s string) string {
 func toolSummary(name, input string) string {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal([]byte(input), &fields) != nil {
-		return "Arguments"
+		return ""
 	}
 	str := func(key string) string {
 		var value string
@@ -84,7 +94,7 @@ func toolSummary(name, input string) string {
 		if c := str("command"); c != "" {
 			return runPreview(c)
 		}
-	case "read":
+	case "read", "read_file":
 		if path != "" {
 			if offset, limit := num("offset"), num("limit"); limit > 0 {
 				return runPreview(fmt.Sprintf("%s · lines %d–%d", path, max(offset, 1), max(offset, 1)+limit-1))
@@ -93,7 +103,7 @@ func toolSummary(name, input string) string {
 			}
 			return runPreview(path)
 		}
-	case "write":
+	case "write", "write_file":
 		if path != "" {
 			return runPreview(fmt.Sprintf("%s · %d lines", path, strings.Count(str("content"), "\n")+1))
 		}
@@ -109,9 +119,13 @@ func toolSummary(name, input string) string {
 			}
 			return runPreview(pattern)
 		}
-	case "ls":
+	case "ls", "list_files":
 		if path == "" {
 			return "."
+		}
+	case "shell_wait", "shell_status", "shell_cancel":
+		if id := str("job_id"); id != "" {
+			return shortID(id)
 		}
 	}
 	for _, key := range []string{"command", "path", "query", "pattern", "action", "url"} {
@@ -129,10 +143,7 @@ func toolSummary(name, input string) string {
 			return runPreview(key + ": " + value)
 		}
 	}
-	if len(fields) == 0 {
-		return "No arguments"
-	}
-	return "Arguments"
+	return ""
 }
 
 var exitLine = regexp.MustCompile(`(?m)^Exit code: (-?\d+)\s*$`)
@@ -166,6 +177,7 @@ func outputSections(text string) []runSection {
 // codes and stderr. The summary prefers the last output line of commands.
 func resultInfo(name string, t *runTool) {
 	var exit string
+	var running bool
 	for _, s := range t.Sections {
 		switch s.Label {
 		case "stderr":
@@ -173,9 +185,13 @@ func resultInfo(name string, t *runTool) {
 		case "Metadata":
 			var meta struct {
 				ExitCode *int `json:"exit_code"`
+				Running  bool `json:"running"`
 			}
-			if json.Unmarshal([]byte(s.Text), &meta) == nil && meta.ExitCode != nil && *meta.ExitCode != 0 {
-				exit = strconv.Itoa(*meta.ExitCode)
+			if json.Unmarshal([]byte(s.Text), &meta) == nil {
+				if meta.ExitCode != nil && *meta.ExitCode != 0 {
+					exit = strconv.Itoa(*meta.ExitCode)
+				}
+				running = meta.Running
 			}
 		}
 		if m := exitLine.FindAllStringSubmatch(s.Text, -1); len(m) > 0 && exit == "" && (name == "shell" || name == "bash") {
@@ -185,6 +201,8 @@ func resultInfo(name string, t *runTool) {
 	switch {
 	case exit != "":
 		t.Error, t.Status = true, "exit "+exit
+	case running:
+		t.Status = "still running"
 	case t.Error:
 		t.Status = "error"
 	case t.Stderr:
@@ -194,9 +212,13 @@ func resultInfo(name string, t *runTool) {
 		return
 	}
 	text := t.Sections[0].Text
+	if compact := new(bytes.Buffer); json.Compact(compact, []byte(text)) == nil {
+		t.Summary = runPreview(compact.String())
+		return
+	}
 	lines := strings.Split(strings.TrimSpace(exitLine.ReplaceAllString(text, "")), "\n")
 	switch {
-	case name == "read" && !t.Error:
+	case (name == "read" || name == "read_file") && !t.Error:
 		t.Summary = fmt.Sprintf("%d lines", strings.Count(strings.TrimRight(text, "\n"), "\n")+1)
 	case name == "shell" || name == "bash":
 		t.Summary = runPreview(lines[len(lines)-1])
@@ -217,7 +239,7 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 		for _, part := range msg.Content {
 			switch p := part.(type) {
 			case kit.LLMTextPart:
-				if len(m.Parts) > 0 && m.Parts[len(m.Parts)-1].Tool == nil && !m.Parts[len(m.Parts)-1].Unsupported {
+				if last := len(m.Parts) - 1; last >= 0 && !m.Parts[last].step() && !m.Parts[last].Unsupported {
 					m.Parts[len(m.Parts)-1].Text += p.Text
 				} else {
 					m.Parts = append(m.Parts, runPart{Text: p.Text})
@@ -250,6 +272,14 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 					call.Result = result
 				}
 				m.Parts = append(m.Parts, runPart{Tool: result, Paired: paired})
+			case kit.LLMReasoningPart:
+				// Some providers send only an encrypted signature; show nothing then.
+				if strings.TrimSpace(p.Text) != "" {
+					m.Parts = append(m.Parts, runPart{Reasoning: true, Text: p.Text})
+				}
+			case kit.LLMFilePart:
+				name := cmp.Or(p.Filename, p.MediaType, "file")
+				m.Parts = append(m.Parts, runPart{Attachment: name})
 			default:
 				m.Parts = append(m.Parts, runPart{Unsupported: true})
 			}
@@ -262,7 +292,7 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 		}
 		if m.Role == "assistant" {
 			for i := range m.Parts {
-				if m.Parts[i].Tool == nil {
+				if m.Parts[i].Tool == nil && m.Parts[i].Attachment == "" {
 					m.Parts[i].HTML = withCodeCopy(runMarkdown(m.Parts[i].Text), m.Parts[i].Key)
 				}
 			}
@@ -276,7 +306,7 @@ func projectRunMessages(messages []kit.LLMMessage) []runMessage {
 // paired results are folded into their calls.
 func (m runMessage) chatVisible() bool {
 	for _, p := range m.Parts {
-		if !p.Paired && (p.Tool != nil || p.Unsupported || p.Text != "") {
+		if !p.Paired && (p.step() || p.Unsupported || p.Text != "") {
 			return true
 		}
 	}
@@ -350,6 +380,10 @@ func (m runMessage) preview() string {
 	for _, p := range m.Parts {
 		if p.Tool != nil {
 			texts = append(texts, p.Tool.Name+" · "+p.Tool.Kind+" · "+p.Tool.Summary)
+		} else if p.Reasoning {
+			texts = append(texts, "Thought · "+p.Text)
+		} else if p.Attachment != "" {
+			texts = append(texts, "Attachment · "+p.Attachment)
 		} else {
 			texts = append(texts, p.Text)
 		}
@@ -433,51 +467,295 @@ func newDiffSection(text string) runSection {
 	return s
 }
 
-// runLiveView is the uncommitted tail of the current turn: streamed text and
-// tool executions observed after the snapshot cursor. A committed snapshot
-// replaces it, so it is provisional and never stored.
+// runLiveView is the uncommitted tail of the current turn: streamed text,
+// thinking and tool executions observed after the snapshot cursor, in arrival
+// order. A committed snapshot replaces it, so it is provisional and never stored.
 type runLiveView struct {
-	Text               string
-	Tools              []runLiveTool
+	Items              []runLiveItem
 	Working, Truncated bool
 }
-type runLiveTool struct {
-	Key, Name, Summary string
-	Done, Error        bool
+
+// runLiveItem is one run of streamed text or thinking, or one tool execution.
+type runLiveItem struct {
+	Key, Kind, Text, Name, Input string
+	Done, Error                  bool
 }
 
-func (v runLiveView) empty() bool { return v.Text == "" && len(v.Tools) == 0 && !v.Working }
+func (v runLiveView) empty() bool { return len(v.Items) == 0 && !v.Working }
 
 func liveActivity(obs runObservation) runLiveView {
-	v := runLiveView{Working: !obs.Unreachable && obs.Snapshot != nil && obs.Snapshot.State == runtime.RunRunning}
+	v := runLiveView{Working: obs.working()}
 	// Live activity is bounded to the newest events, so early text may be gone.
 	v.Truncated = len(obs.Live) >= maxRunEvents
 	tools := make(map[string]int)
-	var text strings.Builder
+	stream := func(kind, chunk string) {
+		if n := len(v.Items); n > 0 && v.Items[n-1].Kind == kind {
+			v.Items[n-1].Text += chunk
+			return
+		}
+		v.Items = append(v.Items, runLiveItem{Kind: kind, Text: chunk})
+	}
 	for _, ev := range obs.Live {
 		var data struct {
-			Chunk, ToolCallID, ToolName, ToolArgs string
-			IsError                               bool
+			Chunk, Delta, ToolCallID, ToolName, ToolArgs string
+			IsError                                      bool
 		}
 		_ = json.Unmarshal(ev.Data, &data)
 		switch ev.Type {
 		case string(kit.EventMessageUpdate):
-			text.WriteString(data.Chunk)
+			stream("text", data.Chunk)
+		case string(kit.EventReasoningDelta):
+			stream("reasoning", data.Delta)
 		case string(kit.EventToolExecutionStart):
 			if _, seen := tools[data.ToolCallID]; seen && data.ToolCallID != "" {
 				continue
 			}
-			tools[data.ToolCallID] = len(v.Tools)
-			v.Tools = append(v.Tools, runLiveTool{Key: "run-live-tool-" + strconv.Itoa(len(v.Tools)), Name: data.ToolName, Summary: toolSummary(data.ToolName, data.ToolArgs)})
+			tools[data.ToolCallID] = len(v.Items)
+			v.Items = append(v.Items, runLiveItem{Kind: "tool", Name: data.ToolName, Input: data.ToolArgs})
 		case string(kit.EventToolExecutionEnd), string(kit.EventToolResult):
 			if i, ok := tools[data.ToolCallID]; ok {
-				v.Tools[i].Done = true
-				v.Tools[i].Error = v.Tools[i].Error || data.IsError
+				v.Items[i].Done = true
+				v.Items[i].Error = v.Items[i].Error || data.IsError
 			}
 		}
 	}
-	v.Text = strings.TrimLeft(text.String(), "\n")
+	items := v.Items[:0]
+	for _, item := range v.Items {
+		if item.Kind != "tool" {
+			item.Text = strings.TrimLeft(item.Text, "\n")
+			if strings.TrimSpace(item.Text) == "" {
+				continue
+			}
+		}
+		item.Key = "run-live-" + strconv.Itoa(len(items))
+		items = append(items, item)
+	}
+	v.Items = items
 	return v
+}
+
+// working reports a reachable run whose observed turn is executing.
+func (obs runObservation) working() bool {
+	return !obs.Unreachable && obs.Snapshot != nil && obs.Snapshot.State == runtime.RunRunning
+}
+
+// runStep is one Trace line: what an agent step did, phrased for its state
+// (done, running, failed or pending) as the shadcn Trace guidance describes.
+type runStep struct {
+	Icon                              func(...lucide.Props) templ.Component
+	Verb, Object, Description, Status string
+}
+
+type stepVerbs struct {
+	icon                  func(...lucide.Props) templ.Component
+	done, running, failed string
+}
+
+var toolVerbs = map[string]stepVerbs{
+	"shell":         {lucide.Terminal, "Ran", "Running", "Failed to run"},
+	"bash":          {lucide.Terminal, "Ran", "Running", "Failed to run"},
+	"shell_wait":    {lucide.Terminal, "Waited for job", "Waiting for job", "Failed waiting for job"},
+	"shell_status":  {lucide.Terminal, "Checked job", "Checking job", "Failed to check job"},
+	"shell_cancel":  {lucide.Terminal, "Cancelled job", "Cancelling job", "Failed to cancel job"},
+	"read":          {lucide.FileText, "Read", "Reading", "Failed to read"},
+	"read_file":     {lucide.FileText, "Read", "Reading", "Failed to read"},
+	"write":         {lucide.FilePlus, "Wrote", "Writing", "Failed to write"},
+	"write_file":    {lucide.FilePlus, "Wrote", "Writing", "Failed to write"},
+	"edit":          {lucide.FilePen, "Edited", "Editing", "Failed to edit"},
+	"grep":          {lucide.Search, "Searched for", "Searching for", "Failed to search for"},
+	"find":          {lucide.Search, "Found files matching", "Finding files matching", "Failed to find"},
+	"ls":            {lucide.FolderOpen, "Listed", "Listing", "Failed to list"},
+	"list_files":    {lucide.FolderOpen, "Listed", "Listing", "Failed to list"},
+	"completeTask":  {lucide.CircleCheck, "Reported completion", "Reporting completion", "Failed to report completion"},
+	"reportBlocker": {lucide.TriangleAlert, "Reported a blocker", "Reporting a blocker", "Failed to report a blocker"},
+	"clarify":       {lucide.ClipboardList, "Asked for clarification", "Asking for clarification", "Failed to ask for clarification"},
+	"proposeSpec":   {lucide.ClipboardList, "Proposed a specification", "Proposing a specification", "Failed to propose a specification"},
+}
+
+// reportTools take their meaning from the tool, not an argument.
+var reportTools = map[string]bool{"completeTask": true, "reportBlocker": true, "clarify": true, "proposeSpec": true}
+
+// newStep phrases a tool step. status is "", "running", "error" or "pending".
+func newStep(name, input, status string) runStep {
+	verbs, known := toolVerbs[name]
+	if !known {
+		verbs = stepVerbs{lucide.Wrench, "Called", "Calling", "Failed to call"}
+	}
+	s := runStep{Icon: verbs.icon, Verb: verbs.done, Status: status}
+	switch status {
+	case "running", "pending":
+		s.Verb = verbs.running
+	case "error":
+		s.Verb = verbs.failed
+	}
+	switch {
+	case !known:
+		s.Object = strings.TrimSpace(name + " " + toolSummary(name, input))
+	case !reportTools[name]:
+		s.Object = toolSummary(name, input)
+	}
+	var args struct {
+		PRNumber  int      `json:"pr_number"`
+		Questions []string `json:"questions"`
+	}
+	_ = json.Unmarshal([]byte(input), &args)
+	switch {
+	case name == "completeTask" && args.PRNumber > 0:
+		s.Description = "PR #" + strconv.Itoa(args.PRNumber)
+	case name == "clarify" && len(args.Questions) > 0:
+		s.Description = plural(len(args.Questions), "question")
+	}
+	return s
+}
+
+// toolStep phrases a committed call from its paired result. A call without a
+// result is running while the turn executes and pending otherwise.
+func toolStep(t *runTool, working bool) runStep {
+	result := t.result()
+	input := ""
+	if t.Kind == "call" {
+		input = t.Raw
+	}
+	status := ""
+	switch {
+	case result != nil && result.Error:
+		status = "error"
+	case result == nil && working:
+		status = "running"
+	case result == nil:
+		status = "pending"
+	}
+	name := t.Name
+	if t.Kind == "result" && name == "Tool result" {
+		return runStep{Icon: lucide.Wrench, Verb: "Tool result", Status: status, Description: resultDescription(name, result)}
+	}
+	s := newStep(name, input, status)
+	if d := resultDescription(name, result); d != "" {
+		s.Description = d
+	} else if result == nil && !working {
+		s.Description = "no result"
+	}
+	return s
+}
+
+func liveStep(item runLiveItem) runStep {
+	status := "running"
+	switch {
+	case item.Error:
+		status = "error"
+	case item.Done:
+		status = ""
+	}
+	return newStep(item.Name, item.Input, status)
+}
+
+// resultDescription is the secondary text of a result: an exit code, diff
+// stat or line count. A failure is already said by the title.
+func resultDescription(name string, r *runTool) string {
+	if r == nil {
+		return ""
+	}
+	if r.Status != "" && r.Status != "error" {
+		return r.Status
+	}
+	for _, section := range r.Sections {
+		if section.Diff {
+			added, removed := 0, 0
+			for _, line := range strings.Split(section.Text, "\n") {
+				switch {
+				case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+				case strings.HasPrefix(line, "+"):
+					added++
+				case strings.HasPrefix(line, "-"):
+					removed++
+				}
+			}
+			return fmt.Sprintf("+%d −%d", added, removed)
+		}
+	}
+	if (name == "read" || name == "read_file") && !r.Error {
+		return r.Summary
+	}
+	return ""
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+var reasoningStep = runStep{Icon: lucide.Brain, Verb: "Thought"}
+
+func attachmentStep(name string) runStep {
+	return runStep{Icon: lucide.Paperclip, Verb: "Attached", Object: name}
+}
+
+// blocks groups a message's Chat parts: consecutive steps share one Trace,
+// prose parts stand alone. Paired results render inside their call.
+func (m runMessage) blocks() [][]runPart {
+	var out [][]runPart
+	for _, p := range m.Parts {
+		if p.Paired {
+			continue
+		}
+		if n := len(out); n > 0 && p.step() && out[n-1][0].step() {
+			out[n-1] = append(out[n-1], p)
+			continue
+		}
+		out = append(out, []runPart{p})
+	}
+	return out
+}
+
+// liveBlocks groups consecutive live steps the same way.
+func (v runLiveView) blocks() [][]runLiveItem {
+	var out [][]runLiveItem
+	for _, item := range v.Items {
+		if n := len(out); n > 0 && item.Kind != "text" && out[n-1][0].Kind != "text" {
+			out[n-1] = append(out[n-1], item)
+			continue
+		}
+		out = append(out, []runLiveItem{item})
+	}
+	return out
+}
+
+// scrollAreaID matches the random root ID shadcn-templ's ScrollArea renders.
+var scrollAreaID = regexp.MustCompile(`base-ui-id-[A-Z2-7]+`)
+
+const scrollAreaChildren = "\x00run-scroll-area-children\x00"
+
+// runScrollArea renders shadcn-templ's ScrollArea with a stable identity so
+// stream ticks stay comparable: the random root ID becomes the key. Only the
+// component's own markup is rewritten; children are rendered verbatim. The
+// scrollbar state scrollarea.js sets survives morphs.
+func runScrollArea(key, class string) templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		var shell strings.Builder
+		marker := templ.WithChildren(ctx, templ.Raw(scrollAreaChildren))
+		if err := scrollarea.ScrollArea(scrollarea.Props{Class: class, Attributes: templ.Attributes{"data-preserve-attr": "style"}}).Render(marker, &shell); err != nil {
+			return err
+		}
+		out := scrollAreaID.ReplaceAllString(shell.String(), "base-ui-"+key)
+		out = strings.Replace(out, `data-slot="scroll-area-scrollbar"`, `data-slot="scroll-area-scrollbar" data-preserve-attr="hidden style"`, 1)
+		out = strings.Replace(out, `data-slot="scroll-area-thumb"`, `data-slot="scroll-area-thumb" data-preserve-attr="style"`, 1)
+		before, after, found := strings.Cut(out, scrollAreaChildren)
+		if !found {
+			return fmt.Errorf("scroll area children slot missing")
+		}
+		if _, err := io.WriteString(w, before); err != nil {
+			return err
+		}
+		if children := templ.GetChildren(ctx); children != nil {
+			if err := children.Render(ctx, w); err != nil {
+				return err
+			}
+		}
+		_, err := io.WriteString(w, after)
+		return err
+	})
 }
 
 // Trace rows keep each source's order and content identity. Durable and live

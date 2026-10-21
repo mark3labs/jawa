@@ -18,7 +18,7 @@ func runDetailFixture() runDetail {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	messages := []kit.LLMMessage{
 		{Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "Implement a readable conversation and a separate diagnostic inspector.\n\n" + strings.Repeat("Keep long prompts readable without a monospaced wall. ", 20) + "\n" + strings.Repeat("long-identifier-", 40)}}},
-		{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: "## Investigation\n\nI’ll inspect the implementation, preserve **drafts**, and test both views.\n\n| View | Purpose |\n| --- | --- |\n| Chat | Conversation |\n| Trace | Diagnostics |\n\n```go\n" + strings.Repeat("long_code_", 35) + "\n```"}, kit.LLMToolCallPart{ToolCallID: "call-1", ToolName: "shell", Input: `{"command":"go test ./...", "secret-fixture-search":"collapsed-needle"}`}}},
+		{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMReasoningPart{Text: "The user wants **two** views; check the transcript first."}, kit.LLMTextPart{Text: "## Investigation\n\nI’ll inspect the implementation, preserve **drafts**, and test both views.\n\n| View | Purpose |\n| --- | --- |\n| Chat | Conversation |\n| Trace | Diagnostics |\n\n```go\n" + strings.Repeat("long_code_", 35) + "\n```"}, kit.LLMToolCallPart{ToolCallID: "call-1", ToolName: "shell", Input: `{"command":"go test ./...", "secret-fixture-search":"collapsed-needle"}`}}},
 		{Role: "tool", Content: []kit.LLMMessagePart{kit.LLMToolResultPart{ToolCallID: "call-1", Output: kit.LLMToolResultOutputContentText{Text: `{"stdout":"ok jawa/internal/orchestrator", "stderr":"fixture warning", "exit_code":1}`}}}},
 		{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMToolCallPart{ToolCallID: "call-2", ToolName: "read_file", Input: `{"path":"run_detail.templ"}`}}},
 		{Role: "tool", Content: []kit.LLMMessagePart{kit.LLMToolResultPart{ToolCallID: "call-2", Output: kit.LLMToolResultOutputContentError{Error: errors.New("fixture error: file unavailable")}}}},
@@ -98,7 +98,7 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 					t.Errorf("Chat contains %s", absent)
 				}
 			}
-			for _, present := range []string{"run-prose", "run-tool", "fixture error", "<strong>drafts</strong>", "run-tool-error", "exit 1", "Queued", "Failed", "run-live"} {
+			for _, present := range []string{"run-prose", "run-tool", "fixture error", "<strong>drafts</strong>", "run-tool-error", "exit 1", "Queued", "Failed", "run-live", "Thought", "<strong>two</strong>", "Failed to run", "go test ./..."} {
 				if !strings.Contains(html, present) {
 					t.Errorf("Chat missing %s", present)
 				}

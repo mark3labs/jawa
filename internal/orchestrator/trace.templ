@@ -1,0 +1,58 @@
+package orchestrator
+
+import lucide "github.com/axadrn/shadcn-templ/v2/components/icon"
+
+// Trace mirrors shadcn's Trace (registry base-nova/ui/trace.tsx): one line per
+// agent step with an icon, title, optional description and status. Collapsible
+// rows use native details/summary instead of Base UI's Collapsible, so they
+// work without JavaScript and keep their open state across morphs.
+templ traceGroup() {
+	<div data-slot="trace" class="run-steps flex w-full min-w-0 flex-col *:has-[>[data-slot=trace-line]]:flex *:has-[>[data-slot=trace-line]]:w-fit *:has-[>[data-slot=trace-line]]:max-w-full *:has-[>[data-slot=trace-line]]:min-w-0 *:has-[>[data-slot=trace-line]]:rounded-md *:has-[>[data-slot=trace-line]]:text-left">
+		{ children... }
+	</div>
+}
+
+templ traceLine(s runStep) {
+	<span
+		data-slot="trace-line"
+		if s.Status != "" {
+			data-status={ s.Status }
+		}
+		class="flex w-fit max-w-full min-w-0 items-center gap-2 text-sm text-muted-foreground transition-colors in-[summary]:cursor-pointer in-[summary:hover]:text-foreground data-[status=error]:text-destructive data-[status=error]:in-[summary:hover]:text-destructive data-[status=pending]:opacity-60 data-[status=running]:*:data-[slot=trace-title]:shimmer"
+	>
+		<span data-slot="trace-icon" aria-hidden="true" class="flex size-4 shrink-0 items-center justify-center [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4">
+			@s.Icon(lucide.Props{})
+		</span>
+		<span data-slot="trace-title" class="min-w-0 truncate motion-reduce:shimmer-none">
+			{ s.Verb }
+			if s.Object != "" {
+				{ " " }
+				<span class="run-step-object">{ s.Object }</span>
+			}
+		</span>
+		if s.Description != "" {
+			<span data-slot="trace-description" class="shrink-0 text-muted-foreground/70 tabular-nums">{ s.Description }</span>
+		}
+	</span>
+}
+
+// traceStatic is a line with no detail; it reads as plain text.
+templ traceStatic(id string, s runStep) {
+	<div id={ id } class="run-step">
+		@traceLine(s)
+	</div>
+}
+
+templ traceCollapsible(id, class string, s runStep, open bool) {
+	<details id={ id } data-preserve-attr="open" open?={ open } data-slot="trace-collapsible" class={ "group/trace flex w-full min-w-0 flex-col", class }>
+		<summary data-slot="trace-collapsible-trigger" class="group/trace-collapsible-trigger flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-md text-left text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 has-[[data-status=error]]:text-destructive">
+			@traceLine(s)
+			<span data-slot="trace-icon" aria-hidden="true" class="flex size-4 shrink-0 items-center justify-center transition-transform group-open/trace:rotate-90 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4">
+				@lucide.ChevronRight(lucide.Props{})
+			</span>
+		</summary>
+		<div data-slot="trace-collapsible-content-inner" class="mt-2 mb-1 ml-[calc(--spacing(2)-1px)] min-w-0 border-l pr-1 pl-4 leading-relaxed wrap-break-word text-muted-foreground">
+			{ children... }
+		</div>
+	</details>
+}

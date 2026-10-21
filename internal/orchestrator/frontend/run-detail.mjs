@@ -83,7 +83,10 @@ try {
           await expect(page.locator('.run-tool')).toHaveCount(2);
           await expect(page.locator('.run-tool-error')).toHaveCount(2);
           await expect(page.locator('.run-tool').first().locator(':scope > summary')).toContainText('go test ./...');
-          await expect(page.locator('.run-tool').first().locator(':scope > summary .cn-badge')).toHaveText('exit 1');
+          await expect(page.locator('.run-tool').first().locator(':scope > summary [data-slot=trace-description]')).toHaveText('exit 1');
+          await expect(page.locator('.run-tool').first().locator(':scope > summary [data-slot=trace-line]')).toHaveAttribute('data-status','error');
+          await expect(page.locator('.run-reasoning > summary')).toContainText('Thought');
+          assert.equal(await page.getByText('Unsupported content',{exact:false}).count(), 1, 'Only the fixture part with no known type is unsupported');
           await expect(page.locator('.planning-markdown [data-templ-copy-button]').first()).toBeVisible();
         } else {
           await page.getByLabel('Filter activity').fill('collapsed-needle');
@@ -214,7 +217,8 @@ try {
   // navigable in normal document flow rather than clipping the composer.
   await page.setViewportSize({width:390,height:500});
   await page.locator('.run-tool').first().evaluate(el => el.open = true);
-  await page.locator('.run-tool-section').first().evaluate(el => el.open = true);
+  // Long output scrolls inside its ScrollArea, not the page.
+  await expect(page.locator('.run-tool').first().locator('[data-slot=scroll-area]').first()).toBeVisible();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+1));
   await send.scrollIntoViewIfNeeded();
   await expect(send).toBeVisible();
