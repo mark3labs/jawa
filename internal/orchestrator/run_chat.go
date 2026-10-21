@@ -265,10 +265,7 @@ func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
 	if m.Classification == "interaction" {
 		return
 	}
-	cmd.Token = runapitoken.Sign(w.runAPI.key, cmd.Target.AgentID, time.Now())
-	call, cancel := context.WithTimeout(ctx, 2*time.Second)
-	receipt, err := reportprotocol.SendChat(call, w.runAPI.conn, cmd)
-	cancel()
+	receipt, err := w.sendChat(ctx, cmd, 2*time.Second)
 	if err != nil {
 		_, _ = w.s.db.Exec(`UPDATE run_chat SET failure='owner_unreachable_or_unsupported' WHERE id=?`, m.ID)
 		return
@@ -390,4 +387,64 @@ func (w *Workflow) applyChatReceipt(ctx context.Context, m RunChatMessage, cmd r
 // Interaction delivery uses the existing exact Answer outboxes, not Chat.
 func (w *Workflow) reconcileChatInteractions() {
 	_, _ = w.s.db.Exec(`UPDATE run_chat SET status=CASE WHEN EXISTS(SELECT 1 FROM workflow_interactions WHERE report_id=interaction AND status='cancelled') OR EXISTS(SELECT 1 FROM planning_interactions WHERE report_id=interaction AND status='cancelled') THEN 'failed' ELSE 'completed' END,updated_at=? WHERE classification='interaction' AND status='active' AND (EXISTS(SELECT 1 FROM workflow_interactions WHERE report_id=interaction AND status IN ('answered','cancelled')) OR EXISTS(SELECT 1 FROM planning_interactions WHERE report_id=interaction AND status IN ('answered','cancelled')))`, time.Now().UnixMilli())
+}
+
+var (
+	// ErrRunChatChanged means reconciliation lost a race with another resolution.
+	ErrRunChatChanged           = errors.New("run chat message changed")
+	errChatCommandUnavailable   = errors.New("chat command unavailable")
+	errChatReconcileUnconfirmed = errors.New("chat reconciliation unconfirmed")
+)
+
+func (w *Workflow) sendChat(ctx context.Context, cmd reportprotocol.Chat, timeout time.Duration) (reportprotocol.ChatReceipt, error) {
+	if w.runAPI == nil {
+		return reportprotocol.ChatReceipt{}, errChatCommandUnavailable
+	}
+	cmd.Token = runapitoken.Sign(w.runAPI.key, cmd.Target.AgentID, time.Now())
+	call, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return reportprotocol.SendChat(call, w.runAPI.conn, cmd)
+}
+
+// ReconcileRunChat fences the original command without replaying uncertain work.
+// Network I/O precedes the write transaction; the conditional update detects any
+// resolution committed while the owner was being queried.
+func (w *Workflow) ReconcileRunChat(ctx context.Context, record RunRecord, chatID string) error {
+	m, err := scanChat(w.s.db.QueryRowContext(ctx, `SELECT `+chatColumns+` FROM run_chat WHERE id=? AND mode=? AND local_id=? AND status='ambiguous'`, chatID, record.Mode, record.ID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrRunChatChanged
+	}
+	if err != nil {
+		return err
+	}
+	var cmd reportprotocol.Chat
+	if json.Unmarshal([]byte(m.Request), &cmd) != nil {
+		return errChatCommandUnavailable
+	}
+	cmd.Reconcile = true
+	receipt, err := w.sendChat(ctx, cmd, 5*time.Second)
+	if err != nil || receipt.Status != "failed" || receipt.Failure != "reconciled_not_replayed" {
+		return errChatReconcileUnconfirmed
+	}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	tx, err := w.s.writeTx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE run_chat SET status='failed',failure=?,receipt_json=?,updated_at=? WHERE id=? AND status='ambiguous'`, receipt.Failure, string(raw), time.Now().UnixMilli(), m.ID)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return ErrRunChatChanged
+	}
+	return tx.Commit()
 }
