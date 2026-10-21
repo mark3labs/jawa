@@ -106,7 +106,7 @@ func (m *mcpService) registerShipTools(srv *server.MCPServer) {
 	})
 	for _, tool := range []string{"archive_card", "restore_card"} {
 		addMCPLifecycleTool(m, srv, tool, "Change card visibility only; does not cancel active work.", func(ctx context.Context, _ mcp.CallToolRequest, a mcpCardIDArgs) (*mcp.CallToolResult, error) {
-			return m.act(ctx, tool, a.CardID, "", func(context.Context) error { return m.s.SetCardArchived(a.CardID, tool == "archive_card") })
+			return m.act(ctx, tool, a.CardID, "", func(ctx context.Context) error { return m.w.SetArchived(ctx, a.CardID, tool == "archive_card") })
 		})
 	}
 	addMCPLifecycleTool(m, srv, "force_ready", "Operator override: bypass readiness checks, without merging. Requires acknowledgement.", func(ctx context.Context, _ mcp.CallToolRequest, a mcpForceReadyArgs) (*mcp.CallToolResult, error) {

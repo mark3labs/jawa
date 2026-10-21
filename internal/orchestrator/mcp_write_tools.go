@@ -155,15 +155,11 @@ func (m *mcpService) actResult(ctx context.Context, tool, cardID string, timeout
 	return mcpJSON(result)
 }
 func (m *mcpService) currentCard(id string) (Card, error) {
-	cards, err := m.s.Cards("")
-	if err != nil {
-		return Card{}, err
-	}
-	c, ok := selectedCard(cards, id)
-	if !ok {
+	c, err := m.s.cardByID(context.Background(), id)
+	if errors.Is(err, sql.ErrNoRows) {
 		return Card{}, errMCPCardNotFound
 	}
-	return c, nil
+	return c, err
 }
 
 func (m *mcpService) registerLifecycleTools(srv *server.MCPServer) {

@@ -96,14 +96,24 @@ func OpenStore(path string) (*Store, error) {
 		}
 	}
 	// A previous process cannot still own an in-flight reservation.
-	if _, err = db.Exec(`UPDATE pr_merges SET state='uncertain' WHERE state='pending'`); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if _, err = db.Exec(`UPDATE issue_submissions SET state='uncertain',updated_at=? WHERE state='reserved'`, time.Now().Unix()); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return fail(err)
 	}
-	if _, err = db.Exec(`UPDATE auto_merge_operations SET state='uncertain',category='interrupted' WHERE state IN ('reserved','inflight')`); err != nil {
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.Exec(`UPDATE pr_merges SET state='uncertain' WHERE state='pending'`); err != nil {
+		_ = tx.Rollback()
+		return fail(err)
+	}
+	if _, err = tx.Exec(`UPDATE issue_submissions SET state='uncertain',updated_at=? WHERE state='reserved'`, time.Now().Unix()); err != nil {
+		_ = tx.Rollback()
+		return fail(err)
+	}
+	if _, err = tx.Exec(`UPDATE auto_merge_operations SET state='uncertain',category='interrupted' WHERE state IN ('reserved','inflight')`); err != nil {
+		_ = tx.Rollback()
+		return fail(err)
+	}
+	if err = tx.Commit(); err != nil {
 		return fail(err)
 	}
 	return &Store{db: db}, nil
@@ -150,10 +160,6 @@ func (s *Store) PruneSessions(now int64) error {
 func (s *Store) SessionOperator(ctx context.Context, hash string, now int64) (user string, err error) {
 	err = s.db.QueryRowContext(ctx, `SELECT a.username FROM admin a WHERE a.id=1 AND EXISTS(SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?)`, hash, now).Scan(&user)
 	return
-}
-
-func (s *Store) CreateProject(name string) (Project, error) {
-	return s.CreateProjectDetails(name, "", "", "")
 }
 
 var scpRepo = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s:]+$`)
@@ -228,12 +234,7 @@ func (s *Store) writeTx() (*sql.Tx, error) {
 	}
 	return tx, nil
 }
-func (s *Store) CreateCard(project, title, desc string) (Card, error) {
-	return s.CreateCardDetails(project, title, desc, "")
-}
-func (s *Store) CreateCardDetails(project, title, desc, issue string) (Card, error) {
-	return s.CreateCardOptions(project, title, desc, issue, "inherit")
-}
+
 func (s *Store) CreateCardOptions(project, title, desc, issue, mode string) (Card, error) {
 	tx, err := s.writeTx()
 	if err != nil {
@@ -288,55 +289,19 @@ func insertCardOptions(tx *sql.Tx, project, title, desc, issue, mode string) (Ca
 	return c, err
 }
 
+func (s *Store) cardByID(ctx context.Context, id string) (Card, error) {
+	row, err := sqlc.New(s.db).GetCard(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Card{}, fmt.Errorf("card not found: %w", err)
+	}
+	if err != nil {
+		return Card{}, err
+	}
+	return cardFromQuery(row), nil
+}
+
 func (s *Store) Cards(project string) ([]Card, error) {
 	return s.queryCards(context.Background(), project)
-}
-
-// SetCardArchived changes only the independent archive flag; card history and workflow are untouched.
-func (s *Store) SetCardArchived(id string, archived bool) error {
-	n, err := s.setCardArchived(context.Background(), id, archived)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return errors.New("card not found")
-	}
-	return nil
-}
-
-// MoveCard is a non-workflow primitive kept for tests and fixtures. Production
-// mutations must use Workflow.MoveCard to enforce execution rules.
-func (s *Store) MoveCard(id, status string, position int) error {
-	if status != "Todo" && status != "Planning" && status != "Building" && status != "Fix" && status != "Done" {
-		return errors.New("invalid status")
-	}
-	if position < 0 {
-		return errors.New("negative position")
-	}
-	tx, err := s.writeTx()
-	if err != nil {
-		return err
-	}
-	// Rollback is best-effort; after Commit it returns sql.ErrTxDone.
-	defer func() { _ = tx.Rollback() }()
-	var project, source string
-	if err = tx.QueryRow(`SELECT project_id,status FROM cards WHERE id=?`, id).Scan(&project, &source); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return errors.New("card not found")
-		}
-		return err
-	}
-	// Planning must never be entered/exited without the workflow transaction.
-	if (status == "Planning" || source == "Planning") && source != status {
-		return errors.New("planning transitions require workflow")
-	}
-	if (status == "Fix" || source == "Fix") && source != status {
-		return errors.New("fix transitions require workflow")
-	}
-	if err = moveWorkflowCard(tx, id, project, source, status, position); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 // DashboardOverrides returns persisted non-secret orchestrator overrides.
@@ -356,25 +321,7 @@ func (s *Store) DashboardOverrides() (map[string]string, error) {
 	}
 	return values, rows.Err()
 }
-func (s *Store) SetDashboardOverrides(values map[string]string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for k, v := range values {
-		if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "dashboard:"+k, v); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES('auto-merge:generation','1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)`); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE auto_merge_operations SET state='deferred',category='policy_changed',next_check_at=0 WHERE state IN ('reserved','deferred','rejected')`); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
+
 func (s *Store) ClearDashboardOverrides() error {
 	return s.ReplaceDashboardOverrides(map[string]string{})
 }

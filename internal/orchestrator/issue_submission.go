@@ -32,10 +32,6 @@ type uiError string
 
 func (e uiError) Error() string { return string(e) }
 
-// Reserve before dispatch; only the inserting caller is allowed to send a POST.
-func (s *Store) reserveIssueSubmission(token string, p Project, title, body string) (issueSubmission, bool, error) {
-	return s.reserveIssueSubmissionOptions(token, p, title, body, "inherit")
-}
 func (s *Store) reserveIssueSubmissionOptions(token string, p Project, title, body, mode string) (issueSubmission, bool, error) {
 	if !validAutoMergeMode(mode) {
 		return issueSubmission{}, false, errors.New("invalid auto merge mode")
@@ -150,7 +146,7 @@ func submitIssueCardForm(ctx context.Context, s *Store, issueClient *http.Client
 	}
 	// Explicit rejection retry changes identity only after checking the previous definite rejection.
 	if form.Get("issue_recovery") == "retry" {
-		tx, e := s.writeTx()
+		tx, e := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 		if e != nil {
 			return uiError("Unable to load rejected submission.")
 		}
