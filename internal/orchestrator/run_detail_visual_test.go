@@ -135,7 +135,8 @@ func TestRunDetailPatcherSendsOnlyChanges(t *testing.T) {
 		return kit.LLMMessage{Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: text}}}
 	}
 	call := kit.LLMMessage{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMToolCallPart{ToolCallID: "c", ToolName: "shell", Input: `{"command":"make"}`}}}
-	d := runDetail{Tab: "chat", Messages: projectRunMessages([]kit.LLMMessage{msg("first"), call})}
+	idle := runObservation{Snapshot: &bonnieclient.Snapshot{State: runtime.RunCompleted}}
+	d := runDetail{Tab: "chat", Messages: projectRunMessages([]kit.LLMMessage{msg("first"), call}), Observation: idle}
 	var p runDetailPatcher
 	frames, err := p.frames(t.Context(), d)
 	if err != nil || len(frames) != 1 || !strings.Contains(frames[0], `id="run-detail-content"`) || !strings.Contains(frames[0], `id="run-detail-controls"`) {
@@ -169,6 +170,82 @@ func TestRunDetailPatcherSendsOnlyChanges(t *testing.T) {
 	d.Observation.Durable = []runtime.Event{{Seq: 1, Type: "run_state", Text: "trace-update"}}
 	if frames, _ = trace.frames(t.Context(), d); len(frames) != 1 || !strings.Contains(frames[0], `id="run-trace"`) || !strings.Contains(frames[0], "trace-update") {
 		t.Fatal("trace change not patched", frames)
+	}
+}
+
+// Tabbing away closes the stream; the reconnect gets a fresh hub with no
+// snapshot yet. That must not empty the viewer's transcript or Trace tables.
+func TestRunDetailPatcherKeepsTranscriptWithoutSnapshot(t *testing.T) {
+	msg := func(text string) kit.LLMMessage {
+		return kit.LLMMessage{Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: text}}}
+	}
+	observed := runObservation{Snapshot: &bonnieclient.Snapshot{State: runtime.RunCompleted}, Observed: true}
+	messages := projectRunMessages([]kit.LLMMessage{msg("kept message")})
+	for _, tab := range []string{"chat", "trace"} {
+		var p runDetailPatcher
+		loading := runDetail{Tab: tab, Observation: runObservation{Unreachable: true}}
+		frames, err := p.frames(t.Context(), loading)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, frame := range frames {
+			for _, root := range []string{`id="run-detail-content"`, `id="run-messages"`, `id="run-trace"`} {
+				if strings.Contains(frame, root) {
+					t.Fatalf("%s: unobserved tick patched %s: %s", tab, root, frame)
+				}
+			}
+		}
+		if len(frames) != 1 || !strings.Contains(frames[0], `id="run-detail-controls"`) {
+			t.Fatalf("%s: status and controls not sent: %v", tab, frames)
+		}
+		// The first snapshot morphs the existing list in place, not by append.
+		d := runDetail{Tab: tab, Messages: messages, Observation: observed}
+		frames, _ = p.frames(t.Context(), d)
+		want := `id="run-messages"`
+		if tab == "trace" {
+			want = `id="run-trace"`
+		}
+		if len(frames) != 1 || strings.Contains(frames[0], "mode append") || !strings.Contains(frames[0], want) || !strings.Contains(frames[0], "kept message") {
+			t.Fatalf("%s: first snapshot not morphed into place: %v", tab, frames)
+		}
+		// Losing the agent again leaves the transcript; regaining it with the
+		// same conversation sends nothing.
+		frames, _ = p.frames(t.Context(), loading)
+		for _, frame := range frames {
+			if strings.Contains(frame, want) {
+				t.Fatalf("%s: unreachable tick replaced transcript", tab)
+			}
+		}
+		_, _ = p.frames(t.Context(), loading)
+		if frames, _ = p.frames(t.Context(), runDetail{Tab: tab, Messages: messages, Observation: observed, Record: loading.Record}); len(frames) != 1 || strings.Contains(frames[0], want) {
+			t.Fatalf("%s: unchanged transcript re-sent after reconnect: %v", tab, frames)
+		}
+	}
+}
+
+func TestRunHubMarksFirstObservation(t *testing.T) {
+	a := testApp(t)
+	h, release, err := a.workflow.runAPI.observe(Attempt{AgentID: "missing-agent", RunID: "missing-run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if h.read().Observed {
+		// Possible only if the attempt already failed; still must be reachable-false.
+		if !h.read().Unreachable {
+			t.Fatal("observed hub without a snapshot reported reachable")
+		}
+		return
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !h.read().Observed {
+		if time.Now().After(deadline) {
+			t.Fatal("hub never recorded its first snapshot attempt")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if obs := h.read(); !obs.Unreachable || obs.Snapshot != nil {
+		t.Fatalf("failed attempt: %+v", obs)
 	}
 }
 

@@ -298,7 +298,9 @@ func TestPlanningDetailStreamIdentityFence(t *testing.T) {
 					break
 				}
 			}
-			if !strings.Contains(frame.String(), "run-detail-content") || !strings.Contains(frame.String(), "run-detail-controls") {
+			// Unobserved (offline) streams patch status and controls but never
+			// replace the viewer's history with an empty observation.
+			if !strings.Contains(frame.String(), "run-detail-status") || !strings.Contains(frame.String(), "run-detail-controls") || strings.Contains(frame.String(), `id="run-detail-content"`) {
 				t.Fatal(frame.String())
 			}
 			switch end {

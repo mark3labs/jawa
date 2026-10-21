@@ -312,6 +312,7 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	var patches runDetailPatcher
+	waited := 0
 	for {
 		if !a.authed(r) {
 			return
@@ -342,14 +343,21 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 				release = newRelease
 			}
 		}
-		detail := a.historyDetailModel(r, fresh, obs, available)
-		frames, err := patches.frames(r.Context(), detail)
-		if err != nil {
-			return
-		}
-		for _, frame := range frames {
-			if stream.write(frame) != nil {
+		// A reconnecting viewer gets a new hub whose first snapshot is still in
+		// flight. Wait for it (bounded by the snapshot timeout) instead of
+		// patching the viewer's page with that empty observation.
+		if hub != nil && !obs.Observed && waited < 10 {
+			waited++
+		} else {
+			detail := a.historyDetailModel(r, fresh, obs, available)
+			frames, err := patches.frames(r.Context(), detail)
+			if err != nil {
 				return
+			}
+			for _, frame := range frames {
+				if stream.write(frame) != nil {
+					return
+				}
 			}
 		}
 		select {
@@ -370,11 +378,17 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 // tick. Committed chat entries are append-only, so new entries are appended
 // to #run-messages and existing ones are morphed only when they change, for
 // example when a call's result arrives. Anything else replaces the list.
+//
+// A missing snapshot means the conversation is not observed (the agent is
+// unreachable or a new hub is still loading), never that it is empty, so the
+// transcript and Trace tables the viewer already has are left alone. Once a
+// snapshot arrives the list is morphed in place, keyed by entry, preserving
+// scroll position and open rows.
 type runDetailPatcher struct {
-	started bool
-	parts   map[string]string
-	keys    []string
-	entries map[string]string
+	started, synced bool
+	parts           map[string]string
+	keys            []string
+	entries         map[string]string
 }
 
 func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, error) {
@@ -383,17 +397,21 @@ func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, e
 		err := c.Render(ctx, &out)
 		return out.String(), err
 	}
+	observed := d.Observation.Snapshot != nil
 	type patchRoot struct {
 		id string
 		c  templ.Component
 	}
 	roots := []patchRoot{{"run-detail-status", runDetailStatus(d)}, {"run-detail-controls", runDetailControls(d, d.CSRF)}}
-	if d.Tab == "trace" {
-		roots = append(roots, patchRoot{"run-trace", runTrace(d)})
-	} else {
+	if d.Tab != "trace" {
 		roots = append(roots, patchRoot{"run-live", runLive(d)}, patchRoot{"run-pending", runPending(d)})
+	} else if observed {
+		roots = append(roots, patchRoot{"run-trace", runTrace(d)})
 	}
-	parts := make(map[string]string, len(roots))
+	parts := make(map[string]string, len(roots)+1)
+	if html, ok := p.parts["run-trace"]; ok && !observed {
+		parts["run-trace"] = html
+	}
 	for _, root := range roots {
 		html, err := render(root.c)
 		if err != nil {
@@ -401,9 +419,9 @@ func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, e
 		}
 		parts[root.id] = html
 	}
-	var keys []string
-	entries := make(map[string]string)
-	if d.Tab != "trace" {
+	keys, entries := p.keys, p.entries
+	if d.Tab != "trace" && observed {
+		keys, entries = nil, make(map[string]string)
 		for _, e := range d.chatEntries() {
 			html, err := render(runChatEntry(d, e))
 			if err != nil {
@@ -413,8 +431,9 @@ func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, e
 			entries[e.Message.Key] = html
 		}
 	}
-	defer func() { p.started, p.parts, p.keys, p.entries = true, parts, keys, entries }()
-	if !p.started {
+	synced := p.synced || observed
+	defer func() { p.started, p.synced, p.parts, p.keys, p.entries = true, synced, parts, keys, entries }()
+	if !p.started && observed {
 		full, err := render(templ.Join(runDetailContent(d), runDetailControls(d, d.CSRF)))
 		if err != nil {
 			return nil, err
@@ -423,28 +442,30 @@ func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, e
 	}
 	var morph, appended strings.Builder
 	for _, root := range roots {
-		if parts[root.id] != p.parts[root.id] {
+		if old, sent := p.parts[root.id]; !p.started || !sent || parts[root.id] != old {
 			morph.WriteString(parts[root.id])
 		}
 	}
-	prefix := len(keys) >= len(p.keys)
-	for i := 0; prefix && i < len(p.keys); i++ {
-		prefix = keys[i] == p.keys[i]
-	}
-	if prefix {
-		for i, key := range keys {
-			if i >= len(p.keys) {
-				appended.WriteString(entries[key])
-			} else if entries[key] != p.entries[key] {
-				morph.WriteString(entries[key])
+	if d.Tab != "trace" && observed {
+		prefix := p.synced && len(keys) >= len(p.keys)
+		for i := 0; prefix && i < len(p.keys); i++ {
+			prefix = keys[i] == p.keys[i]
+		}
+		if prefix {
+			for i, key := range keys {
+				if i >= len(p.keys) {
+					appended.WriteString(entries[key])
+				} else if entries[key] != p.entries[key] {
+					morph.WriteString(entries[key])
+				}
 			}
+		} else {
+			html, err := render(runMessages(d))
+			if err != nil {
+				return nil, err
+			}
+			morph.WriteString(html)
 		}
-	} else {
-		html, err := render(runMessages(d))
-		if err != nil {
-			return nil, err
-		}
-		morph.WriteString(html)
 	}
 	var frames []string
 	if appended.Len() > 0 {

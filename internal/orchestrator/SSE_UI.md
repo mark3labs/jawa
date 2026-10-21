@@ -45,7 +45,11 @@ Run details use `/runs/{attemptID}/events?tab=chat|trace`, with stable roots
 `run-detail-content` and `run-detail-controls`. After the first full frame only
 changed roots are sent (`run-detail-status`, `run-detail-controls`, `run-live`,
 `run-pending`, `run-trace`); new chat entries use `mode append` into
-`#run-messages` and changed entries morph by key. Draft, tab links, filter and
+`#run-messages` and changed entries morph by key. A reconnecting stream (for
+example after the tab was hidden) waits, bounded, for its hub's first snapshot
+attempt before patching. A missing snapshot is never rendered as an empty
+conversation: the transcript and Trace tables are left as the viewer has them,
+and the next snapshot morphs the list in place, keeping scroll and open rows. Draft, tab links, filter and
 Trace source toggles are outside those roots. Session validity is rechecked each iteration (one-second
 poll), with 15-second heartbeats and bounded writes. One upstream BONNIE stream
 per agent/run is shared by viewers; each browser reads an immutable copied

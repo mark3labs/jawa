@@ -306,7 +306,7 @@ try {
  await run.getByRole('link', {name:'Open', exact:true}).click();
  await page.locator('#run-detail-content').waitFor();
  await page.getByRole('button', {name:'Send follow-up', exact:true}).waitFor();
- await page.locator('.run-tool').filter({hasText:'completeTask'}).first().waitFor({state:'attached'});
+ await page.locator('.run-tool').filter({hasText:'Reported completion'}).first().waitFor({state:'attached'});
  const toolActivity = page.locator('.run-tool').first();
  await toolActivity.evaluate(el => { for (let parent = el.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true; });
  await toolActivity.locator(':scope > summary').click();

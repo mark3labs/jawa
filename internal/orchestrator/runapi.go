@@ -43,6 +43,9 @@ type runObservation struct {
 	Snapshot               *bonnieclient.Snapshot
 	Durable, Live          []runtime.Event
 	Unreachable, Truncated bool
+	// Observed is set once the hub has made its first snapshot attempt, so a
+	// fresh hub's empty state is not mistaken for an empty conversation.
+	Observed bool
 }
 type runHub struct {
 	mu      sync.Mutex
@@ -200,6 +203,11 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 	a := source.observationIdentity()
 	defer close(h.done)
 	defer func() {
+		h.mu.Lock()
+		h.state.Observed = true
+		h.mu.Unlock()
+	}()
+	defer func() {
 		p.mu.Lock()
 		if p.hubs[runKey(a)] == h {
 			delete(p.hubs, runKey(a))
@@ -221,6 +229,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 		if err == nil {
 			h.mu.Lock()
 			h.state.Snapshot = snap
+			h.state.Observed = true
 			currentTurn = snap.TurnID
 			h.state.Live = nil
 			h.mu.Unlock()
@@ -301,6 +310,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 		}
 		h.mu.Lock()
 		h.state.Unreachable = true
+		h.state.Observed = true
 		h.mu.Unlock()
 		select {
 		case <-ctx.Done():
