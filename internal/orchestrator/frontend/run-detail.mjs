@@ -194,6 +194,9 @@ try {
   await page.emulateMedia({reducedMotion:'reduce'});
   const transcript = page.locator('#run-transcript');
   await expect.poll(()=>transcript.evaluate(el => el.scrollHeight-el.clientHeight-el.scrollTop)).toBeLessThan(32);
+  // A reader can only scroll away once the scroller's own follow has settled;
+  // a programmatic scroll during it is absorbed by the follow.
+  await expect.poll(()=>transcript.evaluate(el => el.hasAttribute('data-autoscrolling'))).toBe(false);
   await transcript.evaluate(el => {el.scrollTop=0; el.dispatchEvent(new Event('scroll'));});
   await page.waitForTimeout(100);
   await page.locator('.run-role-assistant').first().evaluate(el => el.append(document.createTextNode('appended text')));
