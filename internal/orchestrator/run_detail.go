@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
@@ -111,7 +112,7 @@ func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, 
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
-	a.loadChatDetail(&d)
+	a.loadChatDetail(r.Context(), &d)
 	return d
 }
 
@@ -124,7 +125,7 @@ func (a *app) historyDetailModel(r *http.Request, record RunRecord, obs runObser
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
 	}
-	a.loadChatDetail(&d)
+	a.loadChatDetail(r.Context(), &d)
 	return d
 }
 
@@ -184,7 +185,7 @@ func (a *app) runDetailRoute(w http.ResponseWriter, r *http.Request) {
 			a.runChatAction(w, r, attempt)
 			return
 		}
-		a.runDetailAction(w, r, attempt.Build, action)
+		a.runStopAction(w, r, attempt.Build)
 		return
 	}
 	a.ensureCSRF(w, r)
@@ -282,74 +283,31 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 		}
 	}
 }
-func (a *app) runDetailAction(w http.ResponseWriter, r *http.Request, attempt Attempt, action string) {
-	online := a.workflow.apiAvailable(r.Context(), attempt)
-	if !online {
-		a.responseError(w, r, "Agent unavailable. No request sent.", http.StatusConflict)
-		return
-	}
-	release, ok := a.workflow.runAPI.reserveSend(attempt)
-	if !ok {
-		a.responseError(w, r, "Run busy. No request sent.", http.StatusConflict)
-		return
-	}
-	defer release()
-	snap, err := a.workflow.runAPI.snapshot(r.Context(), attempt)
+func (a *app) runStopAction(w http.ResponseWriter, r *http.Request, attempt Attempt) {
+	outcome, err := a.workflow.StopRunTurn(r.Context(), attempt, r.FormValue("turn_id"))
 	if err != nil {
-		a.responseError(w, r, "Cannot read the agent state. No request sent.", http.StatusServiceUnavailable)
+		message, status := "Outcome unknown; this request may have executed or been interrupted. Check the conversation before sending again.", http.StatusServiceUnavailable
+		switch {
+		case errors.Is(err, errStopUnavailable):
+			message, status = "Agent unavailable. No request sent.", http.StatusConflict
+		case errors.Is(err, errStopBusy):
+			message, status = "Run busy. No request sent.", http.StatusConflict
+		case errors.Is(err, errStopSnapshot):
+			message = "Cannot read the agent state. No request sent."
+		case errors.Is(err, errStopIdentityChanged):
+			message, status = "Run identity changed. No request sent.", http.StatusConflict
+		case errors.Is(err, errStopTurnChanged):
+			message, status = "Active turn changed or cannot be stopped. No request sent.", http.StatusConflict
+		case errors.Is(err, errStopTargetChanged):
+			message, status = "Cancellation target changed.", http.StatusConflict
+		case errors.Is(err, errStopAuditFailed):
+			message = "Cannot record cancellation. No request sent."
+		}
+		a.responseError(w, r, message, status)
 		return
 	}
-	fresh, err := a.workflow.attemptByID(attempt.ID)
-	if err != nil || fresh.AgentID != attempt.AgentID || fresh.RunID != attempt.RunID || fresh.RemoteAttemptID != attempt.RemoteAttemptID {
-		a.responseError(w, r, "Run identity changed. No request sent.", http.StatusConflict)
-		return
-	}
-	policy := a.workflow.runPolicy(fresh, snap, true)
+	fresh := outcome.Attempt
 	notice := "Cancellation requested; wait for agent confirmation."
-	turn := r.FormValue("turn_id")
-	if !policy.Stop || turn == "" || turn != snap.TurnID {
-		a.responseError(w, r, "Active turn changed or cannot be stopped. No request sent.", http.StatusConflict)
-		return
-	}
-	activeWorkflow := !fresh.Ready && policy.Mode == "steer"
-	tx, e := a.s.writeTx()
-	if e == nil {
-		class, ce := classifyChat(tx, buildRun(fresh))
-		chat, he := chatContinuation(tx, fresh.TaskID)
-		_ = tx.Rollback()
-		if ce == nil && he == nil && (class == "followup" || chat) {
-			activeWorkflow = false
-		}
-	}
-	if activeWorkflow {
-		if err = a.workflow.checkCancelLatest(fresh); err != nil {
-			a.responseError(w, r, "Cancellation target changed.", http.StatusConflict)
-			return
-		}
-		if err = a.workflow.cancelAudit(fresh, turn, "pending", ""); err != nil {
-			a.responseError(w, r, "Cannot record cancellation. No request sent.", http.StatusServiceUnavailable)
-			return
-		}
-	}
-	result, callErr := a.workflow.runAPI.cancelTurn(r.Context(), fresh, turn)
-	err = callErr
-	if err == nil && (result.RunID != fresh.RunID || result.TurnID != turn || result.Status != runtime.CancelRequested) {
-		err = errors.New("cancellation not confirmed")
-	}
-	if activeWorkflow {
-		status := "requested"
-		if err != nil {
-			status = "uncertain"
-		}
-		auditErr := a.workflow.cancelAudit(fresh, turn, status, "")
-		if err == nil {
-			err = auditErr
-		}
-	}
-	if err != nil {
-		a.responseError(w, r, "Outcome unknown; this request may have executed or been interrupted. Check the conversation before sending again.", http.StatusServiceUnavailable)
-		return
-	}
 	if !datastarRequest(r) {
 		http.Redirect(w, r, detailPath(fresh, detailTab(r)), http.StatusSeeOther)
 		return
@@ -377,7 +335,7 @@ func validRunDestination(id string) bool {
 	return true
 }
 
-func (a *app) loadChatDetail(d *runDetail) {
+func (a *app) loadChatDetail(ctx context.Context, d *runDetail) {
 	d.MessageID = uuid.NewString()
 	d.Chat = a.workflow.chatMessages(d.Record)
 	for i := range d.Chat {
@@ -393,7 +351,7 @@ func (a *app) loadChatDetail(d *runDetail) {
 			}
 		}
 	}
-	tx, err := a.s.writeTx()
+	tx, err := a.s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return
 	}
@@ -430,29 +388,18 @@ func (a *app) runChatAction(w http.ResponseWriter, r *http.Request, record RunRe
 // Reconciliation fences the original command; it never replays uncertain work
 // or creates another command. New text is a separate explicit submission.
 func (a *app) reconcileRunChatAction(w http.ResponseWriter, r *http.Request, record RunRecord) {
-	m, err := scanChat(a.s.db.QueryRow(`SELECT `+chatColumns+` FROM run_chat WHERE id=? AND mode=? AND local_id=? AND status='ambiguous'`, r.FormValue("chat_id"), record.Mode, record.ID))
+	err := a.workflow.ReconcileRunChat(r.Context(), record, r.FormValue("chat_id"))
 	if err != nil {
-		a.responseError(w, r, "Message changed; reload before reconciling.", http.StatusConflict)
-		return
-	}
-	var cmd reportprotocol.Chat
-	if json.Unmarshal([]byte(m.Request), &cmd) != nil {
-		a.responseError(w, r, "Command unavailable.", http.StatusConflict)
-		return
-	}
-	cmd.Reconcile = true
-	cmd.Token = runapitoken.Sign(a.workflow.runAPI.key, cmd.Target.AgentID, time.Now())
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	receipt, err := reportprotocol.SendChat(ctx, a.workflow.runAPI.conn, cmd)
-	if err != nil || receipt.Status != "failed" || receipt.Failure != "reconciled_not_replayed" {
-		a.responseError(w, r, "Owner has not confirmed safe reconciliation; no new execution started.", http.StatusConflict)
-		return
-	}
-	raw, _ := json.Marshal(receipt)
-	_, err = a.s.db.Exec(`UPDATE run_chat SET status='failed',failure=?,receipt_json=?,updated_at=? WHERE id=? AND status='ambiguous'`, receipt.Failure, string(raw), time.Now().UnixMilli(), m.ID)
-	if err != nil {
-		a.responseError(w, r, "Unable to save reconciliation; retry the same action.", http.StatusServiceUnavailable)
+		message, status := "Unable to save reconciliation; retry the same action.", http.StatusServiceUnavailable
+		switch {
+		case errors.Is(err, ErrRunChatChanged):
+			message, status = "Message changed; reload before reconciling.", http.StatusConflict
+		case errors.Is(err, errChatCommandUnavailable):
+			message, status = "Command unavailable.", http.StatusConflict
+		case errors.Is(err, errChatReconcileUnconfirmed):
+			message, status = "Owner has not confirmed safe reconciliation; no new execution started.", http.StatusConflict
+		}
+		a.responseError(w, r, message, status)
 		return
 	}
 	http.Redirect(w, r, record.path("chat"), http.StatusSeeOther)

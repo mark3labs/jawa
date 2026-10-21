@@ -1,20 +1,16 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/json"
 	"errors"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/client/natsapi"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
-	"io"
 	"jawa/internal/runapitoken"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 )
@@ -84,35 +80,6 @@ func (p *runAPI) snapshot(ctx context.Context, source runObserver) (*bonnieclien
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	return c.Snapshot(ctx, a.RunID)
-}
-func (p *runAPI) send(ctx context.Context, a Attempt, text, policy string) error {
-	_, hc, close, err := p.client(a.AgentID)
-	if err != nil {
-		return err
-	}
-	defer close()
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-	defer cancel()
-	body, _ := json.Marshal(map[string]string{"text": text, "turn_policy": policy})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://jawa-agent/bonnie/v1/runs/"+url.PathEscape(a.RunID), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := hc.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	// Drain boundedly, including errors, without disclosing remote bodies.
-	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("agent did not confirm message")
-	}
-	return nil
 }
 func (p *runAPI) cancelTurn(ctx context.Context, a Attempt, turn string) (runtime.CancelResult, error) {
 	c, _, close, err := p.client(a.AgentID)

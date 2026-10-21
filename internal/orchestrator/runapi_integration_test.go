@@ -1,16 +1,20 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"github.com/mark3labs/bonnie/channel"
 	bonniehttp "github.com/mark3labs/bonnie/channel/http"
 	api "github.com/mark3labs/bonnie/channel/natsapi"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
+	"io"
 	"jawa/internal/runapitoken"
 	"jawa/internal/testmodel"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -76,8 +80,30 @@ func TestRunAPIRealSnapshotSharedReplayAndFollowup(t *testing.T) {
 	}
 	defer release2()
 	waitWorkflow(t, func() bool { v := h.read(); return !v.Unreachable && len(v.Durable) > 0 })
-	if err = pool.send(t.Context(), a, "follow-up", "queue"); err != nil {
+	// Probe BONNIE's HTTP follow-up route directly; production uses durable Chat.
+	_, hc, closeTransport, err := pool.client(a.AgentID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	defer closeTransport()
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+	defer cancel()
+	body, _ := json.Marshal(map[string]string{"text": "follow-up", "turn_policy": "queue"})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://jawa-agent/bonnie/v1/runs/"+url.PathEscape(a.RunID), bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("follow-up status", resp.StatusCode)
 	}
 	waitWorkflow(t, func() bool { v := h.read(); return v.Snapshot != nil && v.Snapshot.Response == "follow-up response" })
 	seen := map[int]bool{}
