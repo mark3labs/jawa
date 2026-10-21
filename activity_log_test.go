@@ -11,6 +11,7 @@ import (
 	kit "github.com/mark3labs/kit/pkg/kit"
 )
 
+// TestRedactedActivity verifies metadata, severity and redaction at Debug level.
 func TestRedactedActivity(t *testing.T) {
 	const secret = "SECRET-sentinel"
 	for _, tc := range []struct {
@@ -64,6 +65,7 @@ func TestRedactedActivity(t *testing.T) {
 	}
 }
 
+// TestRedactedActivityConcurrent exercises concurrent writes under the race detector.
 func TestRedactedActivityConcurrent(t *testing.T) {
 	var output bytes.Buffer
 	logger := newRedactedActivity(&output)

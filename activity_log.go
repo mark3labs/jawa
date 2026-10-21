@@ -16,10 +16,12 @@ type redactedActivity struct{ logger *log.Logger }
 
 var _ runtime.ActivityLogger = redactedActivity{}
 
+// newRedactedActivity creates a timestamped, metadata-only activity logger.
 func newRedactedActivity(w io.Writer) redactedActivity {
 	return redactedActivity{logger: log.NewWithOptions(w, log.Options{ReportTimestamp: true})}
 }
 
+// LogActivity writes event metadata without logging text or changing shared data.
 func (l redactedActivity) LogActivity(ev runtime.Event) {
 	fields := []any{"run_id", ev.RunID, "turn_id", ev.TurnID, "seq", ev.Seq}
 	level := log.DebugLevel
