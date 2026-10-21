@@ -30,7 +30,7 @@ component and cancels its request, so no response frames may follow it. Late
 responses cannot remove another opening. Failed submissions preserve drafts.
 
 Datastar owns signals and transport; shadcn-templ owns Dialog, DropdownMenu,
-Select, Checkbox, Switch, CopyButton and MessageScroller behavior. Component
+Select, Checkbox, Switch, CopyButton, Toggle and MessageScroller behavior. Component
 fragments use replace mode; selects inside live morph roots have option-keyed
 IDs. Never morph a mounted declaration when its options change.
 
@@ -42,8 +42,11 @@ Relative timestamps share one 15-second clock signal; shortcuts read shell
 signals. Submit indicators disable buttons only, never named inputs.
 
 Run details use `/runs/{attemptID}/events?tab=chat|trace`, with stable roots
-`run-detail-content` and `run-detail-controls`. Draft, tab links and filter are
-outside those roots. Session validity is rechecked each iteration (one-second
+`run-detail-content` and `run-detail-controls`. After the first full frame only
+changed roots are sent (`run-detail-status`, `run-detail-controls`, `run-live`,
+`run-pending`, `run-trace`); new chat entries use `mode append` into
+`#run-messages` and changed entries morph by key. Draft, tab links, filter and
+Trace source toggles are outside those roots. Session validity is rechecked each iteration (one-second
 poll), with 15-second heartbeats and bounded writes. One upstream BONNIE stream
 per agent/run is shared by viewers; each browser reads an immutable copied
 observation without blocking upstream. Initial replay starts at zero for bounded
@@ -112,7 +115,7 @@ support targeted delivery. No provider permissions or model configuration change
 
 Run detail silently omits empty sources/optional fields. Trace tables use API-only
 snapshot/durable/live data, not local deliveries or inferred journal history.
-Chat payload disclosures preserve open state. The textarea uses field-sizing
+Chat tool disclosures preserve open state. The textarea uses field-sizing
 and signal-driven Ctrl+Enter eligibility and pending lock. MessageScroller follows
 appended messages only at the bottom. A matching server confirmation clears the
 draft; newer and uncertain drafts survive.

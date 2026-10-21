@@ -65,28 +65,49 @@ try {
         assert.equal(await page.locator('details[open]:visible').count(),0,'Payloads should start collapsed');
         await expect(page.getByRole('link',{name:tab === 'chat' ? 'Chat' : 'Trace',exact:true})).toHaveAttribute('aria-current','page');
         assert.equal(await page.locator('#run-composer').count(),tab==='chat' ? 1 : 0);
-        for (const control of await page.locator('.run-detail-view .cn-button, .run-detail-view input[type=search], .run-detail-view > .run-history summary').all()) {
-          if (!await control.isVisible()) continue;
+        for (const control of await page.locator('.run-detail-view .cn-button, .run-detail-view .cn-toggle, .run-detail-view input[type=search], .run-detail-view > .run-history summary').all()) {
+          // Inert controls, like the hidden scroll-to-end button, take no input.
+          if (!await control.isVisible() || await control.evaluate(el => !!el.closest('[inert]'))) continue;
           const box = await control.boundingBox();
           assert.ok(box.height >= 44 && box.width >= 44, `Target too small: ${box.width}x${box.height}`);
         }
         if (tab === 'chat') {
           await expect(page.locator('.run-role-user').first()).toContainText('Implement a readable');
           await expect(page.locator('#chat-delivery-pending-message')).toContainText('Queued offline message');
-          await expect(page.locator('#chat-delivery-pending-message .cn-badge')).toHaveCount(0);
+          await expect(page.locator('#chat-delivery-pending-message .cn-badge')).toHaveText('Queued');
+          await expect(page.locator('#chat-delivery-failed-message .cn-badge')).toHaveText('Failed');
           await expect(page.locator('#chat-delivery-pending-message')).not.toContainText('followup');
           await expect(page.locator('.run-role-assistant').first()).toContainText('Investigation');
-          assert.ok(await page.getByText('Message content',{exact:true}).count() > 0);
+          assert.equal(await page.getByText('Message content',{exact:true}).count(), 0, 'Raw payloads belong in Trace');
+          // Calls and results share one row; failures are marked on the row.
+          await expect(page.locator('.run-tool')).toHaveCount(2);
+          await expect(page.locator('.run-tool-error')).toHaveCount(2);
+          await expect(page.locator('.run-tool').first().locator(':scope > summary')).toContainText('go test ./...');
+          await expect(page.locator('.run-tool').first().locator(':scope > summary .cn-badge')).toHaveText('exit 1');
+          await expect(page.locator('.planning-markdown [data-templ-copy-button]').first()).toBeVisible();
         } else {
           await page.getByLabel('Filter activity').fill('collapsed-needle');
 
           await expect(page.locator('[data-trace-entry]:visible')).toHaveCount(1);
           await page.getByLabel('Filter activity').fill('First equal-sequence');
           await expect(page.locator('[data-trace-entry]:visible')).toHaveCount(1);
+          // Turn separators stay with their matching entries.
+          await expect(page.locator('[data-trace-turn-header]:visible')).toHaveCount(1);
+          await page.getByRole('button',{name:'Live',exact:true}).click();
+          await expect(page.getByRole('button',{name:'Live',exact:true})).toHaveAttribute('aria-pressed','false');
+          await expect(page.locator('[data-trace-entry]:visible')).toHaveCount(0);
+          await expect(page.locator('[data-trace-turn-header]:visible')).toHaveCount(0);
+          await page.getByRole('button',{name:'Live',exact:true}).click();
           await page.getByLabel('Filter activity').fill('no-match-fixture');
           await expect(page.locator('[data-trace-entry]:visible')).toHaveCount(0);
+          await expect(page.locator('.run-trace-source:visible')).toHaveCount(0);
           assert.equal(await page.locator('#trace-no-matches').count(),0);
           await page.getByLabel('Filter activity').fill('');
+          await page.getByRole('button',{name:'Snapshot',exact:true}).click();
+          await expect(page.locator('#run-trace-snapshot')).toBeHidden();
+          await expect(page.locator('#run-trace-events')).toBeVisible();
+          await page.getByRole('button',{name:'Snapshot',exact:true}).click();
+          await expect(page.locator('#run-trace-snapshot')).toBeVisible();
 
         }
         // Send a real Datastar element patch from a controlled stream. The patch
@@ -108,6 +129,12 @@ try {
         for (const stream of streams) stream.write(`event: datastar-patch-elements\ndata: elements ${patch.replaceAll("\n", "\ndata: elements ")}\n\n`);
         await expect(page.locator('#run-detail-content')).toContainText('Fixture live update received');
         assert.ok(await page.locator(`[id="${id}"]`).evaluate(el=>el.open),'Disclosure reset during morph');
+        if (tab === 'chat') {
+          // The stream appends new committed entries without re-sending the transcript.
+          for (const stream of streams) stream.write(`event: datastar-patch-elements\ndata: mode append\ndata: selector #run-messages\ndata: elements <div id="appended-entry-${width}-${offline}" class="run-chat-entry">Appended committed entry</div>\n\n`);
+          await expect(page.locator(`#run-messages > #appended-entry-${width}-${offline}`)).toHaveText('Appended committed entry');
+          assert.ok(await page.locator(`[id="${id}"]`).evaluate(el=>el.open),'Disclosure reset during append');
+        }
         assert.ok(await input.evaluate(el=>document.activeElement===el),'Focus moved during morph');
         await expect(input).toHaveValue(tab==='chat' ? 'preserved draft' : 'Implement');
         if (process.env.JAWA_RUN_DETAIL_SCREENSHOTS && [390,1440].includes(width)) {
@@ -184,7 +211,7 @@ try {
   // navigable in normal document flow rather than clipping the composer.
   await page.setViewportSize({width:390,height:500});
   await page.locator('.run-tool').first().evaluate(el => el.open = true);
-  await page.locator('.run-message-payload').first().evaluate(el => el.open = true);
+  await page.locator('.run-tool-section').first().evaluate(el => el.open = true);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+1));
   await send.scrollIntoViewIfNeeded();
   await expect(send).toBeVisible();

@@ -714,19 +714,24 @@ need not revoke existing streams. The agent watches changes and rechecks the key
 with bounded reads, failing closed on deletion, malformed keys or outages.
 
 Chat uses Bonnie’s ordered message/tool hierarchy in Jawa’s theme: wrapping user
-prose, sanitized assistant Markdown, individually collapsed tool rows, and closed
-**Message content** / result **Raw payload** disclosures. JSON is formatted and
-escaped; stdout, stderr and metadata stay separate. The focusable transcript
-scrolls independently and follows new messages only while at the bottom. The
+prose, sanitized assistant Markdown and collapsed tool rows. Each tool call and
+its result share one row summarizing the command, path or pattern and the result;
+failures and nonzero exit codes are marked, edit diffs are colored, and code and
+output have copy buttons. Raw JSON stays in Trace. While the agent works, its
+streamed text and running tools appear provisionally until the turn commits, and
+queued, failed or uncertain messages show their delivery status inline. The
+transcript fills the window above the composer, scrolls independently, follows
+new messages only while at the bottom and offers a scroll-to-end button. The
 compact composer grows with input; plain Enter inserts a newline and Ctrl+Enter
 submits through native validation. Drafts remain editable while sending; only a
 durable acceptance clears an unchanged submitted draft; this is not delivery confirmation.
 
-Trace contains separate API-backed tables for snapshot messages, durable events
-and live events, omitting empty sources and columns. Search includes collapsed
-payloads without server requests. Missing fields and empty results stay silent;
-there are no missing-history or offline banners. Native links and disclosures
-work without JavaScript. Local workflow deliveries/outcomes are not shown here.
+Trace contains an API-backed conversation snapshot table and one events table
+merging durable and live events by sequence, omitting empty sources and columns.
+Search includes collapsed payloads without server requests, and source toggles
+hide snapshot, durable or live rows. Missing fields and empty results stay
+silent; there are no missing-history or offline banners. Native links and
+disclosures work without JavaScript. Local workflow deliveries/outcomes are not shown here.
 
 Every retained pinned Planning, Build and Fix run accepts chat, including offline,
 failed, cancelled and historical runs. **Message queued** means the local SQLite

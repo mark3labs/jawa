@@ -200,9 +200,13 @@ no-store, setup guards and CSRF apply; unauthenticated detail streams are 401.
 the displayed `turn_id`. Browser fields never select agent subject/run identity.
 Enhanced actions disable retry and return finite notices; native actions redirect.
 
-`run-detail-content` morphs status and history, `run-detail-controls` morphs
-eligibility and exact-turn Stop. Tabs, Trace filter and composer/draft stay
-outside both roots. Only durable message acceptance clears `runDraft` when it still equals the submitted
+`run-detail-content` holds status and history, `run-detail-controls` holds
+eligibility and exact-turn Stop. The stream sends both in full on its first tick,
+then only roots that changed: `run-detail-status`, `run-detail-controls`, and
+`run-live`/`run-pending` (Chat) or `run-trace` (Trace). New committed chat entries
+are appended to `#run-messages`; a changed entry (a call whose result arrived) is
+morphed by its key; any other transcript change replaces `#run-messages`.
+Tabs, Trace filter/source toggles and composer/draft stay outside all roots. Only durable message acceptance clears `runDraft` when it still equals the submitted
 text; newer drafts and uncertain mutations survive. Externally associated Send
 controls stay disabled while pending without overriding server policy. Assistant Markdown uses the existing sanitizer; other
 content is escaped and no remote media is loaded. BONNIE display adaptation
@@ -214,24 +218,46 @@ Chromium desktop/mobile screenshots under ignored node_modules/.factory-smoke.
 See README Run detail for reduced trace fidelity, bounds and the explicitly
 accepted trusted-worker JetStream delivery-proxy limitation.
 
-Chat adapts Bonnie’s ordered messages, individual tool disclosures and compact
-role markers within Jawa’s theme. Chat includes closed Message content and result
-Raw payload disclosures; nested tool sections start open within closed tool rows.
-All payloads are escaped (JSON syntax spans use fixed classes), and Markdown keeps
-the stricter no-remote-media sanitizer. The growing composer uses Ctrl+Enter and
-native validation, ignores IME submission and leaves plain Enter as a newline.
-The focusable transcript follows only at bottom and preserves scrolled-up readers.
+Chat adapts Bonnie’s ordered messages and compact role markers within Jawa’s
+theme. A tool call and its result, paired by tool call ID, share one collapsed
+row: the summary names what the call acts on (command, path, pattern) and the
+result's status and short output. Error results and nonzero exit codes mark the
+row and show a destructive badge; stderr marks it as a warning. Unified diffs in
+edit output are colored per line. Nested sections start open within closed rows
+and have copy buttons that copy from their own code element; assistant code
+blocks get the same button. Raw message/result JSON is in Trace only; unsupported
+parts show a pointer to Trace. User messages after the first start an exchange,
+labelled with the acceptance time when a delivery receipt places the message.
+All payloads are escaped (JSON and diff spans use fixed classes), and Markdown keeps
+the stricter no-remote-media sanitizer; copy buttons are added after sanitizing.
+
+While a turn runs, `run-live` shows the uncommitted tail of the current turn
+from live events: streamed text (prefixed with an ellipsis when the bounded live
+buffer dropped earlier events), tool executions with running/done/error state,
+and a working indicator. The next committed snapshot replaces it. Delivery
+records not yet in the transcript, failed or uncertain render at the transcript
+end with a status badge (Queued, Sending, Delivered, Failed, Uncertain), and
+uncertain ones carry their own reconcile form. Internal classifications are not shown.
+
+The chat view is a viewport-tall column: the transcript fills the space left by
+the page chrome (at least 16rem) and the composer sits directly below it. The
+growing composer uses Ctrl+Enter and native validation, ignores IME submission
+and leaves plain Enter as a newline. The focusable transcript follows only at
+bottom, preserves scrolled-up readers and offers a scroll-to-end button.
 Component runtimes own lifecycle cleanup.
 
-Trace uses separate snapshot (Role/Summary), durable and live event tables. Event
-columns are Sequence, Time (UTC), Kind, Role, State and Summary, omitting columns
-with no values in that source. No roles are inferred. Only supplied nonempty turn
-IDs get separator rows; source order and equal-sequence live events are preserved.
+Trace has a Conversation snapshot table (Role/Summary) and one Events table that
+merges durable and live events by sequence (durable first at equal sequence,
+live arrival order kept). Event columns are Source, Sequence, Time (UTC), Kind,
+State and Summary, omitting optional columns with no values. No roles are
+inferred. Only supplied nonempty turn IDs get separator rows, which stay visible
+while any of their entries match. Snapshot/Durable/Live toggles hide sources.
 No local workflow deliveries or outcomes are rendered. Empty sources, missing
 metadata and no-match filters have no explanatory placeholders or banners.
 Every disclosure has a deterministic content/occurrence display ID and preserves
-`open` during morphs. Snapshot keys are not journal IDs. Filtering includes full
-collapsed raw content. Draft/filter/tab elements stay outside both patch roots.
+`open` during morphs. Snapshot keys are not journal IDs. Filtering reads each
+entry's own text, including collapsed raw content, so no searchable copy of the
+payloads is rendered. Draft/filter/tab elements stay outside the patch roots.
 
 Export real deterministic Chat/Trace and stale offline fixtures, then check them:
 

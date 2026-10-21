@@ -736,9 +736,18 @@ details pre { margin-top: 10px; }
 .run-detail-view details[open] > summary { color: var(--text); }
 .run-history { min-width: 0; margin-block: .75rem; }
 .run-detail-chat .run-history, .run-composer-surface { max-width: 60rem; width: 100%; margin-inline: auto; }
-.run-observed-state { margin-bottom: .5rem; }
-.run-chat-transcript { min-width: 0; overflow-y: auto; overflow-x: hidden; height: clamp(12rem, 48dvh, 42rem); padding: .5rem 1rem; overflow-anchor: none; }
+.run-detail-status { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.run-detail-status:empty { display: none; }
+/* Chat is a viewport-tall column: the transcript takes the space the page
+   chrome leaves, so the composer sits directly below it without covering it. */
+.run-detail-chat { display: flex; flex-direction: column; min-height: calc(100dvh - 124px); }
+.run-detail-chat > * { flex: none; }
+.run-detail-chat > .run-history { flex: 1 1 0; min-height: 18rem; display: flex; flex-direction: column; }
+.run-detail-chat #run-message-scroller { position: relative; flex: 1 1 0; min-height: 16rem; }
+.run-chat-transcript { min-width: 0; overflow-y: auto; overflow-x: hidden; padding: .5rem 1rem; overflow-anchor: none; }
+.run-detail-chat .run-chat-transcript { height: auto; flex: 1 1 0; }
 .run-chat-message { min-width: 0; margin-bottom: 1.5rem; }
+.run-exchange { margin-block: .5rem 1rem; color: var(--text-3); font-size: .75rem; }
 .run-message-role { display: block; font-size: .75rem; color: var(--text-3); margin-bottom: .5rem; }
 .run-role-user { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .75rem 1rem; }
 .run-role-user .run-message-role::before { content: '> '; color: var(--amber); }
@@ -749,14 +758,37 @@ details pre { margin-top: 10px; }
 .run-detail-view .planning-markdown table { display: block; max-width: 100%; overflow-x: auto; }
 .run-detail-view .planning-markdown code:not(pre code) { overflow-wrap: anywhere; white-space: pre-wrap; }
 .run-tool { border-left: 2px solid var(--line-strong); padding-left: .75rem; min-width: 0; }
+.run-tool > summary { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
+.run-tool > summary strong { color: var(--text-2); }
+.run-tool-summary { font-family: var(--mono); color: var(--text-2); overflow-wrap: anywhere; min-width: 0; }
+.run-tool-error { border-left-color: var(--red); }
+.run-tool-warning { border-left-color: var(--rust); }
 .run-tool-section { margin-left: .5rem; }
-.run-message-payload > summary { font-size: .75rem; }
+.run-code { position: relative; min-width: 0; }
+.run-code > [data-templ-copy-button] { position: absolute; top: .25rem; right: .25rem; z-index: 1; }
+.run-detail-view .run-code > pre { padding-right: 3.25rem; }
+.run-diff .diff-add, .run-diff .diff-del, .run-diff .diff-hunk, .run-diff .diff-file { display: inline-block; min-width: 100%; }
+.run-diff .diff-add { background: var(--sage-dim); color: var(--sage); }
+.run-diff .diff-del { background: var(--red-dim); color: var(--red); }
+.run-diff .diff-hunk { color: var(--amber); }
+.run-diff .diff-file { color: var(--text-3); }
+.run-live-message { border-left: 2px dashed var(--line-strong); padding-left: .75rem; }
+.run-live-tool { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; font-size: .8rem; min-height: 2rem; }
+.run-live-tool .meta { font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; }
+.run-live-error { color: var(--red); }
+.run-working { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; font-size: .8rem; }
+.run-delivery-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.run-delivery-header .run-message-role { margin-bottom: 0; }
+.run-delivery form { margin-top: .5rem; }
+#run-scroll-end { bottom: 1rem; }
 .run-composer-surface { padding: .75rem; gap: .25rem; }
 .run-composer-surface textarea { width: 100%; background: var(--bg); line-height: 1.5; min-height: 44px; max-height: 200px; resize: none; field-sizing: content; }
 .run-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .5rem; }
 .run-controls .meta { margin-right: auto; font-size: .75rem; }
 .run-trace-search { margin-top: .75rem; max-width: 40rem; display: grid; gap: .5rem; }
 .run-trace-search input { min-height: 44px; }
+.run-trace-sources { display: flex; flex-wrap: wrap; gap: .5rem; }
+.run-detail-view .cn-toggle { min-height: 44px; min-width: 44px; padding-inline: .75rem; }
 .run-trace-inspector { display: grid; gap: 1.5rem; min-width: 0; }
 .run-trace-source { min-width: 0; }
 .run-trace-source h2 { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; }
@@ -771,6 +803,9 @@ details pre { margin-top: 10px; }
 .run-detail-view .syntax-key { color: var(--amber); }
 .run-detail-view .syntax-string { color: var(--sage); }
 .run-detail-view .syntax-number, .run-detail-view .syntax-literal { color: var(--text-2); }
+@media (max-width: 860px) {
+ .run-detail-chat { min-height: calc(100dvh - 104px); }
+}
 @media (max-width: 600px) {
  .run-detail-metadata { gap: .25rem .75rem; }
  .run-chat-transcript { padding-inline: .25rem; }

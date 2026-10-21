@@ -176,6 +176,10 @@ func durableEvent(t string) bool {
 	}
 	return false
 }
+
+// maxRunEvents bounds each observed event source.
+const maxRunEvents = 256
+
 func boundedEvents(events []runtime.Event, ev runtime.Event) ([]runtime.Event, bool) {
 	// Bound both number and individual payload size.
 	omitted := len(ev.Text) > 64<<10 || len(ev.Data) > 64<<10
@@ -187,8 +191,8 @@ func boundedEvents(events []runtime.Event, ev runtime.Event) ([]runtime.Event, b
 		ev.Text = ev.Text[:64<<10]
 	}
 	events = append(events, ev)
-	if len(events) > 256 {
-		return events[len(events)-256:], true
+	if len(events) > maxRunEvents {
+		return events[len(events)-maxRunEvents:], true
 	}
 	return events, omitted
 }

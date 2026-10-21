@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/a-h/templ"
+	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/google/uuid"
 	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/runtime"
@@ -54,7 +56,72 @@ type runDetail struct {
 	Interaction string
 	MessageID   string
 	Policy      runPolicy
+	// CSRF is the viewer's token for forms rendered inside patch roots.
+	CSRF string
+	// SentAt holds acceptance times of chat messages that a delivery receipt
+	// places in the snapshot, by message index.
+	SentAt map[int]time.Time
 }
+
+func (d runDetail) sentLabel(i int) string {
+	if t, ok := d.SentAt[i]; ok {
+		return "Sent " + runTime(t)
+	}
+	return ""
+}
+
+// firstChatIndex is the index of the first message Chat renders.
+func (d runDetail) firstChatIndex() int {
+	for i, m := range d.Messages {
+		if m.chatVisible() {
+			return i
+		}
+	}
+	return len(d.Messages)
+}
+
+func (t *runTool) result() *runTool {
+	if t.Kind == "result" {
+		return t
+	}
+	return t.Result
+}
+
+func deliveryLabel(status string) string {
+	switch status {
+	case "queued":
+		return "Queued"
+	case "dispatched":
+		return "Sending"
+	case "active", "completed":
+		return "Delivered"
+	case "failed":
+		return "Failed"
+	case "ambiguous":
+		return "Uncertain"
+	}
+	return runRole(status)
+}
+func deliveryVariant(status string) badge.Variant {
+	switch status {
+	case "failed":
+		return badge.VariantDestructive
+	case "ambiguous":
+		return badge.VariantOutline
+	case "active", "completed":
+		return badge.VariantDefault
+	}
+	return badge.VariantSecondary
+}
+
+func traceRowAttrs(row runTraceRow) templ.Attributes {
+	attrs := templ.Attributes{"data-trace-entry": true, "data-trace-source": row.Source, "data-show": traceRowExpr(row.Source)}
+	if row.Turn != "" {
+		attrs["data-trace-turn"] = traceTurnKey(row.Turn)
+	}
+	return attrs
+}
+
 type runPolicy struct {
 	Send, Stop         bool
 	Turn, Mode, Reason string
@@ -107,7 +174,7 @@ func (w *Workflow) runPolicy(a Attempt, snap *bonnieclient.Snapshot, online bool
 	return p
 }
 func (a *app) detailModel(r *http.Request, attempt Attempt, obs runObservation, online bool) runDetail {
-	d := runDetail{Record: buildRun(attempt), Tab: detailTab(r), Observation: obs}
+	d := runDetail{Record: buildRun(attempt), Tab: detailTab(r), Observation: obs, CSRF: CSRFToken(r)}
 	d.Policy = a.workflow.runPolicy(attempt, obs.Snapshot, online && !obs.Unreachable)
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
@@ -120,7 +187,7 @@ func (a *app) historyDetailModel(r *http.Request, record RunRecord, obs runObser
 	if record.Mode != "Planning" {
 		return a.detailModel(r, record.Build, obs, online)
 	}
-	d := runDetail{Record: record, Tab: detailTab(r), Observation: obs,
+	d := runDetail{Record: record, Tab: detailTab(r), Observation: obs, CSRF: CSRFToken(r),
 		Policy: runPolicy{Send: true, Mode: "steer", Reason: "Messages are saved before delivery. Specification approval still requires the card action."}}
 	if obs.Snapshot != nil {
 		d.Messages = projectRunMessages(obs.Snapshot.Messages)
@@ -228,7 +295,7 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 	defer poll.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
-	previous := ""
+	var patches runDetailPatcher
 	for {
 		if !a.authed(r) {
 			return
@@ -260,15 +327,14 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 			}
 		}
 		detail := a.historyDetailModel(r, fresh, obs, available)
-		var out bytes.Buffer
-		if runDetailContent(detail).Render(r.Context(), &out) != nil || runDetailControls(detail, CSRFToken(r)).Render(r.Context(), &out) != nil {
+		frames, err := patches.frames(r.Context(), detail)
+		if err != nil {
 			return
 		}
-		if out.String() != previous {
-			if stream.write(elementsFrame(out.String())) != nil {
+		for _, frame := range frames {
+			if stream.write(frame) != nil {
 				return
 			}
-			previous = out.String()
 		}
 		select {
 		case <-r.Context().Done():
@@ -283,6 +349,101 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 		}
 	}
 }
+
+// runDetailPatcher sends only the patch roots that changed since the previous
+// tick. Committed chat entries are append-only, so new entries are appended
+// to #run-messages and existing ones are morphed only when they change, for
+// example when a call's result arrives. Anything else replaces the list.
+type runDetailPatcher struct {
+	started bool
+	parts   map[string]string
+	keys    []string
+	entries map[string]string
+}
+
+func (p *runDetailPatcher) frames(ctx context.Context, d runDetail) ([]string, error) {
+	render := func(c templ.Component) (string, error) {
+		var out bytes.Buffer
+		err := c.Render(ctx, &out)
+		return out.String(), err
+	}
+	type patchRoot struct {
+		id string
+		c  templ.Component
+	}
+	roots := []patchRoot{{"run-detail-status", runDetailStatus(d)}, {"run-detail-controls", runDetailControls(d, d.CSRF)}}
+	if d.Tab == "trace" {
+		roots = append(roots, patchRoot{"run-trace", runTrace(d)})
+	} else {
+		roots = append(roots, patchRoot{"run-live", runLive(d)}, patchRoot{"run-pending", runPending(d)})
+	}
+	parts := make(map[string]string, len(roots))
+	for _, root := range roots {
+		html, err := render(root.c)
+		if err != nil {
+			return nil, err
+		}
+		parts[root.id] = html
+	}
+	var keys []string
+	entries := make(map[string]string)
+	if d.Tab != "trace" {
+		first := d.firstChatIndex()
+		for i, m := range d.Messages {
+			if !m.chatVisible() {
+				continue
+			}
+			html, err := render(runChatEntry(d, i, m, i > first))
+			if err != nil {
+				return nil, err
+			}
+			keys = append(keys, m.Key)
+			entries[m.Key] = html
+		}
+	}
+	defer func() { p.started, p.parts, p.keys, p.entries = true, parts, keys, entries }()
+	if !p.started {
+		full, err := render(templ.Join(runDetailContent(d), runDetailControls(d, d.CSRF)))
+		if err != nil {
+			return nil, err
+		}
+		return []string{elementsFrame(full)}, nil
+	}
+	var morph, appended strings.Builder
+	for _, root := range roots {
+		if parts[root.id] != p.parts[root.id] {
+			morph.WriteString(parts[root.id])
+		}
+	}
+	prefix := len(keys) >= len(p.keys)
+	for i := 0; prefix && i < len(p.keys); i++ {
+		prefix = keys[i] == p.keys[i]
+	}
+	if prefix {
+		for i, key := range keys {
+			if i >= len(p.keys) {
+				appended.WriteString(entries[key])
+			} else if entries[key] != p.entries[key] {
+				morph.WriteString(entries[key])
+			}
+		}
+	} else {
+		html, err := render(runMessages(d))
+		if err != nil {
+			return nil, err
+		}
+		morph.WriteString(html)
+	}
+	var frames []string
+	if appended.Len() > 0 {
+		frames = append(frames, elementsFrameMode("append", "#run-messages", appended.String()))
+	}
+	if morph.Len() > 0 {
+		frames = append(frames, elementsFrame(morph.String()))
+	}
+	return frames, nil
+}
+
 func (a *app) runStopAction(w http.ResponseWriter, r *http.Request, attempt Attempt) {
 	outcome, err := a.workflow.StopRunTurn(r.Context(), attempt, r.FormValue("turn_id"))
 	if err != nil {
@@ -346,6 +507,10 @@ func (a *app) loadChatDetail(ctx context.Context, d *runDetail) {
 				for _, part := range d.Messages[index].Parts {
 					if part.Text == d.Chat[i].Text {
 						d.Chat[i].InTranscript = true
+						if d.SentAt == nil {
+							d.SentAt = make(map[int]time.Time)
+						}
+						d.SentAt[index] = time.UnixMilli(d.Chat[i].CreatedAt)
 					}
 				}
 			}

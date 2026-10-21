@@ -338,7 +338,7 @@ try {
   await page.setViewportSize({width:1440,height:1000});
  }
  await page.getByRole('link',{name:'Trace',exact:true}).click();
- await page.getByText('Snapshot messages',{exact:true}).waitFor();
+ await page.getByText('Conversation snapshot',{exact:true}).waitFor();
  await page.waitForFunction(()=>window.smokeSSE.url && new URL(window.smokeSSE.url).pathname.endsWith('/events') && new URL(window.smokeSSE.url).searchParams.get('tab') === 'trace');
  assert.equal(await page.locator('#run-composer').count(),0);
  const traceEntry=page.locator('[data-trace-entry] details').first();

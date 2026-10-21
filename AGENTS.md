@@ -86,7 +86,8 @@ The web UI (`internal/orchestrator/*.templ`) is built with
   Check the catalog before hand-writing buttons, inputs, selects, forms/fields,
   cards, badges, alerts, tables, dialogs, menus, tabs, empty states, pagination or similar elements.
   The repo already uses Alert, Avatar, Badge, Breadcrumb, Button, Card, Checkbox,
-  Dialog, Empty, Input, Kbd, Label, Select, Separator, Switch, Table and Textarea.
+  CopyButton, Dialog, Empty, Input, Kbd, Label, Marker, MessageScroller, Select,
+  Separator, Spinner, Switch, Table, Textarea and Toggle.
 - Only write custom HTML when no component fits, such as page layout wrappers.
   Even then, compose it from existing components where you can.
 - When you find a hand-rolled element that a component could replace, prefer
@@ -94,7 +95,7 @@ The web UI (`internal/orchestrator/*.templ`) is built with
 - **Theme:** style through the existing tokens in `frontend/src/style.css`
   (`--color-primary`, `--color-muted`, etc., mapped to the Jawa robe-brown/sand/amber
   palette). Use Tailwind utilities and component variants. Do not add hard-coded colors or new CSS files.
-- **Component JavaScript:** `frontend/runtime.sh` bundles lifecycle, Base UI/Floating UI helpers, Select, Checkbox, Switch, DropdownMenu, Dialog, CopyButton and MessageScroller from the pinned shadcn-templ module. Add any new component runtime to that shared list; no production CDN.
+- **Component JavaScript:** `frontend/runtime.sh` bundles lifecycle, Base UI/Floating UI helpers, Select, Checkbox, Switch, DropdownMenu, Dialog, CopyButton, MessageScroller and Toggle from the pinned shadcn-templ module. Add any new component runtime to that shared list; no production CDN.
 - **Interactivity:** uses Datastar (vendored in `frontend/src/datastar.js`) and shadcn-templ component runtimes; prefer attributes and server-rendered fragments. The only app JS is the Sortable gesture and service-worker registration. Keep stable keyed patch roots intact. See `SSE_UI.md`.
 - For new UI or a visual redesign, follow `skills/frontend-design/SKILL.md`.
 - Keep the UI responsive (320–1440px), keyboard accessible and touch friendly.

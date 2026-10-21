@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	bonnieclient "github.com/mark3labs/bonnie/client"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
 )
@@ -92,18 +93,18 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 			seen[m[1]] = true
 		}
 		if tab == "chat" {
-			for _, absent := range []string{"Stored workflow deliveries", "First equal-sequence", "Tool activity"} {
+			for _, absent := range []string{"Stored workflow deliveries", "First equal-sequence", "Tool activity", "Message content", "Raw payload"} {
 				if strings.Contains(html, absent) {
 					t.Errorf("Chat contains %s", absent)
 				}
 			}
-			for _, present := range []string{"run-prose", "run-tool", "fixture error", "<strong>drafts</strong>", "Message content", "Raw payload"} {
+			for _, present := range []string{"run-prose", "run-tool", "fixture error", "<strong>drafts</strong>", "run-tool-error", "exit 1", "Queued", "Failed", "run-live"} {
 				if !strings.Contains(html, present) {
 					t.Errorf("Chat missing %s", present)
 				}
 			}
 		} else {
-			for _, present := range []string{"Snapshot messages", "Durable events", "Live events", "First equal-sequence", "Second equal-sequence", "collapsed-needle"} {
+			for _, present := range []string{"Conversation snapshot", "Events", "Durable", "Live", "First equal-sequence", "Second equal-sequence", "collapsed-needle"} {
 				if !strings.Contains(html, present) {
 					t.Errorf("Trace missing %s", present)
 				}
@@ -126,6 +127,87 @@ func TestRunDetailPresentationAndIdentity(t *testing.T) {
 	}
 	if projectRunMessages([]kit.LLMMessage{msg, msg})[0].Key != projected[0].Key {
 		t.Fatal("unstable snapshot key")
+	}
+}
+
+func TestRunDetailPatcherSendsOnlyChanges(t *testing.T) {
+	msg := func(text string) kit.LLMMessage {
+		return kit.LLMMessage{Role: "user", Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: text}}}
+	}
+	call := kit.LLMMessage{Role: "assistant", Content: []kit.LLMMessagePart{kit.LLMToolCallPart{ToolCallID: "c", ToolName: "shell", Input: `{"command":"make"}`}}}
+	d := runDetail{Tab: "chat", Messages: projectRunMessages([]kit.LLMMessage{msg("first"), call})}
+	var p runDetailPatcher
+	frames, err := p.frames(t.Context(), d)
+	if err != nil || len(frames) != 1 || !strings.Contains(frames[0], `id="run-detail-content"`) || !strings.Contains(frames[0], `id="run-detail-controls"`) {
+		t.Fatal("first tick must send the full roots", frames, err)
+	}
+	if frames, _ = p.frames(t.Context(), d); len(frames) != 0 {
+		t.Fatal("unchanged tick sent", frames)
+	}
+	// A result pairs into the existing call entry and a new message is appended.
+	result := kit.LLMMessage{Role: "tool", Content: []kit.LLMMessagePart{kit.LLMToolResultPart{ToolCallID: "c", Output: kit.LLMToolResultOutputContentText{Text: "built"}}}}
+	d.Messages = projectRunMessages([]kit.LLMMessage{msg("first"), call, result, msg("second")})
+	frames, _ = p.frames(t.Context(), d)
+	if len(frames) != 2 || !strings.Contains(frames[0], "data: mode append") || !strings.Contains(frames[0], "data: selector #run-messages") || !strings.Contains(frames[0], "second") || strings.Contains(frames[0], "first") {
+		t.Fatal("new entry not appended alone", frames)
+	}
+	if !strings.Contains(frames[1], "built") || strings.Contains(frames[1], "run-detail-content") || strings.Contains(frames[1], ">first<") {
+		t.Fatal("changed entry not morphed alone", frames[1])
+	}
+	d.Observation.Snapshot = &bonnieclient.Snapshot{State: runtime.RunRunning}
+	if frames, _ = p.frames(t.Context(), d); len(frames) != 1 || !strings.Contains(frames[0], `id="run-live"`) || strings.Contains(frames[0], "run-messages") {
+		t.Fatal("live change not isolated", frames)
+	}
+	// Compaction or any non-append change replaces the list.
+	d.Messages = projectRunMessages([]kit.LLMMessage{msg("summary")})
+	if frames, _ = p.frames(t.Context(), d); len(frames) != 1 || !strings.Contains(frames[0], `id="run-messages"`) || !strings.Contains(frames[0], "summary") {
+		t.Fatal("rewritten transcript not replaced", frames)
+	}
+	d.Tab = "trace"
+	var trace runDetailPatcher
+	_, _ = trace.frames(t.Context(), d)
+	d.Observation.Durable = []runtime.Event{{Seq: 1, Type: "run_state", Text: "trace-update"}}
+	if frames, _ = trace.frames(t.Context(), d); len(frames) != 1 || !strings.Contains(frames[0], `id="run-trace"`) || !strings.Contains(frames[0], "trace-update") {
+		t.Fatal("trace change not patched", frames)
+	}
+}
+
+func TestRunPendingDeliveryStatus(t *testing.T) {
+	d := runDetail{Tab: "chat", CSRF: "csrf-fixture", Record: buildRun(Attempt{ID: "11111111-1111-4111-8111-111111111111"}), Chat: []RunChatMessage{
+		{ID: "q", Text: "queued text", Status: "queued", Classification: "followup"},
+		{ID: "u", Text: "uncertain text", Status: "ambiguous"},
+		{ID: "d", Text: "delivered text", Status: "completed", InTranscript: true},
+	}}
+	var out bytes.Buffer
+	if err := runPending(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	for _, want := range []string{"chat-delivery-q", "Queued", "Uncertain", "Reconcile uncertain message", `value="csrf-fixture"`, `name="chat_id" value="u"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(html, "delivered text") || strings.Contains(html, "followup") {
+		t.Fatal("transcript duplicate or internal classification rendered")
+	}
+	if start, form := strings.Index(html, `id="chat-delivery-u"`), strings.Index(html, "Reconcile"); start < 0 || form < start {
+		t.Fatal("reconcile control detached from its message")
+	}
+}
+
+func TestRunChatExchangeMarkers(t *testing.T) {
+	msg := func(role, text string) kit.LLMMessage {
+		return kit.LLMMessage{Role: kit.LLMMessageRole(role), Content: []kit.LLMMessagePart{kit.LLMTextPart{Text: text}}}
+	}
+	d := runDetail{Tab: "chat", Messages: projectRunMessages([]kit.LLMMessage{msg("user", "task"), msg("assistant", "ok"), msg("user", "follow")}), SentAt: map[int]time.Time{2: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)}}
+	var out bytes.Buffer
+	if err := runMessages(d).Render(t.Context(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	if strings.Count(html, `data-slot="marker"`) != 1 || !strings.Contains(html, "Sent 2026-10-13 12:00:00 UTC") {
+		t.Fatal("exchange separators", html)
 	}
 }
 

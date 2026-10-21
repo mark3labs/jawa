@@ -2,15 +2,20 @@ package orchestrator
 
 import (
 	"strconv"
- "github.com/axadrn/shadcn-templ/v2/components/messagescroller"
 
 	"github.com/axadrn/shadcn-templ/v2/components/badge"
 	"github.com/axadrn/shadcn-templ/v2/components/button"
 	"github.com/axadrn/shadcn-templ/v2/components/card"
+	"github.com/axadrn/shadcn-templ/v2/components/copybutton"
+	lucide "github.com/axadrn/shadcn-templ/v2/components/icon"
 	"github.com/axadrn/shadcn-templ/v2/components/input"
 	"github.com/axadrn/shadcn-templ/v2/components/label"
+	"github.com/axadrn/shadcn-templ/v2/components/marker"
+	"github.com/axadrn/shadcn-templ/v2/components/messagescroller"
+	"github.com/axadrn/shadcn-templ/v2/components/spinner"
 	"github.com/axadrn/shadcn-templ/v2/components/table"
 	"github.com/axadrn/shadcn-templ/v2/components/textarea"
+	"github.com/axadrn/shadcn-templ/v2/components/toggle"
 )
 
 func detailAction(d runDetail, action string) string {
@@ -21,6 +26,20 @@ func detailVariant(active bool) button.Variant {
 		return button.VariantDefault
 	}
 	return button.VariantOutline
+}
+func resultVariant(t *runTool) badge.Variant {
+	if t.Error {
+		return badge.VariantDestructive
+	}
+	return badge.VariantOutline
+}
+func toolClass(t *runTool) string {
+	if r := t.result(); r != nil && r.Error {
+		return "run-tool run-tool-error"
+	} else if r != nil && r.Stderr {
+		return "run-tool run-tool-warning"
+	}
+	return "run-tool"
 }
 
 const traceMatch = "$traceFilter === '' || el.textContent.toLowerCase().includes($traceFilter.toLowerCase())"
@@ -69,22 +88,32 @@ templ runDetailPage(d runDetail, csrf string) {
 				Trace
 			}
 		</nav>
-		if d.Tab=="trace" {
-			<div class="run-trace-search">
+		if d.Tab == "trace" {
+			<div class="run-trace-search" data-signals="{traceSnapshot: true, traceDurable: true, traceLive: true}">
 				@label.Label(label.Props{For: "trace-filter"}) {
 					Filter activity
 				}
 				@input.Input(input.Props{ID: "trace-filter", Type: "search", Placeholder: "Search all sources and collapsed payloads", Attributes: templ.Attributes{"data-bind:trace-filter": ""}})
+				<div class="run-trace-sources" role="group" aria-label="Sources">
+					@toggle.Toggle(toggle.Props{ID: "trace-source-snapshot", Variant: toggle.VariantOutline, DefaultPressed: true, Attributes: templ.Attributes{"data-on:toggle-change": "$traceSnapshot = evt.detail.pressed"}}) {
+						Snapshot
+					}
+					@toggle.Toggle(toggle.Props{ID: "trace-source-durable", Variant: toggle.VariantOutline, DefaultPressed: true, Attributes: templ.Attributes{"data-on:toggle-change": "$traceDurable = evt.detail.pressed"}}) {
+						Durable
+					}
+					@toggle.Toggle(toggle.Props{ID: "trace-source-live", Variant: toggle.VariantOutline, DefaultPressed: true, Attributes: templ.Attributes{"data-on:toggle-change": "$traceLive = evt.detail.pressed"}}) {
+						Live
+					}
+				</div>
 			</div>
 		}
 		@runDetailContent(d)
- @runChatReconciliation(d,csrf)
-		if d.Tab=="chat" {
-			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface", Attributes: templ.Attributes{"data-signals:_can-send": strconv.FormatBool(d.Policy.Send),"data-signals:_message-id": "'"+d.MessageID+"'", "data-signals:_interaction": "'"+d.Interaction+"'"}}) {
+		if d.Tab == "chat" {
+			@card.Card(card.Props{ID: "run-composer-surface", Class: "run-composer-surface", Attributes: templ.Attributes{"data-signals:_can-send": strconv.FormatBool(d.Policy.Send), "data-signals:_message-id": "'" + d.MessageID + "'", "data-signals:_interaction": "'" + d.Interaction + "'"}}) {
 				<form id="run-composer" method="post" action={ detailAction(d, "chat") } data-indicator:run-sending data-on:submit__prevent={ "!$runSending && ($_retryText !== null && $_retryText !== $runDraft && ($_messageId = crypto.randomUUID()), $_retryText = $runDraft, @post('" + detailAction(d, "chat") + "', {contentType:'form', retry:'never'}))" }>
-					<input type="hidden" name="message_id" id="run-message-id" value={d.MessageID} data-bind:_message-id/>
- <input type="hidden" name="interaction" id="run-interaction" value={d.Interaction} data-bind:_interaction/>
- <input type="hidden" name="_csrf" value={ csrf }/>
+					<input type="hidden" name="message_id" id="run-message-id" value={ d.MessageID } data-bind:_message-id/>
+					<input type="hidden" name="interaction" id="run-interaction" value={ d.Interaction } data-bind:_interaction/>
+					<input type="hidden" name="_csrf" value={ csrf }/>
 					@label.Label(label.Props{For: "run-draft", Class: "sr-only"}) {
 						Message / follow-up
 					}
@@ -105,21 +134,23 @@ templ planningChatComposer(chat planningChatDetail, csrf string) {
 		<input type="hidden" name="_csrf" value={ csrf }/>
 		<input type="hidden" name="message_id" value={ chat.MessageID } data-bind:planning-run-message-id/>
 		<input type="hidden" name="interaction" value=""/>
-		@label.Label(label.Props{For: "planning-run-draft", Class: "sr-only"}) { Message the planner }
+		@label.Label(label.Props{For: "planning-run-draft", Class: "sr-only"}) {
+			Message the planner
+		}
 		@textarea.Textarea(textarea.Props{ID: "planning-run-draft", Name: "text", Rows: 1, Placeholder: "Message the planning run", Attributes: templ.Attributes{"data-bind:planning-run-draft": "", "maxlength": "64000", "required": true, "data-on:keydown": "evt.key === 'Enter' && evt.ctrlKey && !evt.isComposing && (evt.preventDefault(), el.form.requestSubmit())"}})
-		@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Attributes: templ.Attributes{"data-attr:disabled": "$runSending"}}) { Send message }
+		@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Attributes: templ.Attributes{"data-attr:disabled": "$runSending"}}) {
+			Send message
+		}
 	</form>
 	<div hidden data-effect="$runAcceptedMessage !== '' && ($planningRunDraft === $runConfirmedDraft && ($planningRunDraft = ''), $planningRunMessageId = crypto.randomUUID(), $_retryText = null, $runAcceptedMessage = '', $runConfirmedDraft = '')"></div>
 }
 
 templ runDetailControls(d runDetail, csrf string) {
-	<div id="run-detail-controls" class="run-controls" data-interaction={ d.Interaction } data-effect={"!$runDraft && ($_interaction = '"+d.Interaction+"')"}>
+	<div id="run-detail-controls" class="run-controls" data-interaction={ d.Interaction } data-effect={ "!$runDraft && ($_interaction = '" + d.Interaction + "')" }>
 		if d.Tab == "chat" {
 			<span class="meta">Ctrl+Enter to send · Messages persist before delivery</span>
-		}
-		if d.Tab=="chat" {
 			@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit, Form: "run-composer", Disabled: !d.Policy.Send, Attributes: templ.Attributes{"data-attr:disabled": "!$_canSend || $runSending"}}) {
-				if d.Policy.Mode=="queue" {
+				if d.Policy.Mode == "queue" {
 					Send follow-up
 				} else {
 					Send message
@@ -144,26 +175,31 @@ templ runDetailControls(d runDetail, csrf string) {
 // Adapted from BONNIE web/views.templ (MIT); see BONNIE-LICENSE.
 templ runDetailContent(d runDetail) {
 	<div id="run-detail-content" class="run-history">
+		@runDetailStatus(d)
+		if d.Tab == "trace" {
+			@runTrace(d)
+		} else {
+			@runChat(d)
+		}
+	</div>
+}
+
+templ runDetailStatus(d runDetail) {
+	<div id="run-detail-status" class="run-detail-status">
 		if d.Record.Mode == "Planning" {
- @badge.Badge() {
- { d.Record.label() }
- }
- }
- if d.Observation.Snapshot!=nil {
- <div class="meta">Observed conversation: { string(d.Observation.Snapshot.State) }</div>
- }
- if d.Record.RunState != "" {
+			@badge.Badge() {
+				{ d.Record.label() }
+			}
+		}
+		if d.Observation.Snapshot != nil {
+			<div class="meta">Observed conversation: { string(d.Observation.Snapshot.State) }</div>
+		}
+		if d.Record.RunState != "" {
 			<div class="run-observed-state">
 				@badge.Badge() {
 					{ d.Record.RunState }
 				}
 			</div>
-		}
-		if d.Tab == "trace" {
-			@runTrace(d)
-		} else {
-			@runChat(d)
- @runChatDelivery(d)
 		}
 	</div>
 }
@@ -172,33 +208,75 @@ templ runPayload(text string) {
 	<pre class="result"><code>@templ.Raw(newRunSection("", text).HTML)</code></pre>
 }
 
+// Sections copy from their code element, so no payload is duplicated.
+templ runSectionView(id string, section runSection) {
+	<details id={ id } data-preserve-attr="open" open class="run-tool-section">
+		<summary>
+			{ section.Label }
+		</summary>
+		<div class="run-code">
+			@copybutton.CopyButton(copybutton.Props{ID: id + "-copy", TargetID: id + "-code", Class: "run-copy", Attrs: templ.Attributes{"aria-label": "Copy " + section.Label}})
+			<pre class={ "result", templ.KV("run-diff", section.Diff) }><code id={ id + "-code" }>@templ.Raw(section.HTML)</code></pre>
+		</div>
+	</details>
+}
+
+// A call and its paired result share one disclosure.
+templ runToolView(key string, t *runTool) {
+	{{ result := t.result() }}
+	<details id={ key } data-preserve-attr="open" class={ toolClass(t) }>
+		<summary>
+			<strong>
+				{ t.Name }
+			</strong>
+			if t.Kind == "call" {
+				<span class="run-tool-summary">{ t.Summary }</span>
+			}
+			if result != nil {
+				if result.Status != "" {
+					@badge.Badge(badge.Props{Variant: resultVariant(result)}) {
+						{ result.Status }
+					}
+				}
+				if result.Summary != "" {
+					<span class="meta">
+						if t.Kind == "call" {
+							→
+						}
+						{ result.Summary }
+					</span>
+				}
+			} else {
+				<span class="meta">Awaiting result</span>
+			}
+		</summary>
+		if t.Kind == "call" {
+			for i, section := range t.Sections {
+				@runSectionView(key+"-section-"+strconv.Itoa(i), section)
+			}
+		}
+		if result != nil {
+			for i, section := range result.Sections {
+				@runSectionView(key+"-result-"+strconv.Itoa(i), section)
+			}
+		}
+	</details>
+}
+
 templ runParts(m runMessage) {
 	for _, part := range m.Parts {
+		if part.Paired {
+			{{ continue }}
+		}
 		if part.Tool != nil {
-			<details id={ part.Key } data-preserve-attr="open" class="run-tool">
-				<summary>
-					<strong>
-						{ part.Tool.Name }
-					</strong>
-					<span class="meta">
-						{ part.Tool.Kind }
-					</span> { part.Tool.Summary }
-				</summary>
-				for i, section := range part.Tool.Sections {
-					<details id={ part.Key + "-section-" + strconv.Itoa(i) } data-preserve-attr="open" open class="run-tool-section">
-						<summary>
-							{ section.Label }
-						</summary>
-						<pre class="result"><code>@templ.Raw(section.HTML)</code></pre>
-					</details>
-				}
-				if part.Tool.Kind == "result" {
-					<details id={ part.Key + "-raw" } data-preserve-attr="open"><summary>Raw payload</summary>@runPayload(part.Tool.Raw)</details>
-				}
-			</details>
-		} else if !part.Unsupported && part.Text != "" {
+			@runToolView(part.Key, part.Tool)
+		} else if part.Unsupported {
+			<p class="meta">Unsupported content · see Trace</p>
+		} else if part.Text != "" {
 			if m.Role == "assistant" {
-				<div class="planning-markdown">@templ.Raw(part.HTML)</div>
+				<div class="planning-markdown">
+					@templ.Raw(part.HTML)
+				</div>
 			} else {
 				<div class="run-prose">
 					{ part.Text }
@@ -208,31 +286,132 @@ templ runParts(m runMessage) {
 	}
 }
 
+// Each entry is its own patch unit; user messages after the first start a
+// new exchange, labelled with the accepted time when a receipt places it.
+templ runChatEntry(d runDetail, i int, m runMessage, boundary bool) {
+	<div id={ m.Key } class="run-chat-entry">
+		if boundary && m.Role == "user" {
+			@marker.Marker(marker.Props{Variant: marker.VariantSeparator, Class: "run-exchange"}) {
+				if sent := d.sentLabel(i); sent != "" {
+					@marker.Content() {
+						{ sent }
+					}
+				}
+			}
+		}
+		<article class={ "run-chat-message run-role-" + m.Role }>
+			if m.Role != "tool" && m.Role != "" {
+				<strong class="run-message-role">
+					{ runRole(m.Role) }
+				</strong>
+			}
+			@runParts(m)
+		</article>
+	</div>
+}
+
+templ runMessages(d runDetail) {
+	<div id="run-messages" class="run-messages">
+		{{ first := d.firstChatIndex() }}
+		for i, m := range d.Messages {
+			if m.chatVisible() {
+				@runChatEntry(d, i, m, i > first)
+			}
+		}
+	</div>
+}
+
 templ runChat(d runDetail) {
 	@messagescroller.Provider(messagescroller.ProviderProps{AutoScroll: true}) {
- @messagescroller.MessageScroller(messagescroller.Props{ID: "run-message-scroller", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
- @messagescroller.Viewport(messagescroller.ViewportProps{ID: "run-transcript", Class: "run-chat-transcript", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
- @messagescroller.Content(messagescroller.ContentProps{ID: "run-messages"}) {
-		for _, m := range d.Messages {
-			<article id={ m.Key } class={ "run-chat-message run-role-" + m.Role }>
-				if m.Role != "tool" && m.Role != "" {
-					<strong class="run-message-role">
-						{ runRole(m.Role) }
-					</strong>
+		@messagescroller.MessageScroller(messagescroller.Props{ID: "run-message-scroller", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
+			@messagescroller.Viewport(messagescroller.ViewportProps{ID: "run-transcript", Class: "run-chat-transcript", Attributes: templ.Attributes{"data-preserve-attr": "data-pending-scroll"}}) {
+				@messagescroller.Content(messagescroller.ContentProps{ID: "run-transcript-content"}) {
+					@runMessages(d)
+					@runLive(d)
+					@runPending(d)
 				}
-				@runParts(m)
-				<details id={ m.Key + "-content" } class="run-message-payload" data-preserve-attr="open"><summary>Message content</summary>@runPayload(m.Raw)</details>
+			}
+			@messagescroller.Button(messagescroller.ButtonProps{ID: "run-scroll-end"})
+		}
+	}
+}
+
+// Uncommitted activity for the current turn; the next snapshot replaces it.
+templ runLive(d runDetail) {
+	{{ v := liveActivity(d.Observation) }}
+	<div id="run-live" class="run-live">
+		if !v.empty() {
+			<article class="run-chat-message run-role-assistant run-live-message">
+				<strong class="run-message-role">Assistant</strong>
+				if v.Text != "" {
+					<div class="run-prose">
+						if v.Truncated {
+							…
+						}
+						{ v.Text }
+					</div>
+				}
+				for _, t := range v.Tools {
+					<div id={ t.Key } class="run-live-tool">
+						if !t.Done {
+							@spinner.Spinner()
+						} else if t.Error {
+							@lucide.CircleX(lucide.Props{Class: "size-4 run-live-error"})
+						} else {
+							@lucide.CircleCheck(lucide.Props{Class: "size-4"})
+						}
+						<strong>{ t.Name }</strong>
+						<span class="meta">{ t.Summary }</span>
+					</div>
+				}
+				if v.Working {
+					<div class="run-working meta">
+						@spinner.Spinner(spinner.Props{Attributes: templ.Attributes{"aria-label": "Agent working"}})
+						Working…
+					</div>
+				}
 			</article>
 		}
-        }
- }
- }
- }
+	</div>
+}
+
+// Delivery records are separate from immutable workflow status and remote
+// transcript. A status row never claims an unavailable conversation recovered.
+templ runPending(d runDetail) {
+	<section id="run-pending" aria-label="Messages" class="run-pending">
+		for _, message := range d.Chat {
+			if !message.InTranscript || message.Failure != "" || message.Status == "ambiguous" {
+				<article id={ "chat-delivery-" + message.ID } class="run-chat-message run-role-user run-delivery">
+					<div class="run-delivery-header">
+						<strong class="run-message-role">User</strong>
+						@badge.Badge(badge.Props{Variant: deliveryVariant(message.Status)}) {
+							{ deliveryLabel(message.Status) }
+						}
+					</div>
+					if !message.InTranscript {
+						<div class="run-prose">{ message.Text }</div>
+					}
+					if message.Failure != "" {
+						<p class="meta">{ message.Failure }</p>
+					}
+					if message.Status == "ambiguous" {
+						<form method="post" action={ detailAction(d, "reconcile") }>
+							<input type="hidden" name="_csrf" value={ d.CSRF }/>
+							<input type="hidden" name="chat_id" value={ message.ID }/>
+							@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline}) {
+								Reconcile uncertain message (do not replay)
+							}
+						</form>
+					}
+				</article>
+			}
+		}
+	</section>
 }
 
 templ runTraceTableView(t runTraceTable) {
 	if len(t.Rows) > 0 {
-		<section class="run-trace-source" data-show={ traceSourceExpr(t) }>
+		<section id={ t.ID } class="run-trace-source" data-show={ traceGroupExpr("", "[data-trace-entry]") }>
 			<h2>
 				{ t.Title }
 			</h2>
@@ -249,13 +428,13 @@ templ runTraceTableView(t runTraceTable) {
 				@table.Body() {
 					for i, row := range t.Rows {
 						if row.Turn != "" && (i == 0 || t.Rows[i-1].Turn != row.Turn) {
-							@table.Row(table.RowProps{Class: "run-turn", Attributes: templ.Attributes{"data-show": "$traceFilter === ''"}}) {
+							@table.Row(table.RowProps{Class: "run-turn", Attributes: templ.Attributes{"data-trace-turn-header": true, "data-show": traceGroupExpr(".closest('tbody')", "[data-trace-turn=\""+traceTurnKey(row.Turn)+"\"]")}}) {
 								@table.Cell(table.CellProps{Attributes: templ.Attributes{"colspan": strconv.Itoa(len(t.Columns))}}) {
 									{ row.Turn }
 								}
 							}
 						}
-						@table.Row(table.RowProps{Class: traceStripe(row.Stripe), Attributes: templ.Attributes{"data-trace-entry": true, "data-show": traceMatch}}) {
+						@table.Row(table.RowProps{Class: traceStripe(row.Stripe), Attributes: traceRowAttrs(row)}) {
 							for _, cell := range row.Cells {
 								@table.Cell() {
 									{ cell }
@@ -265,7 +444,8 @@ templ runTraceTableView(t runTraceTable) {
 								<details id={ row.Key } data-preserve-attr="open">
 									<summary>
 										{ row.Summary }
-									</summary>@runPayload(row.Raw)
+									</summary>
+									@runPayload(row.Raw)
 								</details>
 							}
 						}
@@ -277,43 +457,8 @@ templ runTraceTableView(t runTraceTable) {
 }
 
 templ runTrace(d runDetail) {
-	<div class="run-trace-inspector">
+	<div id="run-trace" class="run-trace-inspector">
 		@runTraceTableView(snapshotTrace(d.Messages))
-		@runTraceTableView(eventTrace("Durable events", "durable", d.Observation.Durable))
-		@runTraceTableView(eventTrace("Live events", "live", d.Observation.Live))
+		@runTraceTableView(eventTimeline(d.Observation.Durable, d.Observation.Live))
 	</div>
-}
-
-// Delivery records are separate from immutable workflow status and remote
-// transcript. A status row never claims an unavailable conversation recovered.
-templ runChatDelivery(d runDetail) {
- <section aria-label="Messages" class="space-y-2">
- for _, message := range d.Chat {
- <article id={ "chat-delivery-"+message.ID } class="run-chat-message run-role-user">
- if !message.InTranscript {
- <strong class="run-message-role">User</strong>
- <div class="run-prose">{ message.Text }</div>
- }
- if message.Failure != "" {
- <p class="meta">{ message.Failure }</p>
- }
- </article>
- }
- </section>
-}
-
-templ runChatReconciliation(d runDetail, csrf string) {
- <div class="space-y-2">
- for _, message := range d.Chat {
- if message.Status=="ambiguous" {
- <form method="post" action={ detailAction(d,"reconcile") }>
- <input type="hidden" name="_csrf" value={ csrf }/>
- <input type="hidden" name="chat_id" value={ message.ID }/>
- @button.Button(button.Props{Type:button.TypeSubmit,Variant:button.VariantOutline}) {
- Reconcile uncertain message (do not replay)
- }
- </form>
- }
- }
- </div>
 }
