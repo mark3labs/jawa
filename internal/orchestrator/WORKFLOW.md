@@ -15,7 +15,7 @@ the full prior attempt plus operator/reason/head/time audit, sets Ready, moves t
 Done, and clears auto-resume schedules and queued guidance without changing
 outcomes or typed reports. Ready fences late deliveries. Exact duplicate tokens
 preserve the original audit/time; repairs and configuration changes cannot reuse
-them. No provider mutation, merge or agent command is performed. Store's legacy API is unchanged and must not be used to bypass these rules.
+them. No provider mutation, merge or agent command is performed. Legacy Store mutators are test-only fixtures, not production APIs. Archive and restore use `Workflow.SetArchived(ctx, id, archived)` to change visibility only, honoring request cancellation and unresolved merge guards without changing the lane or history.
 
 Shared tasks use `bonnie.tasks`; explicit assignments use `bonnie.tasks.agent.<agentID>`. Root provisioning enables targeted subjects. Task UUID is deterministic from card ID and monotonically increasing attempt number. Persisted task payload and identity never change on publish retries. Broker ACK marks publication, not execution. Delivery is at least once, not exactly once outside the broker deduplication window; agents must deduplicate by task identity.
 

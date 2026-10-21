@@ -141,12 +141,12 @@ func (a *app) mutateCardsMove(w http.ResponseWriter, r *http.Request, ctx *mutat
 	var err error
 	cardID, status := r.FormValue("card_id"), r.FormValue("status")
 	if status == "Building" {
-		cards, loadErr := a.s.Cards("")
+		card, loadErr := a.s.cardByID(r.Context(), cardID)
 		if loadErr != nil {
 			err = loadErr
 			return err
 		}
-		if card, ok := selectedCard(cards, cardID); ok && card.Status == "Planning" {
+		if card.Status == "Planning" {
 			err = errors.New("review and approve a plan revision before building")
 			return err
 		}
@@ -226,7 +226,7 @@ func (a *app) mutateCardsReset(w http.ResponseWriter, r *http.Request, ctx *muta
 }
 
 func (a *app) mutateCardsArchive(w http.ResponseWriter, r *http.Request, ctx *mutationContext) error {
-	return a.s.SetCardArchived(r.FormValue("card_id"), r.URL.Path == "/cards/archive")
+	return a.workflow.SetArchived(r.Context(), r.FormValue("card_id"), r.URL.Path == "/cards/archive")
 }
 
 func (a *app) mutateCardsCancel(w http.ResponseWriter, r *http.Request, ctx *mutationContext) error {
