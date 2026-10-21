@@ -69,7 +69,7 @@ func TestMergeEligibilityRequiresFixGuard(t *testing.T) {
 			case "active":
 				changed.RunState = "running"
 			}
-			if canAction(c, []Attempt{changed}, "fix") {
+			if canFix(c, []Attempt{changed}, cardHasActiveAttempt(c.ID, []Attempt{changed})) {
 				t.Fatal("fix guard must reject")
 			}
 			if mergeEligible(c, []Attempt{changed}, check, false) {

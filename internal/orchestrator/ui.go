@@ -258,52 +258,6 @@ func safeActivityURL(raw string) string {
 	return u.String()
 }
 
-func cardNeedsReconciliation(c Card, attempts []Attempt) bool {
-	latest := latestAttempt(c.ID, attempts)
-	return len(latest) > 0 && !latest[0].Ready && latest[0].Error == executionConflictNotice
-}
-
-// Match workflow guards for presentation; the server remains authoritative.
-func canAction(c Card, attempts []Attempt, action string) bool {
-	active := cardHasActiveAttempt(c.ID, attempts)
-	latest := latestAttempt(c.ID, attempts)
-	legacy := len(latest) == 0
-	terminal := !legacy && terminalFailure(latest[0])
-	switch action {
-	case "force-ready":
-		return forceReadyReason(c, attempts, false) == ""
-	case "start":
-		return c.Status == "Building" && legacy && !active
-	case "resume":
-		return (c.Status == "Building" || c.Status == "Fix") && !legacy && !active && executionFailure(latest[0])
-	case "retry":
-		return (c.Status == "Building" || c.Status == "Fix") && terminal && !active
-	case "fix":
-		return c.Status == "Done" && !legacy && latest[0].Ready && latest[0].State == "ready" && latest[0].PRURL != "" && !active
-	case "reset":
-		return resetReason(c, attempts, false) == ""
-	case "delete":
-		return !active || (!legacy && !latest[0].Ready && latest[0].Error == executionConflictNotice)
-	case "cancel":
-		if (c.Status != "Building" && c.Status != "Fix") || len(latest) == 0 {
-			return false
-		}
-		a := latest[0]
-		return a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && (a.State == "running" || a.State == "waiting" || a.State == "interrupted" || a.RunState == "waiting")
-	case "force-stop":
-		if c.Status == "Planning" || legacy {
-			return false
-		}
-		for _, a := range attempts {
-			if a.CardID == c.ID && forceStoppable(a, a.ID == latest[0].ID) {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
 func passwordAutocomplete(kind string) string {
 	if kind == "setup" {
 		return "new-password"
@@ -315,22 +269,6 @@ func passwordMinLength(kind string) string {
 		return "12"
 	}
 	return "1"
-}
-
-func actionReason(c Card, attempts []Attempt, action string) string {
-	if action == "force-ready" {
-		return forceReadyReason(c, attempts, false)
-	}
-	if action == "reset" {
-		return resetReason(c, attempts, false)
-	}
-	if cardHasActiveAttempt(c.ID, attempts) {
-		return "Active attempt — wait for it to finish, or use Force stop."
-	}
-	if latest := latestAttempt(c.ID, attempts); len(latest) > 0 && forceStoppable(latest[0], true) {
-		return "Attempt has not finished — use Force stop to release it."
-	}
-	return "Reset requires a failed or blocked attempt."
 }
 
 func planningState(d pageData, cardID string) string {
