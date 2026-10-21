@@ -553,7 +553,7 @@ func (w *Workflow) dispatch() {
 }
 
 func matches(a Attempt, agent, run, remote string) bool {
-	return (a.TargetAgentID == "" || a.TargetAgentID == agent) && ((a.AgentID == "" && a.RunID == "" && a.RemoteAttemptID == "") || (a.AgentID == agent && a.RunID == run && a.RemoteAttemptID == remote))
+	return identityMatches(a.TargetAgentID, a.AgentID, a.RunID, a.RemoteAttemptID, agent, run, remote)
 }
 func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	tx, err := w.s.writeTx()
@@ -604,8 +604,8 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	}
 	// A restarted agent may continue the same run, but must not revive a
 	// superseded attempt or a card that was explicitly reset.
-	var current bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+	current, err := currentBuildAttempt(tx, a)
+	if err != nil {
 		return err
 	}
 	if !current {
@@ -706,8 +706,8 @@ func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
 		return nil
 	}
 	if resumableOutcome(a) {
-		var current bool
-		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+		current, err := currentBuildAttempt(tx, a)
+		if err != nil {
 			return err
 		}
 		if !current {

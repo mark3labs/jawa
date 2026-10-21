@@ -160,9 +160,9 @@ func (s *Store) PlanningDetail(id string) (PlanningDetail, error) {
 	active := false
 	for _, t := range ts {
 		if t.Number == ts[len(ts)-1].Number && p.State == "failed" {
-			a := Attempt{TaskID: t.ID, OutcomeJSON: t.OutcomeJson, EventSeq: int(t.EventSeq)}
+			a := planningAttempt(t)
 			d.ResumeToken = resumeToken(a)
-			d.CanResume = executionFailure(Attempt{TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error})
+			d.CanResume = executionFailure(a)
 		}
 		d.Turns = append(d.Turns, PlanningTurn{ID: t.ID, SessionID: t.SessionID, Number: int(t.Number), State: t.State, Error: t.Error, Result: t.Result, AgentID: t.AgentID, TargetAgentID: t.TargetAgentID, Published: t.Published != 0, CreatedAt: time.UnixMilli(t.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(t.UpdatedAt).UTC()})
 		active = active || planningTurnActive(t.State)

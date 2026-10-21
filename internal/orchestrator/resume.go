@@ -72,7 +72,7 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 		if e != nil {
 			return e
 		}
-		a = Attempt{ID: t.ID, TaskID: t.ID, State: t.State, RunState: "failed", OutcomeJSON: t.OutcomeJson, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID, Error: t.Error, EventSeq: int(t.EventSeq)}
+		a = planningAttempt(t)
 	} else {
 		a, err = scanAttempt(tx.QueryRow(`SELECT `+attemptColumns+` FROM workflow_attempts WHERE card_id=? ORDER BY number DESC LIMIT 1`, id))
 		if err != nil {
@@ -143,7 +143,7 @@ func (w *Workflow) reserveFailedResume(id string, planning bool, expected string
 	if chatQueued {
 		return errors.New("explicit chat pending")
 	}
-	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
+	target := a.target()
 	ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 	defer cancel()
 	status, err := w.client.Status(ctx, target)

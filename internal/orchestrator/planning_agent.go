@@ -14,8 +14,14 @@ import (
 )
 
 func planningIdentityMatches(t sqlc.PlanningTurn, agent, run, attempt string) bool {
-	return (t.TargetAgentID == "" || t.TargetAgentID == agent) && ((t.AgentID == "" && t.RunID == "" && t.RemoteAttemptID == "") || (t.AgentID == agent && t.RunID == run && t.RemoteAttemptID == attempt))
+	return identityMatches(t.TargetAgentID, t.AgentID, t.RunID, t.RemoteAttemptID, agent, run, attempt)
 }
+func currentBuildAttempt(tx *sql.Tx, a Attempt) (bool, error) {
+	var current bool
+	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current)
+	return current, err
+}
+
 func planningTurnCurrent(tx *sql.Tx, t sqlc.PlanningTurn) (bool, error) {
 	var current bool
 	err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM planning_sessions s JOIN cards c ON c.id=s.card_id WHERE s.id=? AND c.status='Planning' AND s.state IN ('queued','running','failed','questions','ready') AND ?=(SELECT max(number) FROM planning_turns WHERE session_id=s.id))`, t.SessionID, t.Number).Scan(&current)
