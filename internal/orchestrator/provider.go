@@ -70,6 +70,10 @@ func resolveProviderEndpoint(provider, repo string, settings map[string]string) 
 	return e, nil
 }
 
+func (e providerEndpoint) repoAPI() string {
+	return e.API + "/repos/" + e.Owner + "/" + e.Name
+}
+
 func (e providerEndpoint) requireCredentials() error {
 	if strings.TrimSpace(e.Token) == "" {
 		return errMissingCredentials
@@ -109,14 +113,11 @@ func ProviderVerifier(s *Store, supplied *http.Client) Verifier {
 func verifyProviderPR(ctx context.Context, s *Store, c *http.Client, a Attempt) (verifiedPR, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	p, root, path, owner, name, base, number, err := providerTarget(ctx, s, c, a)
+	t, err := providerTarget(ctx, s, c, a)
 	if err != nil {
 		return verifiedPR{}, err
 	}
-	expected, err := assignedBranch(a)
-	if err != nil {
-		return verifiedPR{}, err
-	}
+	p := t.reader
 	overrides, err := s.providerSettings()
 	if err != nil {
 		return verifiedPR{}, errors.New("provider: dashboard settings unavailable")
@@ -127,10 +128,10 @@ func verifyProviderPR(ctx context.Context, s *Store, c *http.Client, a Attempt) 
 	}
 	p.allowNoCI = allowNoCI
 	var pr providerPR
-	if err = p.read(path, &pr); err != nil {
+	if err = p.read(t.path, &pr); err != nil {
 		return verifiedPR{}, err
 	}
-	if err = pr.matches(owner+"/"+name, base, expected, number); err != nil {
+	if err = pr.matches(t.repo, t.base, t.branch, t.number); err != nil {
 		return verifiedPR{}, err
 	}
 	sha := pr.Head.SHA
@@ -138,26 +139,27 @@ func verifyProviderPR(ctx context.Context, s *Store, c *http.Client, a Attempt) 
 		// A provider-confirmed merge is a terminal outcome; open-PR CI/review
 		// gates no longer apply. Identity is still checked and re-read below.
 	} else if p.forgejo {
-		if err = p.forgejoCI(root, base, sha); err != nil {
+		if err = p.forgejoCI(t.root, t.base, sha); err != nil {
 			return verifiedPR{}, err
 		}
-		if err = p.forgejoReviews(path); err != nil {
+		if err = p.forgejoReviews(t.path); err != nil {
 			return verifiedPR{}, err
 		}
 	} else {
-		if err = p.githubCI(root, base, sha); err != nil {
+		if err = p.githubCI(t.root, t.base, sha); err != nil {
 			return verifiedPR{}, err
 		}
-		if err = p.githubReviews(path, owner, name, number, sha); err != nil {
+		owner, name, _ := strings.Cut(t.repo, "/")
+		if err = p.githubReviews(t.path, owner, name, t.number, sha); err != nil {
 			return verifiedPR{}, err
 		}
 	}
 	// Close the common head-update race: all evidence above was for this SHA.
 	var latest providerPR
-	if err = p.read(path, &latest); err != nil {
+	if err = p.read(t.path, &latest); err != nil {
 		return verifiedPR{}, err
 	}
-	if err = latest.matches(owner+"/"+name, base, expected, number); err != nil {
+	if err = latest.matches(t.repo, t.base, t.branch, t.number); err != nil {
 		return verifiedPR{}, err
 	}
 	if latest.Head.SHA != sha {
@@ -166,64 +168,71 @@ func verifyProviderPR(ctx context.Context, s *Store, c *http.Client, a Attempt) 
 	if pr.Merged && !latest.Merged {
 		return verifiedPR{}, errors.New("provider: PR merge state changed during verification")
 	}
-	return verifiedPR{reader: p, path: path, repository: owner + "/" + name, base: base, branch: expected, sha: sha, number: number, merged: latest.Merged}, nil
+	return verifiedPR{reader: p, path: t.path, repository: t.repo, base: t.base, branch: t.branch, sha: sha, number: t.number, merged: latest.Merged}, nil
+}
+
+type providerTargetInfo struct {
+	reader             providerReader
+	root, path         string
+	repo, base, branch string
+	number             int
 }
 
 // providerTarget validates immutable assignment and configured repository before any request.
-func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (providerReader, string, string, string, string, string, int, error) {
+func providerTarget(ctx context.Context, s *Store, c *http.Client, a Attempt) (providerTargetInfo, error) {
 	if s == nil {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: store required")
+		return providerTargetInfo{}, errors.New("provider: store required")
 	}
 	overrides, err := s.providerSettings()
 	if err != nil {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: dashboard settings unavailable")
+		return providerTargetInfo{}, errors.New("provider: dashboard settings unavailable")
 	}
 	var provider, repo, base string
 	if err := s.db.QueryRowContext(ctx, `SELECT p.provider,p.repo,p.base_branch FROM cards c JOIN projects p ON p.id=c.project_id WHERE c.id=?`, a.CardID).Scan(&provider, &repo, &base); err != nil {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: project unavailable")
+		return providerTargetInfo{}, errors.New("provider: project unavailable")
 	}
 	var task client.Task
 	if json.Unmarshal([]byte(a.TaskJSON), &task) != nil || task.TaskID != a.TaskID || a.TaskID == "" {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: invalid immutable task")
+		return providerTargetInfo{}, errors.New("provider: invalid immutable task")
 	}
 	// Parse the fixed trailing workflow fields, not user-controlled title/description.
 	tail := "\nRepository: " + repo + "\nBase branch: " + base + "\nProvider: " + provider + "\nIssue: "
 	pos := strings.LastIndex(task.Text, tail)
 	if pos < 0 {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: task/project configuration mismatch")
+		return providerTargetInfo{}, errors.New("provider: task/project configuration mismatch")
 	}
 	if a.RepairPRURL != "" && a.PRURL != a.RepairPRURL {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: repair PR mismatch")
+		return providerTargetInfo{}, errors.New("provider: repair PR mismatch")
 	}
-	_, branchErr := assignedBranch(a)
+	branch, branchErr := assignedBranch(a)
 	if branchErr != nil {
-		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", branchErr)
+		return providerTargetInfo{}, fmt.Errorf("provider: %w", branchErr)
 	}
 	endpoint, err := resolveProviderEndpoint(provider, repo, overrides)
 	if err != nil {
-		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", err)
+		return providerTargetInfo{}, fmt.Errorf("provider: %w", err)
 	}
 	host, owner, name := endpoint.Host, endpoint.Owner, endpoint.Name
 	u, err := url.Parse(a.PRURL)
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Host != host || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR URL does not match configured host")
+		return providerTargetInfo{}, errors.New("provider: PR URL does not match configured host")
 	}
 	kind := endpoint.PullKind
 	prefix := "/" + owner + "/" + name + "/" + kind + "/"
 	if !strings.HasPrefix(u.Path, prefix) {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: PR repository mismatch")
+		return providerTargetInfo{}, errors.New("provider: PR repository mismatch")
 	}
 	number, err := strconv.Atoi(strings.TrimPrefix(u.Path, prefix))
 	if err != nil || number < 1 || u.Path != prefix+strconv.Itoa(number) {
-		return providerReader{}, "", "", "", "", "", 0, errors.New("provider: invalid PR number")
+		return providerTargetInfo{}, errors.New("provider: invalid PR number")
 	}
 	if err := endpoint.requireCredentials(); err != nil {
-		return providerReader{}, "", "", "", "", "", 0, fmt.Errorf("provider: %w", err)
+		return providerTargetInfo{}, fmt.Errorf("provider: %w", err)
 	}
 	p := providerReader{ctx: ctx, client: c, token: endpoint.Token, api: endpoint.API, forgejo: endpoint.Forgejo, authPrefix: endpoint.AuthPrefix}
-	root := "/repos/" + owner + "/" + name
+	root := strings.TrimPrefix(endpoint.repoAPI(), endpoint.API)
 	path := root + "/pulls/" + strconv.Itoa(number)
-	return p, root, path, owner, name, base, number, nil
+	return providerTargetInfo{reader: p, root: root, path: path, repo: owner + "/" + name, base: base, branch: branch, number: number}, nil
 }
 
 var providerPart = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
@@ -295,10 +304,13 @@ type providerReader struct {
 func (p providerReader) read(path string, out any) error {
 	return p.request("GET", p.api+path, nil, out)
 }
-func (p providerReader) request(method, target string, body []byte, out any) error {
+
+// do sends one authenticated request and caps its body at 4 MiB. Callers own
+// status mapping; neither response bodies nor transport diagnostics are surfaced.
+func (p providerReader) do(method, target string, body []byte) (int, http.Header, []byte, error) {
 	req, err := http.NewRequestWithContext(p.ctx, method, target, bytes.NewReader(body))
 	if err != nil {
-		return errors.New("provider: invalid request")
+		return 0, nil, nil, errors.New("provider: invalid request")
 	}
 	req.Header.Set("Authorization", p.authPrefix+p.token)
 	req.Header.Set("Accept", "application/json")
@@ -306,21 +318,29 @@ func (p providerReader) request(method, target string, body []byte, out any) err
 	resp, err := p.client.Do(req)
 	if err != nil {
 		if p.ctx.Err() != nil {
-			return p.ctx.Err()
+			return 0, nil, nil, p.ctx.Err()
 		}
-		return errors.New("provider: HTTP request failed")
+		return 0, nil, nil, errors.New("provider: HTTP request failed")
 	}
-	defer func() { _ = resp.Body.Close() }() // Best-effort transport cleanup.
-	if resp.StatusCode != http.StatusOK {
-		return providerHTTPError(resp.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+	if err != nil || len(data) > 4<<20 {
+		return resp.StatusCode, resp.Header, nil, errors.New("provider: response exceeds limit or unreadable")
+	}
+	return resp.StatusCode, resp.Header, data, nil
+}
+
+func (p providerReader) request(method, target string, body []byte, out any) error {
+	status, header, data, err := p.do(method, target, body)
+	if status != 0 && status != http.StatusOK {
+		return providerHTTPError(status)
 	}
 	// Never follow provider-supplied pagination URLs (or silently accept truncated evidence).
-	if strings.Contains(resp.Header.Get("Link"), `rel="next"`) {
+	if strings.Contains(header.Get("Link"), `rel="next"`) {
 		return errors.New("provider: paginated evidence exceeds supported limit")
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20+1))
-	if err != nil || len(data) > 4<<20 {
-		return errors.New("provider: response exceeds limit or unreadable")
+	if err != nil {
+		return err
 	}
 	if json.Unmarshal(data, out) != nil {
 		return errors.New("provider: malformed API response")
@@ -644,30 +664,21 @@ func (p providerReader) forgejoReviews(path string) error {
 
 // ProviderIdentity reads only PR identity, deliberately not readiness evidence.
 func ProviderIdentity(s *Store, supplied *http.Client) IdentityChecker {
-	c := http.Client{}
-	if supplied != nil {
-		c = *supplied
-	}
-	c.Timeout = 20 * time.Second
-	c.Jar = nil
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	c := providerHTTPClient(supplied)
 	return func(ctx context.Context, a Attempt, selected string) (string, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		a.PRURL = selected
-		p, _, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
+		t, err := providerTarget(ctx, s, c, a)
 		if err != nil {
 			return "", err
 		}
-		branch, err := assignedBranch(a)
-		if err != nil {
-			return "", err
-		}
+		p := t.reader
 		var pr providerPR
-		if err = p.read(path, &pr); err != nil {
+		if err = p.read(t.path, &pr); err != nil {
 			return "", err
 		}
-		if !pr.identityMatches(owner+"/"+name, base, branch, number) || (pr.State != "open" || pr.Merged) && (pr.State != "closed" || !pr.Merged) {
+		if !pr.identityMatches(t.repo, t.base, t.branch, t.number) || (pr.State != "open" || pr.Merged) && (pr.State != "closed" || !pr.Merged) {
 			return "", errors.New("provider: PR identity or state invalid")
 		}
 		return pr.Head.SHA, nil

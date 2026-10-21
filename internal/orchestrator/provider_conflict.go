@@ -24,13 +24,7 @@ type ConflictChecker func(context.Context, Attempt) (PRCheck, error)
 // ProviderConflictChecker reads only PR metadata (at most two bounded requests).
 // GitHub's dirty state distinguishes conflicts from other non-mergeable gates.
 func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
-	c := http.Client{}
-	if supplied != nil {
-		c = *supplied
-	}
-	c.Timeout = 20 * time.Second
-	c.Jar = nil
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	c := providerHTTPClient(supplied)
 	return func(ctx context.Context, a Attempt) (result PRCheck, checkErr error) {
 		defer func() {
 			result.CheckedAt = time.Now().UTC()
@@ -42,19 +36,16 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		result = PRCheck{AttemptID: a.ID, PRURL: a.PRURL, State: "unknown"}
-		p, _, path, owner, name, base, number, err := providerTarget(ctx, s, &c, a)
+		t, err := providerTarget(ctx, s, c, a)
 		if err != nil {
 			return result, err
 		}
-		branch, err := assignedBranch(a)
-		if err != nil {
-			return result, err
-		}
+		p := t.reader
 		var pr providerPR
-		if err = p.read(path, &pr); err != nil {
+		if err = p.read(t.path, &pr); err != nil {
 			return result, err
 		}
-		if !pr.checkIdentityMatches(owner+"/"+name, base, branch, number) {
+		if !pr.checkIdentityMatches(t.repo, t.base, t.branch, t.number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
 		result.Open = pr.State == "open" && !pr.Merged
@@ -69,11 +60,11 @@ func ProviderConflictChecker(s *Store, supplied *http.Client) ConflictChecker {
 			return result, nil
 		}
 		var latest providerPR
-		if err = p.read(path, &latest); err != nil {
+		if err = p.read(t.path, &latest); err != nil {
 			return result, err
 		}
 		result.Open = latest.State == "open" && !latest.Merged
-		if !latest.checkIdentityMatches(owner+"/"+name, base, branch, number) {
+		if !latest.checkIdentityMatches(t.repo, t.base, t.branch, t.number) {
 			return result, errors.New("provider: PR identity mismatch")
 		}
 		if latest.conflictState(p.forgejo) == "merged" && (result.State != "merged" || latest.Head.SHA == pr.Head.SHA) {
