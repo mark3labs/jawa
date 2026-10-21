@@ -1,11 +1,9 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,7 +33,7 @@ func issueCreateTarget(p Project, settings map[string]string) (target, canonical
 	if endpoint.requireCredentials() != nil {
 		return "", "", "", &issueCreateError{Message: "Issue creation needs a server provider token with repository Issues read/write permission. Configure Settings or turn Create issue off."}
 	}
-	return endpoint.API + "/repos/" + endpoint.Owner + "/" + endpoint.Name + "/issues", endpoint.WebBase + "/issues/", endpoint.AuthPrefix + endpoint.Token, nil
+	return endpoint.repoAPI() + "/issues", endpoint.WebBase + "/issues/", endpoint.AuthPrefix + endpoint.Token, nil
 }
 
 // A POST is never retried. Any ambiguous evidence is a potentially completed write.
@@ -56,34 +54,16 @@ func createProjectIssue(ctx context.Context, p Project, title, body string, supp
 	}{strings.TrimSpace(title), body})
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
-	if err != nil {
-		return projectIssue{}, &issueCreateError{Message: "Invalid issue request."}
-	}
-	req.Header.Set("Authorization", auth)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	c := http.Client{}
-	if supplied != nil {
-		c = *supplied
-	}
-	c.Timeout = 20 * time.Second
-	c.Jar = nil
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	reader := providerReader{ctx: ctx, client: providerHTTPClient(supplied), token: auth}
 	uncertain := &issueCreateError{Uncertain: true, Message: "Issue creation may have completed. Refresh issues / check repository, then link the issue or explicitly create an unlinked card. Do not retry creation blindly."}
-	resp, err := c.Do(req)
-	if err != nil {
-		return projectIssue{}, uncertain
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 {
+	status, _, data, err := reader.do(http.MethodPost, target, payload)
+	if status >= 400 && status < 500 && status != 408 {
 		return projectIssue{}, &issueCreateError{Message: "Provider rejected issue creation. Check repository Issues write permission and draft, then explicitly retry, link an existing issue, or turn creation off."}
 	}
-	if resp.StatusCode != http.StatusCreated {
+	if status != http.StatusCreated {
 		return projectIssue{}, uncertain
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
-	if err != nil || len(data) > 4<<20 || ctx.Err() != nil {
+	if err != nil || ctx.Err() != nil {
 		return projectIssue{}, uncertain
 	}
 	var result struct {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,39 +39,22 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	c := http.Client{}
-	if supplied != nil {
-		c = *supplied
-	}
-	c.Timeout = 20 * time.Second
-	c.Jar = nil
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	p := providerReader{ctx: ctx, client: providerHTTPClient(supplied), authPrefix: endpoint.AuthPrefix, token: endpoint.Token}
 	issues := []projectIssue{}
 	seen := map[int]bool{}
 	for page := 1; page <= 20; page++ {
-		target := endpoint.API + "/repos/" + endpoint.Owner + "/" + endpoint.Name + "/issues?state=open&" + pageSize + "&page=" + strconv.Itoa(page)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-		if err != nil {
-			return nil, errors.New("issues: invalid request")
-		}
-		req.Header.Set("Authorization", endpoint.AuthPrefix+endpoint.Token)
-		req.Header.Set("Accept", "application/json")
-		resp, err := c.Do(req)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, errors.New("issues: HTTP request failed")
-		}
-		data, readErr := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
-		_ = resp.Body.Close()
+		target := endpoint.repoAPI() + "/issues?state=open&" + pageSize + "&page=" + strconv.Itoa(page)
+		status, header, data, err := p.do(http.MethodGet, target, nil)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if resp.StatusCode != http.StatusOK {
+		if status == 0 {
+			return nil, errors.New("issues: HTTP request failed")
+		}
+		if status != http.StatusOK {
 			return nil, errors.New("issues: API request unsuccessful")
 		}
-		if readErr != nil || len(data) > 4<<20 {
+		if err != nil {
 			return nil, errors.New("issues: response exceeds limit or unreadable")
 		}
 		var entries []struct {
@@ -98,7 +80,7 @@ func listProjectIssues(ctx context.Context, project Project, supplied *http.Clie
 		}
 		// A full page or a next-page hint requires another fixed API page. Link
 		// targets are deliberately ignored, including cross-host targets.
-		if len(entries) < 100 && !strings.Contains(resp.Header.Get("Link"), `rel="next"`) {
+		if len(entries) < 100 && !strings.Contains(header.Get("Link"), `rel="next"`) {
 			return issues, nil
 		}
 	}
