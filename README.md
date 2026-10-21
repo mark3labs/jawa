@@ -363,6 +363,8 @@ Local sandbox mode: coding commands have the container user's filesystem and
 environment access, including credentials. Run trusted tasks and keep the HTTP
 port bound to host loopback.
 
+Agent activity logs carry IDs and states only (including tool names), never model response text, prompts, or raw tool payloads.
+
 View activity:
 
 ```sh
