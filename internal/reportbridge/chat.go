@@ -5,10 +5,8 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
-	client "github.com/mark3labs/bonnie/client/nats"
 	"github.com/mark3labs/bonnie/runtime"
 	kit "github.com/mark3labs/kit/pkg/kit"
 	"github.com/nats-io/nats.go"
@@ -76,7 +74,7 @@ func (b *Bridge) appendChatReceipt(ctx context.Context, receipt reportprotocol.C
 		}
 	}
 	data, _ := json.Marshal(receipt)
-	if _, err = b.runner.Journal().Append(ctx, runtime.Record{RunID: receipt.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: chatReceiptType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+	if err = appendExt(ctx, b.runner.Journal(), receipt.Target.RunID, chatReceiptType, data); err != nil {
 		receipt.Status, receipt.Failure = "active", "receipt_unavailable"
 	}
 	return receipt
@@ -97,22 +95,15 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 	}
 	reconcile := cmd.Reconcile
 	cmd.Token, cmd.Reconcile = "", false
-	if cmd.Version != 1 || cmd.ID == "" || len(cmd.ID) > 128 || cmd.Target.AgentID != b.cfg.AgentID || cmd.Target.TaskID == "" || cmd.Target.RunID == "" || cmd.Target.AttemptID == "" || strings.TrimSpace(cmd.Text) == "" || len(cmd.Text) > 64000 {
+	if !validTarget(cmd.Version, cmd.ID, cmd.Target, b.cfg.AgentID) || !validChatText(cmd.Text) {
 		reply.Failure = "invalid_command"
 		return reply
 	}
 	r := b.runner
-	admissions, err := r.Journal().Replay(ctx, admissionKey(b.cfg))
+	owned, err := b.ownsTarget(ctx, r, b.cfg, cmd.Target)
 	if err != nil {
 		reply.Failure = "admission_unavailable"
 		return reply
-	}
-	owned := false
-	for _, rec := range admissions {
-		var target client.Target
-		if rec.ExtType == "nats_task_admitted" && json.Unmarshal(rec.Payload, &target) == nil && target == cmd.Target {
-			owned = true
-		}
 	}
 	if !owned {
 		reply.Failure = "unknown_owner"
@@ -123,32 +114,10 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 		reply.Failure = "journal_unavailable"
 		return reply
 	}
-	var prior *reportprotocol.Chat
-	var receipt *reportprotocol.ChatReceipt
-	unresolved := map[string]bool{}
-	for _, rec := range records {
-		if rec.ExtType == chatIntentType {
-			var old reportprotocol.Chat
-			if json.Unmarshal(rec.Payload, &old) != nil {
-				reply.Failure = "journal_invalid"
-				return reply
-			}
-			unresolved[old.ID] = true
-			if old.ID == cmd.ID {
-				prior = &old
-			}
-		}
-		if rec.ExtType == chatReceiptType {
-			var saved reportprotocol.ChatReceipt
-			if json.Unmarshal(rec.Payload, &saved) == nil {
-				if saved.Status == "completed" || saved.Status == "failed" {
-					delete(unresolved, saved.ID)
-				}
-				if saved.ID == cmd.ID {
-					receipt = &saved
-				}
-			}
-		}
+	prior, receipt, unresolved, err := chatHistory(records, cmd.ID)
+	if err != nil {
+		reply.Failure = "journal_invalid"
+		return reply
 	}
 	if prior != nil {
 		if *prior != cmd {
@@ -202,7 +171,7 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 	// A follow-up may not take over an active authoritative generation. The
 	// orchestrator sends it only after normal work is idle or locally fenced.
 	data, _ := json.Marshal(cmd)
-	if _, err = r.Journal().Append(ctx, runtime.Record{RunID: cmd.Target.RunID, Kind: runtime.RecordExtensionData, ExtType: chatIntentType, Payload: data, Timestamp: time.Now().UTC()}); err != nil {
+	if err = appendExt(ctx, r.Journal(), cmd.Target.RunID, chatIntentType, data); err != nil {
 		reply.Failure = "intent_unavailable"
 		return reply
 	}
@@ -224,22 +193,47 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 	}
 	b.chatInFlight[cmd.ID] = true
 	reply.Status = "active"
-	var lines []string
-	for _, rec := range records {
-		if rec.Kind == runtime.RecordContext {
-			var saved struct {
-				Context []string `json:"context"`
-			}
-			if json.Unmarshal(rec.Payload, &saved) == nil {
-				lines = saved.Context
-			}
-		}
-	}
+	lines, _ := savedContext(records, false)
 	if cmd.Followup {
 		lines = append(lines, "This is a conversational follow-up to retained historical work. You have no implementation, planning, approval or workflow report authority. Do not resume the old task, change external systems, or call workflow report tools. Answer the new message conversationally. Explicit chat never approves a specification or marks a PR ready.")
 	}
+	b.executeChat(executionCtx, r, cmd, snap, lines)
+
+	return reply
+}
+
+// This route requires both broker access and the same orchestrator-signed
+// bearer used by the HTTP-over-NATS API. Never persist its short-lived token.
+func (c *reportChannel) startChat(ctx context.Context, nc *nats.Conn) error {
+	sub, err := subscribeControl(ctx, nc, reportprotocol.ChatSubject(c.cfg.RootSubject, c.cfg.AgentID), 512*1024, func(ctx context.Context, cmd reportprotocol.Chat) any {
+		ioCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		js, err := nc.JetStream(nats.Context(ioCtx))
+		if err != nil {
+			return nil
+		}
+		kv, err := js.KeyValue(runapitoken.Bucket)
+		if err != nil {
+			return nil
+		}
+		entry, err := kv.Get(runapitoken.PublicKey)
+		if err != nil || runapitoken.Verify(ed25519.PublicKey(entry.Value()), cmd.Token, c.cfg.AgentID, time.Now()) != nil {
+			return nil
+		}
+		// Execution lifetime is host-owned, not the bounded admission I/O context.
+		return c.bridge.admitChat(ctx, cmd)
+	})
+	c.chatSub = sub
+	if err != nil && sub != nil {
+		return errors.New("chat control unavailable")
+	}
+	return err
+}
+
+// executeChat starts only after admission has durably recorded the intent and
+// reserved the in-flight slot under submitMu.
+func (b *Bridge) executeChat(ctx context.Context, r *runtime.Runner, cmd reportprotocol.Chat, snap *runtime.Run, lines []string) {
 	b.resumeWG.Go(func() {
-		ctx := executionCtx
 		defer func() { b.submitMu.Lock(); delete(b.chatInFlight, cmd.ID); b.submitMu.Unlock() }()
 		done := reportprotocol.ChatReceipt{Version: 1, ID: cmd.ID, Target: cmd.Target, Status: "completed"}
 		var run *runtime.Run
@@ -269,60 +263,60 @@ func (b *Bridge) admitChat(ctx context.Context, cmd reportprotocol.Chat) reportp
 			done.Status, done.Failure = "ambiguous", "execution_unconfirmed"
 		} else {
 			done.TurnID = run.TurnID
-			done.Outcome = &client.Outcome{Version: 1, TaskID: cmd.Target.TaskID, AgentID: cmd.Target.AgentID, RunID: cmd.Target.RunID, AttemptID: cmd.Target.AttemptID, State: run.State, Response: run.Response, Suspend: run.Suspend}
+			done.Outcome = runOutcome(cmd.Target, b.cfg, run.State, run.Response, run.Suspend)
 			if run.Err != nil {
 				done.Outcome.Error = "chat execution failed"
-			}
-			if run.Suspend != nil {
-				done.Outcome.AnswerSubject = b.cfg.RootSubject + ".answers." + b.cfg.AgentID
 			}
 		}
 		b.submitMu.Lock()
 		b.appendChatReceipt(ctx, done)
 		b.submitMu.Unlock()
 	})
-	return reply
 }
 
-// This route requires both broker access and the same orchestrator-signed
-// bearer used by the HTTP-over-NATS API. Never persist its short-lived token.
-func (c *reportChannel) startChat(ctx context.Context, nc *nats.Conn) error {
-	sub, err := nc.Subscribe(reportprotocol.ChatSubject(c.cfg.RootSubject, c.cfg.AgentID), func(m *nats.Msg) {
-		if !strings.HasPrefix(m.Reply, "_INBOX.") || len(m.Data) > 512*1024 {
-			return
+// chatHistory retains the last matching receipt and tracks unresolved intents
+// in journal order. Malformed intents fail closed; malformed receipts do not
+// resolve a command.
+func chatHistory(records []runtime.Record, id string) (*reportprotocol.Chat, *reportprotocol.ChatReceipt, map[string]bool, error) {
+	var prior *reportprotocol.Chat
+	var receipt *reportprotocol.ChatReceipt
+	unresolved := map[string]bool{}
+	for _, rec := range records {
+		if rec.ExtType == chatIntentType {
+			var old reportprotocol.Chat
+			if err := json.Unmarshal(rec.Payload, &old); err != nil {
+				return nil, nil, nil, err
+			}
+			unresolved[old.ID] = true
+			if old.ID == id {
+				prior = &old
+			}
 		}
-		var cmd reportprotocol.Chat
-		if json.Unmarshal(m.Data, &cmd) != nil {
-			return
+		if rec.ExtType == chatReceiptType {
+			var saved reportprotocol.ChatReceipt
+			if json.Unmarshal(rec.Payload, &saved) == nil {
+				if saved.Status == "completed" || saved.Status == "failed" {
+					delete(unresolved, saved.ID)
+				}
+				if saved.ID == id {
+					receipt = &saved
+				}
+			}
 		}
-		ioCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		js, err := nc.JetStream(nats.Context(ioCtx))
-		if err != nil {
-			return
-		}
-		kv, err := js.KeyValue(runapitoken.Bucket)
-		if err != nil {
-			return
-		}
-		entry, err := kv.Get(runapitoken.PublicKey)
-		if err != nil || runapitoken.Verify(ed25519.PublicKey(entry.Value()), cmd.Token, c.cfg.AgentID, time.Now()) != nil {
-			return
-		}
-		// Execution lifetime is host-owned, not the bounded admission I/O context.
-		reply := c.bridge.admitChat(ctx, cmd)
-		data, _ := json.Marshal(reply)
-		_ = m.Respond(data)
-	})
-	if err != nil {
-		return err
 	}
-	c.chatSub = sub
-	flush, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err = nc.FlushWithContext(flush); err != nil {
-		_ = sub.Unsubscribe()
-		return errors.New("chat control unavailable")
+	return prior, receipt, unresolved, nil
+}
+
+// Called under submitMu so in-flight admission and receipt persistence cannot
+// race the resume authority check.
+func (b *Bridge) hasActiveChat(records []runtime.Record) bool {
+	for _, rec := range records {
+		if rec.ExtType == chatIntentType {
+			var chat reportprotocol.Chat
+			if json.Unmarshal(rec.Payload, &chat) == nil && b.chatInFlight[chat.ID] {
+				return true
+			}
+		}
 	}
-	return nil
+	return false
 }
