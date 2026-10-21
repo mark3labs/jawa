@@ -52,7 +52,7 @@ func (w *Workflow) resyncRuns(conn *nats.Conn) {
 		if a.AgentID == "" || a.RunID == "" || a.RemoteAttemptID == "" || (a.OutcomeJSON != "" && !resumableOutcome(a)) {
 			continue
 		}
-		target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
+		target := a.target()
 		queryCtx, stop := context.WithTimeout(ctx, time.Second)
 		status, err := w.client.Status(queryCtx, target)
 		stop()
@@ -109,8 +109,8 @@ func (w *Workflow) applyStatus(observed Attempt, status client.Status) error {
 	if status.Version != 1 || status.Error != "" || status.TaskID != a.TaskID || !matches(a, status.AgentID, status.RunID, status.AttemptID) || a.Ready || status.Seq < a.EventSeq || a.OutcomeJSON != observed.OutcomeJSON || (a.OutcomeJSON != "" && !resumableOutcome(a)) {
 		return nil
 	}
-	var current bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cards WHERE id=? AND status IN ('Building','Fix') AND ?=(SELECT max(number) FROM workflow_attempts WHERE card_id=?))`, a.CardID, a.Number, a.CardID).Scan(&current); err != nil {
+	current, err := currentBuildAttempt(tx, a)
+	if err != nil {
 		return err
 	}
 	if !current {

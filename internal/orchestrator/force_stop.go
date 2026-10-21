@@ -48,9 +48,6 @@ func (w *Workflow) ForceStop(cardID string) (retErr error) {
 	if err := w.ctx.Err(); err != nil {
 		return err
 	}
-	if err := migrateCancellation(w.s); err != nil {
-		return err
-	}
 	tx, err := w.s.writeTx()
 	if err != nil {
 		return err
@@ -122,7 +119,7 @@ func (w *Workflow) ForceStop(cardID string) (retErr error) {
 	for _, a := range targets {
 		w.logAttempt(log.WarnLevel, "Attempt force-stopped by operator; remote stop not confirmed", a)
 		if a.AgentID != "" && a.RunID != "" && a.RemoteAttemptID != "" && w.client != nil {
-			target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
+			target := a.target()
 			w.wg.Go(func() { w.requestRemoteStop(target) })
 		}
 	}

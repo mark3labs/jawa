@@ -6,17 +6,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	client "github.com/mark3labs/bonnie/client/nats"
 )
 
 const cancelErrorText = "Cancellation could not be confirmed; check agent status before retrying."
-
-func migrateCancellation(s *Store) error {
-	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS workflow_cancel_requests (
- id INTEGER PRIMARY KEY, task_id TEXT, agent_id TEXT, run_id TEXT, remote_attempt_id TEXT, turn_id TEXT,
- status TEXT, error TEXT, created_at INTEGER)`)
-	return err
-}
 
 // CancelCard requests cancellation only for the latest attempt after observing its exact active turn.
 func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error) {
@@ -34,9 +26,6 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 	}
 	if w.client == nil {
 		return errors.New("agent control unavailable")
-	}
-	if err := migrateCancellation(w.s); err != nil {
-		return err
 	}
 	var pending bool
 	if err := w.s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE card_id=? AND status='pending')`, cardID).Scan(&pending); err != nil {
@@ -56,7 +45,7 @@ func (w *Workflow) CancelCard(ctx context.Context, cardID string) (retErr error)
 		return errors.New("cancellation target unavailable")
 	}
 	w.logAttempt(log.InfoLevel, "workflow cancellation target selected", a)
-	target := client.Target{TaskID: a.TaskID, AgentID: a.AgentID, RunID: a.RunID, AttemptID: a.RemoteAttemptID}
+	target := a.target()
 	queryCtx, stop := context.WithTimeout(ctx, 5*time.Second)
 	observed, err := w.client.Status(queryCtx, target)
 	stop()
