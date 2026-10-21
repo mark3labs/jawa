@@ -58,7 +58,7 @@ func main() {
 				}
 			}
 		}),
-		bonnie.WithActivityLogger(bonnie.NewActivityLogger(nil)),
+		bonnie.WithActivityLogger(newRedactedActivity(os.Stdout)),
 		bonnie.WithRunSandboxCleanup(sandboxCleanupPolicy()),
 		bonnie.WithCompletionHook(goCompletionPolicy()),
 		bonnie.WithKitSetup(trustedReports.Setup),
