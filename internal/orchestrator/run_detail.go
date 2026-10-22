@@ -529,26 +529,62 @@ func validRunDestination(id string) bool {
 	return true
 }
 
-func (a *app) loadChatDetail(ctx context.Context, d *runDetail) {
-	d.MessageID = uuid.NewString()
-	d.Chat = a.workflow.chatMessages(d.Record)
+// placeChat marks chat messages the snapshot already shows. A final receipt
+// binds its message to a user index. A steered message is accepted before the
+// host injects it at the next step boundary, so its receipt has no index; it
+// claims the latest unclaimed user message with the same text instead.
+func (d *runDetail) placeChat() {
+	if d.Observation.Snapshot == nil {
+		return
+	}
+	claimed := make(map[int]bool)
+	place := func(i, index int) {
+		claimed[index] = true
+		d.Chat[i].InTranscript = true
+		if d.SentAt == nil {
+			d.SentAt = make(map[int]time.Time)
+		}
+		d.SentAt[index] = time.UnixMilli(d.Chat[i].CreatedAt)
+	}
+	shows := func(index int, text string) bool {
+		for _, part := range d.Messages[index].Parts {
+			if part.Text == text {
+				return true
+			}
+		}
+		return false
+	}
+	var unindexed []int
 	for i := range d.Chat {
 		var receipt reportprotocol.ChatReceipt
-		if json.Unmarshal([]byte(d.Chat[i].Receipt), &receipt) == nil && receipt.UserIndex != nil && d.Observation.Snapshot != nil {
-			index := *receipt.UserIndex
-			if index >= 0 && index < len(d.Messages) {
-				for _, part := range d.Messages[index].Parts {
-					if part.Text == d.Chat[i].Text {
-						d.Chat[i].InTranscript = true
-						if d.SentAt == nil {
-							d.SentAt = make(map[int]time.Time)
-						}
-						d.SentAt[index] = time.UnixMilli(d.Chat[i].CreatedAt)
-					}
-				}
+		if json.Unmarshal([]byte(d.Chat[i].Receipt), &receipt) != nil {
+			continue
+		}
+		if receipt.UserIndex == nil {
+			if d.Chat[i].Status == "active" || d.Chat[i].Status == "completed" {
+				unindexed = append(unindexed, i)
+			}
+			continue
+		}
+		if index := *receipt.UserIndex; index >= 0 && index < len(d.Messages) && shows(index, d.Chat[i].Text) {
+			place(i, index)
+		}
+	}
+	for k := len(unindexed) - 1; k >= 0; k-- {
+		i := unindexed[k]
+		for index := len(d.Messages) - 1; index >= 0; index-- {
+			if !claimed[index] && d.Messages[index].Role == "user" && shows(index, d.Chat[i].Text) {
+				place(i, index)
+				break
 			}
 		}
 	}
+}
+
+func (a *app) loadChatDetail(ctx context.Context, d *runDetail) {
+	d.MessageID = uuid.NewString()
+	d.Chat = a.workflow.chatMessages(d.Record)
+	d.placeChat()
 	tx, err := a.s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return

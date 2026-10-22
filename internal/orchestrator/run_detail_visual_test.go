@@ -317,3 +317,31 @@ func TestRunDisplayUnsupportedAndFullOutput(t *testing.T) {
 		t.Fatal("output metadata lost", sections)
 	}
 }
+
+// Steering is accepted before the text reaches the journal, so its receipt has
+// no user index. The transcript copy must still hide the pending card.
+func TestRunPlaceChatSteeredWithoutIndex(t *testing.T) {
+	user := func(text string) runMessage { return runMessage{Role: "user", Parts: []runPart{{Text: text}}} }
+	d := runDetail{
+		Observation: runObservation{Snapshot: &bonnieclient.Snapshot{}},
+		Messages:    []runMessage{user("keep it up"), {Role: "assistant", Parts: []runPart{{Text: "ok"}}}, user("indexed"), user("keep it up")},
+		Chat: []RunChatMessage{
+			{ID: "i", Text: "indexed", Status: "completed", Receipt: `{"user_index":2,"status":"completed"}`, CreatedAt: 1},
+			{ID: "s", Text: "keep it up", Status: "completed", Receipt: `{"status":"completed"}`, CreatedAt: 2},
+			{ID: "w", Text: "not landed", Status: "completed", Receipt: `{"status":"completed"}`, CreatedAt: 3},
+			{ID: "q", Text: "keep it up", Status: "queued", CreatedAt: 4},
+		},
+	}
+	d.placeChat()
+	for i, want := range []bool{true, true, false, false} {
+		if d.Chat[i].InTranscript != want {
+			t.Errorf("%s InTranscript=%v, want %v", d.Chat[i].ID, d.Chat[i].InTranscript, want)
+		}
+	}
+	if _, ok := d.SentAt[3]; !ok {
+		t.Fatalf("steered message should claim the latest copy: %v", d.SentAt)
+	}
+	if _, ok := d.SentAt[0]; ok {
+		t.Fatal("steered message claimed an earlier equal message")
+	}
+}
