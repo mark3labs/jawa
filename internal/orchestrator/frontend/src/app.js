@@ -1,6 +1,7 @@
 // Datastar owns state and requests; shadcn-templ owns component behavior.
 // Sortable reports gestures only; the server decides the authoritative layout.
 import Sortable from 'sortablejs';
+import './mermaid.js';
 const emit = (el, type, detail) => el.dispatchEvent(new CustomEvent(type, {bubbles: true, detail}));
 const cardsIn = list => [...list.querySelectorAll(':scope > .task-card')];
 window.jawaBoard = host => {

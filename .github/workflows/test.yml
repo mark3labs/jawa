@@ -64,6 +64,7 @@ jobs:
           JAWA_ASSIGNMENT_HTML="$PWD/node_modules/.assignment.html" go test ../../../internal/orchestrator -run '^TestAssignmentUIFixture$' -count=1
           JAWA_ASSIGNMENT_HTML="$PWD/node_modules/.assignment.html" npm run test:assignment-ui
           npm run test:guidance
+          npm run test:mermaid
           npm run test:pr-refresh
           npm run test:issues
           JAWA_COMPONENT_FIXTURE="$PWD/node_modules/.components.html" go test ../../../internal/orchestrator -run 'Test(ComponentBrowserFixture|PlanningComponentFixture|AgentsComponentFixture)$' -count=1

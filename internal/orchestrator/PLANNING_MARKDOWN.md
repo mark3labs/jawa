@@ -45,3 +45,52 @@ revisions, readable discussions, literal natural/user messages and approval cont
 
 Build/Fix discussion uses the same sanitizer for typed blocker reasons and durable
 operator replies; report identity, not Markdown content, distinguishes exchanges.
+
+## Mermaid diagrams
+
+Use an exactly lowercase `mermaid` fence (backticks or tildes):
+
+````markdown
+```mermaid
+flowchart LR
+  Request --> Plan --> Build
+```
+````
+
+Mermaid 12.2.0 is pinned and bundled into the embedded application asset, with
+its MIT notice. No Node runtime, CDN or third-party network access is needed.
+Full-card descriptions, current/revision plans, questions and both directions of
+Planning and Build/Fix discussion support diagrams, as does assignment plan
+review. Runs Chat/Trace and board thumbnails do not hydrate diagrams.
+
+Goldmark still rejects raw HTML; Bluemonday permits only the exact generated
+`language-mermaid` code class, not SVG or arbitrary HTML attributes. The client
+uses Mermaid's strict SVG sanitizer, disables HTML labels and automatic scanning,
+locks security/limit configuration and never binds diagram callbacks. Configuration
+frontmatter/directives, HTML, encoded markup, click/image/icon constructs, URLs
+and custom styles are deliberately unsupported and fall back to source before
+rendering, preventing resource fetches during layout as well as in final output.
+
+Successful diagrams have an accessible label and keyboard-operable **Diagram
+source** disclosure. Invalid, unsafe or oversized diagrams retain escaped code
+and a local status; disabled/failed JavaScript leaves the original code visible.
+Source and edge limits are 50,000 characters and 500 edges per diagram. Rendering
+is serialized, disconnected/changed results are discarded, and a page-local cache
+holds at most 64 successes/failures. Snapshot patches restore cached diagrams with
+fresh SVG IDs without freezing Markdown or forms. Hidden revisions render using
+a staging area so they remain usable when opened. These limits are not a hard
+CPU timeout for in-process browser JavaScript; complex accepted input can still
+occupy the browser while Mermaid renders.
+
+Browser regression test (exports production Go markup and exercises real finite
+Datastar SSE frames; requires Chromium):
+
+```sh
+(cd internal/orchestrator/frontend && npm ci && npm run build && npm run test:mermaid)
+# Optional: CHROMIUM_PATH=/usr/bin/chromium JAWA_MERMAID_SCREENSHOTS=/tmp/mermaid-shots
+```
+
+The fixture covers flowchart/sequence diagrams, duplicate IDs, source changes,
+repeated morphs, preserved drafts, hidden revisions/dialogs, removal while queued,
+invalid/oversized/hostile inputs, no-JS fallback and document widths 320–1440px.
+It blocks and asserts no external requests, including hostile resource inputs.
