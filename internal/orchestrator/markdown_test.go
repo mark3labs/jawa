@@ -70,3 +70,25 @@ func TestPlanningMarkdownSafeLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanningMarkdownMermaidMarkers(t *testing.T) {
+	t.Parallel()
+	for _, fence := range []string{"```", "~~~"} {
+		source := fence + "mermaid\nflowchart LR\nA[\"<script>\"] --> B\n" + fence
+		got := renderPlanningMarkdown(source + "\n\n" + source)
+		if strings.Count(got, `<pre><code class="language-mermaid">`) != 2 || !strings.Contains(got, "&lt;script&gt;") {
+			t.Fatal(got)
+		}
+	}
+	for _, language := range []string{"", "go", "Mermaid", "mermaid-extra", "mermaids"} {
+		got := renderPlanningMarkdown("```" + language + "\nsource\n```")
+		if strings.Contains(got, "class=") || !strings.Contains(got, "<pre><code>source") {
+			t.Fatal(got)
+		}
+	}
+	for _, source := range []string{`<pre><code class="language-mermaid">flowchart LR</code></pre>`, `<code class="language-mermaid" style="color:red" data-test="x">unsafe</code>`} {
+		if got := renderPlanningMarkdown(source); strings.Contains(got, "language-mermaid") {
+			t.Fatal(got)
+		}
+	}
+}

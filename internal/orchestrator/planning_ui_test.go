@@ -122,7 +122,7 @@ func TestPlanningRoutesDurableAndAuthoritative(t *testing.T) {
 
 func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 	t.Parallel()
-	raw := "## Human plan\n\nUse **safe** rendering.\n\n## Questions\n\nWhich `branch`?"
+	raw := "## Human plan\n\nUse **safe** rendering.\n\n## Questions\n\nWhich `branch`?\n\n" + mermaidFence
 	c := Card{ID: "abc", Title: "Card", Description: "# Original", Status: "Planning"}
 	detail := PlanningDetail{
 		Session:   PlanningSession{State: "questions", Spec: "## Current plan"},
@@ -141,7 +141,7 @@ func TestPlanningMarkdownSurfacesAndStructuredDiscussion(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	for _, want := range []string{"planning-markdown", "<h1>Original</h1>", "<h2>Current plan</h2>", "<h2>Old plan</h2>", "<strong>Old question</strong>", "<strong>Current question</strong>", "<h2>Human plan</h2>", "<code>branch</code>", "<strong>natural</strong>", "<code>main</code>"} {
+	for _, want := range []string{`<pre><code class="language-mermaid">`, "planning-markdown", "<h1>Original</h1>", "<h2>Current plan</h2>", "<h2>Old plan</h2>", "<strong>Old question</strong>", "<strong>Current question</strong>", "<h2>Human plan</h2>", "<code>branch</code>", "<strong>natural</strong>", "<code>main</code>"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q: %s", want, got)
 		}

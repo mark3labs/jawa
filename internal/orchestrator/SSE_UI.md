@@ -71,7 +71,12 @@ cleared by unsolicited patches. Send/Stop enhanced POSTs set retry:'never'.
 - `view.go`: validated routes/filters, presentation helpers; no secret values exposed.
 
 Datastar owns requests and DOM patches; templ owns server-rendered markup.
-All application reactivity is signal-driven; runtime helpers are component-owned.
+Application requests and form reactivity are signal-driven; runtime helpers are
+component-owned. Mermaid progressively hydrates full-card Markdown and dialogs
+owned by `#dialog-slot` (including their runtime portals). It retains server code
+as the source, restores client output after morphs from a bounded cache and checks
+source/connectivity before applying asynchronous results. No Markdown section is
+ignored by morphing; surrounding controls and source remain server-owned.
 
 - `run_detail.templ`: run-detail page, Chat/Trace history and separate controls;
   composer, filter and tab links are outside patch roots.

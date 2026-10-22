@@ -10,6 +10,7 @@
     "test:ui": "node ui-regressions.mjs",
     "test:components": "node components.mjs",
     "test:browser": "node --test browser.test.mjs",
+    "test:mermaid": "node mermaid.mjs",
     "dev": "node dev.mjs",
     "test:first-paint": "node first-paint.mjs",
     "test:run-detail": "node run-detail.mjs",
@@ -27,6 +28,7 @@
     "test:auth-persistence": "node auth-persistence.mjs"
   },
   "dependencies": {
+    "mermaid": "12.2.0",
     "sortablejs": "^1.15.7"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"bytes"
 	"html"
+	"regexp"
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
@@ -19,6 +20,7 @@ var planningMarkdownPolicy = func() *bluemonday.Policy {
 	p.AllowElements("p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "strong", "em", "del", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td")
 	p.AllowAttrs("href", "title").OnElements("a")
 	p.AllowAttrs("start").OnElements("ol")
+	p.AllowAttrs("class").Matching(regexp.MustCompile(`^language-mermaid$`)).OnElements("code")
 	p.AllowURLSchemes("http", "https", "mailto")
 	p.AllowRelativeURLs(true)
 	p.RequireParseableURLs(true)

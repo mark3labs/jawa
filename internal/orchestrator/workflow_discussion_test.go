@@ -136,6 +136,8 @@ func TestWorkflowDiscussionFullCard(t *testing.T) {
 		for _, state := range []string{"pending", "queued", "answered", "cancelled", "cancelling", "ready", "running", "legacy"} {
 			t.Run(lane+state, func(t *testing.T) {
 				d := guidanceFixtureData(lane)
+				d.workflowDiscussion[0].Reason += "\n\n" + mermaidFence
+				d.workflowDiscussion[0].Reply = "**Operator reply**\n\n" + mermaidSequence
 				b := d.blockers["card"]
 				switch state {
 				case "queued":
@@ -161,7 +163,7 @@ func TestWorkflowDiscussionFullCard(t *testing.T) {
 				if strings.Contains(html, `action="/cards/guide"`) != (state == "pending") {
 					t.Fatal(html)
 				}
-				for _, want := range []string{`aria-label="Discussion"`, `id="workflow-message-report-token-assistant"`, `<strong>help</strong>`} {
+				for _, want := range []string{`aria-label="Discussion"`, `id="workflow-message-report-token-assistant"`, `<strong>help</strong>`, `<pre><code class="language-mermaid">`} {
 					if !strings.Contains(html, want) {
 						t.Fatal(want, html)
 					}

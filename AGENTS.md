@@ -98,7 +98,7 @@ The web UI (`internal/orchestrator/*.templ`) is built with
   (`--color-primary`, `--color-muted`, etc., mapped to the Jawa robe-brown/sand/amber
   palette). Use Tailwind utilities and component variants. Do not add hard-coded colors or new CSS files.
 - **Component JavaScript:** `frontend/runtime.sh` bundles lifecycle, Base UI/Floating UI helpers, Select, Checkbox, Switch, DropdownMenu, Dialog, CopyButton, MessageScroller, Toggle and ScrollArea from the pinned shadcn-templ module. Add any new component runtime to that shared list; no production CDN.
-- **Interactivity:** uses Datastar (vendored in `frontend/src/datastar.js`) and shadcn-templ component runtimes; prefer attributes and server-rendered fragments. The only app JS is the Sortable gesture and service-worker registration. Keep stable keyed patch roots intact. See `SSE_UI.md`.
+- **Interactivity:** uses Datastar (vendored in `frontend/src/datastar.js`) and shadcn-templ component runtimes; prefer attributes and server-rendered fragments. App JS covers Sortable gestures, service-worker registration and scoped Mermaid Markdown hydration. Keep stable keyed patch roots intact. See `SSE_UI.md`.
 - For new UI or a visual redesign, follow `skills/frontend-design/SKILL.md`.
 - Keep the UI responsive (320–1440px), keyboard accessible and touch friendly.
   Update the relevant browser fixture or test when behavior changes.

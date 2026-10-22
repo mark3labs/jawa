@@ -480,3 +480,13 @@ replacement and overflow at 320/390/768/1440px. Real Chromium screenshots are
 written to `frontend/node_modules/.merge-screenshots/` (not committed).
 Related regressions: `npm run test:pr-refresh`, `npm run test:fix`, `npm run test:ui`
 (the latter requires the component/card fixtures documented above).
+
+## Card Markdown diagrams
+
+Full-card Markdown and assignment plan review progressively render lowercase
+`mermaid` fences with locally bundled Mermaid, strict SVG security and accessible
+source/error/no-JS fallback. Existing discussion Markdown/filtering is unchanged.
+Runs keep literal code and copy controls. See `PLANNING_MARKDOWN.md` for supported
+syntax, resource restrictions, limits and the production-markup `npm run
+test:mermaid` browser regression (also run in CI). Public-only PWA caching is
+unchanged; diagram source is not persisted by the browser renderer.
