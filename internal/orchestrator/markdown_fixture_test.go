@@ -60,6 +60,7 @@ func TestMermaidBrowserFixture(t *testing.T) {
 		"flowchart LR\nA-->B\nclick A \"javascript:window.pwned=1\"",
 		"flowchart LR\nA-->B\nstyle A fill:url(https://evil.invalid/pixel)",
 		"flowchart LR\nA@{ img: \"https://evil.invalid/pixel\" }",
+		"flowchart LR\nA[\"`![tracking](/pixel)`\"]",
 	} {
 		d.cards[0].Description += "\n\n```mermaid\n" + hostile + "\n```"
 	}

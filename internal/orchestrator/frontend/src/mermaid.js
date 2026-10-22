@@ -25,7 +25,7 @@ mermaid.initialize({
 // Unsupported/unsafe constructs intentionally retain source, not partial output.
 function permitted(source) {
   return source.length <= 50000 &&
-    !/^\s*---|%%\s*\{|<\s*[a-z!/?]|[\\&]|#(?:\d|x[0-9a-f])|(?:https?:|data:|javascript:|\/\/)|\b(?:click|img|image|icon|style|classDef|linkStyle)\b|url\s*\(/im.test(source);
+    !/^\s*---|%%\s*\{|<\s*[a-z!/?]|[\\&]|!\[|#(?:\d|x[0-9a-f])|(?:https?:|data:|javascript:|\/\/)|\b(?:click|img|image|icon|style|classDef|linkStyle)\b|url\s*\(/im.test(source);
 }
 function remember(source, result) {
   cache.delete(source);

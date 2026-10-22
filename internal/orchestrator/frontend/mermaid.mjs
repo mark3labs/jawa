@@ -72,6 +72,9 @@ try {
   await uniqueIDs();
   assert.equal(await page.evaluate(() => window.renderAttempts), 0, 'unchanged fences must use cache');
   // Native disclosures work with keyboard; revision SVGs were rendered hidden.
+  const revision = page.locator('summary').filter({hasText: 'Revision history'});
+  await revision.click();
+  await expect(revision.locator('..').locator('.planning-diagram-viewport svg')).toBeVisible();
   const source = page.locator('.planning-diagram summary').first();
   await source.focus(); await page.keyboard.press('Enter');
   await expect(source.locator('..')).toHaveAttribute('open', '');
@@ -87,14 +90,14 @@ try {
   await expect(diagrams.first()).toContainText('Alice');
   await uniqueIDs();
   await patch('failures.html');
-  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(9);
+  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(10);
   await expect(diagrams).toHaveCount(8);
   await patch('fix.html');
-  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(9);
+  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(10);
   await expect(diagrams).toHaveCount(8);
   const failedAttempts = await page.evaluate(() => window.renderAttempts);
   await patch('failures.html');
-  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(9);
+  await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(10);
   assert.equal(await page.evaluate(() => window.renderAttempts), failedAttempts, 'failed diagrams must not be retried');
   // Outside the card/dialog ownership boundary, even marked code stays literal.
   await page.evaluate(() => {
