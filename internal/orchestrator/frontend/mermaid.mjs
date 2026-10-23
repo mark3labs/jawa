@@ -44,7 +44,12 @@ const patch = async name => {
     const button = document.createElement('button'); button.id = 'patch-fixture'; button.textContent = 'Patch';
     button.setAttribute('data-on:click', "@get('/patch')"); document.body.append(button);
   });
+  // The response completing alone does not prove Datastar applied the frame.
+  // Wait for the old generated figure to detach, then assertions await hydration.
+  const oldFigure = await page.locator('#planning-content .planning-diagram').first().elementHandle();
   await page.locator('#patch-fixture').click();
+  await expect.poll(() => oldFigure.evaluate(el => el.isConnected)).toBe(false);
+  await oldFigure.dispose();
   await page.locator('#patch-fixture').evaluate(el => el.remove());
 };
 const uniqueIDs = async () => {
@@ -66,7 +71,35 @@ try {
     }).observe(document.body, {childList: true});
   });
   await page.locator('[data-bind\\:guidance-reply]').fill('Preserve this draft');
-  for (let i = 0; i < 3; i++) {await patch('snapshot.html'); await expect(diagrams).toHaveCount(9);}
+  const description = page.locator('[aria-label="Original description"]');
+  const disclosure = () => description.locator('.planning-diagram details').first();
+  const assertSource = async open => {
+    await expect(description.locator('.planning-diagram details')).toHaveCount(2);
+    await expect(disclosure()).toHaveJSProperty('open', open);
+    if (open) {
+      await expect(disclosure()).toHaveAttribute('open', '');
+      await expect(disclosure().locator('code')).toBeVisible();
+      await expect(disclosure().locator('code')).toContainText('A[Start] --> B[Done]');
+    }
+    await expect(description.locator('.planning-diagram details').nth(1)).toHaveJSProperty('open', false);
+  };
+  // Open by keyboard before patching, not after: duplicate fences stay independent.
+  await disclosure().locator('summary').focus(); await page.keyboard.press('Enter');
+  await assertSource(true);
+  for (let i = 0; i < 3; i++) {
+    await patch('snapshot.html'); await expect(diagrams).toHaveCount(9);
+    await assertSource(true);
+  }
+  await patch('metadata.html');
+  await expect(page.locator('#planning-content .view-head h1')).toHaveText('Updated card metadata');
+  await expect(diagrams).toHaveCount(9);
+  await assertSource(true);
+  await disclosure().locator('summary').click();
+  await assertSource(false);
+  await patch('snapshot.html');
+  await expect(page.locator('#planning-content .view-head h1')).not.toHaveText('Updated card metadata');
+  await expect(diagrams).toHaveCount(9);
+  await assertSource(false);
   await expect(page.locator('[data-bind\\:guidance-reply]')).toHaveValue('Preserve this draft');
   assert.equal((await diagrams.first().innerHTML()).replaceAll(/jawa-diagram-\d+/g, 'diagram'), before.replaceAll(/jawa-diagram-\d+/g, 'diagram'), 'unchanged snapshot restores cached output');
   await uniqueIDs();
@@ -75,9 +108,12 @@ try {
   const revision = page.locator('summary').filter({hasText: 'Revision history'});
   await revision.click();
   await expect(revision.locator('..').locator('.planning-diagram-viewport svg')).toBeVisible();
-  const source = page.locator('.planning-diagram summary').first();
-  await source.focus(); await page.keyboard.press('Enter');
-  await expect(source.locator('..')).toHaveAttribute('open', '');
+  await disclosure().locator('summary').click();
+  await patch('snapshot.html');
+  await expect(diagrams).toHaveCount(9);
+  await assertSource(true);
+  await uniqueIDs();
+  assert.equal(await page.evaluate(() => window.renderAttempts), 0, 'pointer-open fences must use cache');
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({width, height: 1000});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `overflow at ${width}`);
@@ -88,6 +124,10 @@ try {
   }
   await patch('changed.html'); await expect(diagrams).toHaveCount(8);
   await expect(diagrams.first()).toContainText('Alice');
+  await expect(disclosure()).toHaveJSProperty('open', false);
+  await disclosure().locator('summary').click();
+  await expect(disclosure().locator('code')).toBeVisible();
+  await expect(disclosure().locator('code')).toHaveText('sequenceDiagram\nAlice->>Bob: Hello\n');
   await uniqueIDs();
   await patch('failures.html');
   await expect(page.locator('#planning-content .planning-diagram [role=status]')).toHaveCount(10);

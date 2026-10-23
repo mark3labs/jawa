@@ -43,6 +43,8 @@ func TestMermaidBrowserFixture(t *testing.T) {
 	}
 	write("page.html", appPage(d))
 	write("snapshot.html", planningContent(d))
+	d.cards[0].Title = "Updated card metadata"
+	write("metadata.html", planningContent(d))
 	dialogData := d
 	dialogData.cards = append([]Card(nil), d.cards...)
 	dialogData.cards[0].Status = "Planning"

@@ -77,8 +77,12 @@ and a local status; disabled/failed JavaScript leaves the original code visible.
 Source and edge limits are 50,000 characters and 500 edges per diagram. Rendering
 is serialized, disconnected/changed results are discarded, and a page-local cache
 holds at most 64 successes/failures. Snapshot patches restore cached diagrams with
-fresh SVG IDs without freezing Markdown or forms. Hidden revisions render using
-a staging area so they remain usable when opened. These limits are not a hard
+fresh SVG IDs without freezing Markdown or forms. Unchanged retained source
+fences restore their own Diagram source disclosure state after morphs, independently
+even for identical diagrams. Changed/new fences default closed. Disclosure state
+is page-local, not persisted in browser storage or across navigation/reload.
+Hidden revisions render using a staging area so they remain usable when opened.
+These limits are not a hard
 CPU timeout for in-process browser JavaScript; complex accepted input can still
 occupy the browser while Mermaid renders.
 
