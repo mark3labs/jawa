@@ -73,7 +73,7 @@ func TestForceReadyGates(t *testing.T) {
 
 func TestForceReadyRegressionAndReplay(t *testing.T) {
 	w, c, before, token := readyFixture(t)
-	mustExec(t, w, `INSERT INTO auto_resumes VALUES(?,?,0,'token',1,1,'scheduled')`, before.TaskID, c.ID)
+	mustExec(t, w, `INSERT INTO auto_resumes(task_id,card_id,planning,failure_token,due_at,next_check_at,state) VALUES(?,?,0,'token',1,1,'scheduled')`, before.TaskID, c.ID)
 	if err := w.ForceReady(t.Context(), c.ID, token, "55", "operator inspected", "admin", true); err != nil {
 		t.Fatal(err)
 	}

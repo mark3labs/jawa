@@ -434,6 +434,9 @@ func automaticResumeStatusNote(status autoResumeStatus) string {
 	case "exhausted":
 		return "Automatic resume budget exhausted (5/5). Manual resume or fresh Retry remains available when safe."
 	case "stopped":
+		if status.triage == "permanent" {
+			return fmt.Sprintf("Automatic resume paused: the decision model rates this failure permanent (%.0f%%). Fix the cause, then resume manually or Retry.", status.permanent*100)
+		}
 		return "Automatic resume stopped after host rejection. Manual recovery remains available when safe."
 	}
 	return ""

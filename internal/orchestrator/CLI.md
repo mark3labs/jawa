@@ -22,10 +22,16 @@ reports whether a credential is configured, never its value.
 | `--allow-no-ci` | `JAWA_ALLOW_NO_CI` | `false` |
 | `--github-token` | `JAWA_GITHUB_TOKEN`, falling back to `GITHUB_TOKEN` | empty |
 | `--forgejo-token` | `JAWA_FORGEJO_TOKEN`, falling back to `FORGEJO_TOKEN` | empty |
+| `--decision-model` | `JAWA_ORCHESTRATOR_DECISION_MODEL` | empty (no failure triage) |
 
 Boolean environment defaults retain the existing exact `true` convention.
 `--allow-no-ci` permits absent GitHub CI evidence; it does not bypass failing or
 required checks, provider identity checks, or review gates.
+
+`--decision-model` (for example `openrouter/typesafe/jev-1.14`, with
+`OPENROUTER_API_KEY`) enables failure triage before automatic resume; see
+[FAILED_RESUME.md](FAILED_RESUME.md#failure-triage). Startup refuses a model Kit
+cannot call as a decision model; credentials are checked by the first call.
 
 ## Reconcile
 

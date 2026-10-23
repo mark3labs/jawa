@@ -56,6 +56,24 @@ or undo the resumed generation. Typed reports and independent PR verification st
 win; natural completion is not success. Planning can continue into clarify/review
 and its existing same-run Answer workflow.
 
+## Failure triage
+
+With `--decision-model`, each automatic-resume failure generation is classified
+before it is reserved. A background pass sends the stored, already sanitized run
+error (at most 4 KiB, nothing else) to the decision model with a bounded timeout,
+outside any transaction, and stores only the class and probability in
+`auto_resumes.triage`/`triage_probability` (migration 24) against the failure
+token. Each generation is classified once; a new failure token resets triage.
+
+- `permanent` with P ≥ 0.8 sets the schedule to `stopped`. The card note says
+  automatic resume is paused; manual Resume and fresh Retry stay available.
+- `transient` resumes on the normal schedule.
+- A failed or refused decision stores `unavailable` and resumes as before.
+
+While triage is enabled, a due generation waits until it is triaged. The verdict
+is advisory: it can only withhold an automatic resume, never authorize work, and
+it never consumes the five-command budget. Without the flag, behavior is unchanged.
+
 ## Operational limits
 
 Deploy updated agents and orchestrator together, and permit the new route in agent

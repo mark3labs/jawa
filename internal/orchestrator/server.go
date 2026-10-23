@@ -450,7 +450,7 @@ func (a *app) rotateNATS(url, user, pass string) error {
 	return nil
 }
 func Command() *cobra.Command {
-	var dir, listen, natsListen, mcpListen string
+	var dir, listen, natsListen, mcpListen, decisionModel string
 	var debug bool
 	providerDefaults := map[string]string{}
 	cmd := &cobra.Command{Use: "orchestrator", Short: "Run the local orchestrator", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -518,6 +518,11 @@ func Command() *cobra.Command {
 		if err := validatedListenAddress(natsListen); err != nil {
 			return err
 		}
+		if decisionModel != "" {
+			if err := CheckDecisionModel(decisionModel); err != nil {
+				return err
+			}
+		}
 		if value, ok := overrides["debug"]; ok {
 			debug = value == "true"
 		}
@@ -573,6 +578,10 @@ func Command() *cobra.Command {
 		workflow.SetAutoMerger(s)
 		workflow.SetProviderMerger(ProviderPRMerger(s, nil))
 		workflow.SetProviderIdentity(ProviderIdentity(s, nil))
+		if decisionModel != "" {
+			workflow.SetFailureClassifier(DecisionFailureClassifier(decisionModel, nil))
+			logger.Info("Failure triage enabled", "decision_model", decisionModel)
+		}
 		logger.Info("Workflow ready", "provider_verification", true)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -653,6 +662,7 @@ func Command() *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", orchestratorEnv("JAWA_ORCHESTRATOR_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
 	cmd.Flags().StringVar(&natsListen, "nats-listen", orchestratorEnv("JAWA_ORCHESTRATOR_NATS_LISTEN", "127.0.0.1:4222"), "Authenticated embedded NATS listen address")
 	cmd.Flags().StringVar(&mcpListen, "mcp-listen", orchestratorEnv("JAWA_ORCHESTRATOR_MCP_LISTEN", ""), "MCP (Streamable HTTP) listen address; empty disables it. Requires an API key; put TLS in front")
+	cmd.Flags().StringVar(&decisionModel, "decision-model", orchestratorEnv("JAWA_ORCHESTRATOR_DECISION_MODEL", ""), "Decision model (provider/model) that triages failures before automatic resume; empty disables triage")
 	providerFlags(cmd, providerDefaults)
 	cmd.AddCommand(ReconcileCommand(), ForceStopCommand())
 	return cmd

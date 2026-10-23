@@ -104,7 +104,7 @@ func (w *Workflow) discoverAutoResumes(now time.Time) error {
 			}
 			due := now.Add(autoResumeDelay(count)).UnixMilli()
 			_, e = tx.Exec(`INSERT INTO auto_resumes(task_id,card_id,planning,failure_token,due_at,next_check_at,state) VALUES(?,?,?,?,?,?,?)
-    ON CONFLICT(task_id) DO UPDATE SET failure_token=excluded.failure_token,due_at=excluded.due_at,next_check_at=excluded.next_check_at,state=excluded.state
+    ON CONFLICT(task_id) DO UPDATE SET failure_token=excluded.failure_token,due_at=excluded.due_at,next_check_at=excluded.next_check_at,state=excluded.state,triage='',triage_probability=0
     WHERE auto_resumes.failure_token<>excluded.failure_token`, c.a.TaskID, c.a.CardID, c.planning, resumeToken(c.a), due, due, state)
 		}
 		if e == nil {
@@ -131,7 +131,9 @@ func (w *Workflow) autoResumePass(now time.Time) {
 	if w.discoverAutoResumes(now) != nil {
 		return
 	}
-	rows, err := w.s.db.Query(`SELECT task_id,card_id,planning,failure_token FROM auto_resumes WHERE state='scheduled' AND next_check_at<=? ORDER BY next_check_at,task_id LIMIT 25`, now.UnixMilli())
+	// With a classifier, a generation waits for its triage (or "unavailable").
+	triaged := w.failureClassifier() != nil
+	rows, err := w.s.db.Query(`SELECT task_id,card_id,planning,failure_token FROM auto_resumes WHERE state='scheduled' AND next_check_at<=? AND (?=0 OR triage<>'') ORDER BY next_check_at,task_id LIMIT 25`, now.UnixMilli(), triaged)
 	if err != nil {
 		return
 	}
@@ -165,7 +167,7 @@ func (w *Workflow) autoResumePass(now time.Time) {
 // Load status once into the snapshot used by native and SSE rendering. Obsolete
 // schedules are hidden by comparing against the current failed execution token.
 func (s *Store) autoResumeStatuses() (map[string]autoResumeStatus, error) {
-	rows, err := s.db.Query(`SELECT task_id,failure_token,state,due_at,(SELECT count(*) FROM failed_resumes f WHERE f.task_id=a.task_id AND automatic=1) FROM auto_resumes a`)
+	rows, err := s.db.Query(`SELECT task_id,failure_token,state,due_at,triage,triage_probability,(SELECT count(*) FROM failed_resumes f WHERE f.task_id=a.task_id AND automatic=1) FROM auto_resumes a`)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +176,7 @@ func (s *Store) autoResumeStatuses() (map[string]autoResumeStatus, error) {
 	for rows.Next() {
 		var task string
 		var status autoResumeStatus
-		if err = rows.Scan(&task, &status.token, &status.state, &status.due, &status.count); err != nil {
+		if err = rows.Scan(&task, &status.token, &status.state, &status.due, &status.triage, &status.permanent, &status.count); err != nil {
 			return nil, err
 		}
 		result[task] = status
@@ -183,7 +185,8 @@ func (s *Store) autoResumeStatuses() (map[string]autoResumeStatus, error) {
 }
 
 type autoResumeStatus struct {
-	token, state string
-	due          int64
-	count        int
+	token, state, triage string
+	due                  int64
+	count                int
+	permanent            float64
 }

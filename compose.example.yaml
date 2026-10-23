@@ -21,6 +21,8 @@ services:
     environment:
       JAWA_GITHUB_TOKEN: "${JAWA_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
       JAWA_FORGEJO_TOKEN: "${JAWA_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
+      JAWA_ORCHESTRATOR_DECISION_MODEL: "${JAWA_ORCHESTRATOR_DECISION_MODEL:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
     volumes:
       - orchestrator-data:/data
 

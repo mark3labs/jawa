@@ -60,6 +60,8 @@ type Workflow struct {
 	// resumePromoteChecks throttles owner queries used only to switch a pending
 	// resume from "Resuming…" to its working state.
 	resumePromoteChecks map[string]time.Time
+	// classifyFailure is optional advisory triage before automatic resume.
+	classifyFailure FailureClassifier
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
@@ -114,7 +116,8 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 		_ = w.Close()
 		return nil, err
 	}
-	w.wg.Add(4)
+	w.wg.Add(5)
+	go w.consumerLoop("triage", func() error { w.triagePass(); return nil })
 	go w.consumerLoop("results", func() error { return c.Consume(ctx, w.result) })
 	go w.consumerLoop("events", func() error { return c.ConsumeEvents(ctx, w.event) })
 	go w.loop(func() error { w.dispatch(); return nil })

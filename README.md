@@ -292,6 +292,11 @@ decision model; credentials are checked only by the first call. Each decision
 in a run is journalled and shown in the run console. A decision is advisory: it
 may block or redirect work, but it never authorizes an action or replaces typed
 reports and provider verification as completion evidence.
+When a workflow run is about to finish without a typed report, the agent's
+completion check sends it back with a prompt to call `completeTask`,
+`reportBlocker`, `clarify` or `proposeSpec`. The decision model, when
+configured, picks the prompt that fits how the response ended; without one, a
+generic prompt is used. The check stays within the completion continuation budget.
 Use `--nats-api=false` to disable the run API, or `--nats-create-stream=false`
 to disable automatic stream/bucket provisioning (not presence).
 Explicit empty credential flags clear their environment defaults; when switching
@@ -680,6 +685,10 @@ not delivery of commands already reserved; schedules and budgets survive restart
 and disabling. Enabling also schedules existing eligible failures, and may process
 overdue schedules. Reset dashboard overrides restores enabled behavior. Host
 rejection stops that failure generation; exhausted budgets need operator action.
+With `--decision-model` on the orchestrator, a decision model first sorts each
+failure into transient or permanent; a clear permanent verdict (for example an
+invalid credential) pauses automatic resume for that failure instead of spending
+the budget. See [failure triage](internal/orchestrator/FAILED_RESUME.md#failure-triage).
 Default-on recovery can incur provider costs and repeat external side effects.
 It still requires the original agent journal/sandbox and compatible control route;
 see [failed-run recovery limits](internal/orchestrator/FAILED_RESUME.md).

@@ -43,13 +43,15 @@ type AutoMergeOperation struct {
 }
 
 type AutoResume struct {
-	TaskID       string `json:"task_id"`
-	CardID       string `json:"card_id"`
-	Planning     int64  `json:"planning"`
-	FailureToken string `json:"failure_token"`
-	DueAt        int64  `json:"due_at"`
-	NextCheckAt  int64  `json:"next_check_at"`
-	State        string `json:"state"`
+	TaskID            string  `json:"task_id"`
+	CardID            string  `json:"card_id"`
+	Planning          int64   `json:"planning"`
+	FailureToken      string  `json:"failure_token"`
+	DueAt             int64   `json:"due_at"`
+	NextCheckAt       int64   `json:"next_check_at"`
+	State             string  `json:"state"`
+	Triage            string  `json:"triage"`
+	TriageProbability float64 `json:"triage_probability"`
 }
 
 type Card struct {

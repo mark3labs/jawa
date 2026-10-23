@@ -102,6 +102,30 @@ func admissionKey(c natschannel.Config) string {
 	return key
 }
 func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Identity, error) {
+	id, err := b.admission(ctx, runID)
+	if err != nil {
+		return id, err
+	}
+	b.mu.RLock()
+	r := b.runner
+	b.mu.RUnlock()
+	snapshot, err := r.Snapshot(ctx, runID)
+	if err != nil {
+		return id, err
+	}
+	if !r.IsActive(runID) || snapshot.State != runtime.RunRunning || snapshot.TurnID == "" {
+		return id, errors.New("typed report requires the active runtime turn")
+	}
+	id.TurnID = snapshot.TurnID
+	id.ToolCallID = kit.ToolCallIDFromContext(ctx)
+	if id.ToolCallID == "" {
+		return id, errors.New("typed report requires a trusted tool call ID")
+	}
+	return id, nil
+}
+
+// admission returns the run's trusted NATS task, without turn identity.
+func (b *Bridge) admission(ctx context.Context, runID string) (reportprotocol.Identity, error) {
 	b.mu.RLock()
 	r, c := b.runner, b.cfg
 	b.mu.RUnlock()
@@ -132,18 +156,6 @@ func (b *Bridge) identity(ctx context.Context, runID string) (reportprotocol.Ide
 	}
 	if id.TaskID == "" || id.AttemptID == "" {
 		return id, errors.New("run has no trusted NATS task admission")
-	}
-	snapshot, err := r.Snapshot(ctx, runID)
-	if err != nil {
-		return id, err
-	}
-	if !r.IsActive(runID) || snapshot.State != runtime.RunRunning || snapshot.TurnID == "" {
-		return id, errors.New("typed report requires the active runtime turn")
-	}
-	id.TurnID = snapshot.TurnID
-	id.ToolCallID = kit.ToolCallIDFromContext(ctx)
-	if id.ToolCallID == "" {
-		return id, errors.New("typed report requires a trusted tool call ID")
 	}
 	return id, nil
 }

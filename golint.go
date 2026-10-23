@@ -132,19 +132,6 @@ func changedGoPackages(ctx context.Context, exec sandboxExec, baseline map[strin
 
 type sandboxExec func(context.Context, sandbox.Command) (*sandbox.Result, error)
 
-func goCompletionPolicy() bonnie.CompletionPolicy {
-	return bonnie.CompletionPolicy{MaxContinuations: 2, NewHook: func(ctx context.Context, scope bonnie.RunScope) (bonnie.CompletionHook, error) {
-		baseline, err := snapshotGoFiles(ctx, scope.Exec)
-		if err != nil {
-			return nil, err
-		}
-		// Keep the initial baseline through repair turns; don't bless unfinished work.
-		return func(ctx context.Context, _ bonnie.CompletionCandidate) (bonnie.CompletionFeedback, error) {
-			return checkGoCompletion(ctx, scope.Exec, baseline)
-		}, nil
-	}}
-}
-
 func checkGoCompletion(ctx context.Context, exec sandboxExec, baseline map[string]string) (bonnie.CompletionFeedback, error) {
 	packages, err := changedGoPackages(ctx, exec, baseline)
 	if err != nil {

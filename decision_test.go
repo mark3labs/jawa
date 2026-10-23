@@ -111,3 +111,24 @@ func TestLiveDecisionModel(t *testing.T) {
 	}
 	t.Logf("%s: P(destructive) = %.3f", model, a.Probability)
 }
+
+// TestLiveReportEnding classifies how a run ended without a typed report.
+func TestLiveReportEnding(t *testing.T) {
+	if os.Getenv("JAWA_DECISION_LIVE") != "1" {
+		t.Skip("set JAWA_DECISION_LIVE=1 and the provider credential")
+	}
+	model := envOr("JAWA_DECISION_MODEL", liveDecisionModel)
+	agent := bonnie.New(bonnie.WithDecisionModel(model))
+	needed := func(context.Context, string) (bool, error) { return true, nil }
+	for _, tc := range []struct{ response, want string }{
+		{"I implemented the retry logic, all tests pass, and I opened PR #42 with the changes. The task is complete.", reportFinished},
+		{"I cannot push the branch: the GitHub token is missing write access to the repository. I need someone to grant it before I can continue.", reportBlocked},
+	} {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		got := checkTypedReport(ctx, needed, "run", agent.Decide, bonnie.CompletionCandidate{Response: tc.response})
+		cancel()
+		if got.ContinueWith != tc.want {
+			t.Fatalf("%q: prompt = %q, want %q", tc.response, got.ContinueWith, tc.want)
+		}
+	}
+}

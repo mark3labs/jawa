@@ -7,6 +7,8 @@ provider API uses no global registration or dialect state.
 
 ## Migration history
 
+- `00024_failure_triage.sql`: decision-model triage class and probability of
+  the current automatic-resume failure generation.
 - `00023_mcp_api_keys.sql`: hashed personal API keys with retained revocation
   audit and the `mcp_requests` replay ledger reserved for future write tools.
 

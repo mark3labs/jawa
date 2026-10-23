@@ -60,7 +60,7 @@ func main() {
 		}),
 		bonnie.WithActivityLogger(newRedactedActivity(os.Stdout)),
 		bonnie.WithRunSandboxCleanup(sandboxCleanupPolicy()),
-		bonnie.WithCompletionHook(goCompletionPolicy()),
+		bonnie.WithCompletionHook(completionPolicy(trustedReports.MissingReport)),
 		bonnie.WithKitSetup(trustedReports.Setup),
 		bonnie.WithoutHumanInput(),
 		bonnie.WithKit(func(o *kit.Options) {
