@@ -42,6 +42,8 @@ services:
       JAWA_GIT_USER_EMAIL: "${JAWA_GIT_USER_EMAIL:-}"
       JAWA_MODEL: "${JAWA_MODEL:-opencode/glm-5.3-flash}"
       OPENCODE_API_KEY: "${OPENCODE_API_KEY:-}"
+      JAWA_DECISION_MODEL: "${JAWA_DECISION_MODEL:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       FORGEJO_TOKEN: "${FORGEJO_TOKEN:-}"
     volumes:

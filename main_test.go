@@ -29,7 +29,7 @@ func TestSandboxImageOverride(t *testing.T) {
 
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"NATS_URL", "JAWA_NATS_ROOT_SUBJECT", "JAWA_NATS_AGENT_ID", "JAWA_NATS_CONSUMER", "JAWA_NATS_CREATE_STREAM"} {
+	for _, key := range []string{"NATS_URL", "JAWA_NATS_ROOT_SUBJECT", "JAWA_NATS_AGENT_ID", "JAWA_NATS_CONSUMER", "JAWA_NATS_CREATE_STREAM", "JAWA_DECISION_MODEL"} {
 		t.Setenv(key, "")
 	}
 }

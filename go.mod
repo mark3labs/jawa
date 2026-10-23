@@ -8,8 +8,8 @@ require (
 	github.com/axadrn/shadcn-templ/v2 v2.0.0-beta.15
 	github.com/charmbracelet/log v1.0.0
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/bonnie v0.33.0
-	github.com/mark3labs/kit v0.135.0
+	github.com/mark3labs/bonnie v0.34.0
+	github.com/mark3labs/kit v0.136.0
 	github.com/mark3labs/mcp-go v1.3.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/nats-io/nats-server/v2 v2.15.1

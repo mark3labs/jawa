@@ -263,6 +263,7 @@ jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
 | Environment variable | Equivalent flag |
 | --- | --- |
 | `JAWA_MODEL` | `--model` |
+| `JAWA_DECISION_MODEL` | `--decision-model` |
 | `JAWA_HTTP_ADDR` | `--addr` |
 | `JAWA_NAME` | `--name` |
 | `NATS_URL` | `--nats-url` |
@@ -283,6 +284,14 @@ Use `--provider-api-key` to override the selected model provider's credential
 (e.g. `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) and
 `--provider-url` to override its endpoint. Provider-specific authentication
 settings such as cloud credential chains remain managed by the provider SDK.
+`--decision-model` (for example `openrouter/typesafe/jev-1.14`, which needs
+`OPENROUTER_API_KEY`) gives the agent a BONNIE decision model: a cheap model that
+answers typed boolean, choice and score questions with probabilities. It is off
+when empty, the default. Startup refuses a model that Kit cannot call as a
+decision model; credentials are checked only by the first call. Each decision
+in a run is journalled and shown in the run console. A decision is advisory: it
+may block or redirect work, but it never authorizes an action or replaces typed
+reports and provider verification as completion evidence.
 Use `--nats-api=false` to disable the run API, or `--nats-create-stream=false`
 to disable automatic stream/bucket provisioning (not presence).
 Explicit empty credential flags clear their environment defaults; when switching
@@ -406,7 +415,7 @@ modifying them.
 Install the BONNIE CLI, then connect to the published HTTP port:
 
 ```sh
-go install github.com/mark3labs/bonnie/cmd/bonnie@v0.33.0
+go install github.com/mark3labs/bonnie/cmd/bonnie@v0.34.0
 bonnie chat
 ```
 

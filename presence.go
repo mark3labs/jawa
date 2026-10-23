@@ -43,6 +43,7 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	token := os.Getenv("GITHUB_TOKEN")
 	forgejo := forgejoToken()
 	apiKey, providerURL := "", ""
+	decisionModel := os.Getenv("JAWA_DECISION_MODEL")
 	cmd.Flags().BoolVar(&apiEnabled, "nats-api", apiEnabled, "serve authenticated run API over NATS (JAWA_NATS_API)")
 	cmd.Flags().StringVar(&bucket, "nats-presence-bucket", bucket, "discovery bucket (JAWA_NATS_PRESENCE_BUCKET)")
 	cmd.Flags().StringVar(&root, "sandbox-root", root, "local workspace root (JAWA_SANDBOX_ROOT)")
@@ -53,10 +54,17 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 	cmd.Flags().Lookup("forgejo-token").DefValue = ""
 	cmd.Flags().StringVar(&apiKey, "provider-api-key", "", "override model provider credential; prefer provider environment variables")
 	cmd.Flags().StringVar(&providerURL, "provider-url", "", "override model provider endpoint")
+	cmd.Flags().StringVar(&decisionModel, "decision-model", decisionModel, "optional decision model in provider/model format (JAWA_DECISION_MODEL); empty disables decisions")
 	servingFlagsE(cmd, func(name string, cfg natschannel.Config) error {
 		model, provider, modelID, err := servingModel(cmd)
 		if err != nil {
 			return err
+		}
+		if err := validDecisionModel(decisionModel); err != nil {
+			return err
+		}
+		if decisionModel != "" {
+			agent.Configure(bonnie.WithDecisionModel(decisionModel))
 		}
 		env := codingEnv()
 		delete(env, "GITHUB_TOKEN")
@@ -181,6 +189,18 @@ func openNATSPresenceWithBucket(ctx context.Context, cfg natschannel.Config, buc
 		return cfg, bonnie.PresenceConfig{}, nil, errors.New("jawa: could not open NATS presence bucket; check JetStream, permissions and 30s TTL")
 	}
 	return c, bonnie.PresenceConfig{Registry: store, AgentID: c.AgentID}, closeConn, nil
+}
+
+// An empty selection disables decisions. BONNIE checks that Kit can call the
+// model at startup; credentials are only checked by the first call.
+func validDecisionModel(selection string) error {
+	if selection == "" {
+		return nil
+	}
+	if _, _, err := kit.ParseModelString(selection); err != nil {
+		return errors.New("jawa: invalid decision model selection; expected provider/model")
+	}
+	return nil
 }
 
 // Match BONNIE's nonempty --model override, including explicit-empty semantics.
