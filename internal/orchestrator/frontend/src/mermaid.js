@@ -42,11 +42,12 @@ function current(code, source) {
   return code.isConnected && code.matches('pre > code.language-mermaid') &&
     eligible(code) && code.textContent === source;
 }
-function output(code, source, result) {
+function output(code, source, result, open) {
   const pre = code.parentElement;
   const figure = document.createElement('figure');
   figure.className = 'planning-diagram';
   figure.dataset.diagramOutput = '';
+  let details;
   if (result) {
     // A cache entry has its own prefix; every placement gets a fresh namespace.
     const id = `jawa-diagram-${++serial}`;
@@ -74,7 +75,8 @@ function output(code, source, result) {
     }
     viewport.append(document.importNode(parsed.documentElement, true));
     figure.append(viewport);
-    const details = document.createElement('details');
+    details = document.createElement('details');
+    details.open = open;
     const summary = document.createElement('summary');
     summary.textContent = 'Diagram source';
     details.append(summary, pre.cloneNode(true));
@@ -89,7 +91,7 @@ function output(code, source, result) {
     pre.hidden = false;
   }
   pre.after(figure);
-  states.set(code, {source, figure});
+  states.set(code, {source, figure, details});
 }
 async function render(source) {
   if (cache.has(source)) return cache.get(source);
@@ -133,10 +135,13 @@ async function scan() {
         code.parentElement.hidden = !!previous.figure.querySelector('svg');
         continue;
       }
+      // A detached figure retains its disclosure. Read the native property now,
+      // not a queued toggle event, and never share state through the SVG cache.
+      const open = previous?.source === source && !!previous.details?.open;
       previous?.figure.remove();
       code.parentElement.hidden = false;
       const result = await render(source);
-      if (current(code, source)) output(code, source, result);
+      if (current(code, source)) output(code, source, result, open);
     }
   } finally {
     running = false;

@@ -75,8 +75,12 @@ Application requests and form reactivity are signal-driven; runtime helpers are
 component-owned. Mermaid progressively hydrates full-card Markdown and dialogs
 owned by `#dialog-slot` (including their runtime portals). It retains server code
 as the source, restores client output after morphs from a bounded cache and checks
-source/connectivity before applying asynchronous results. No Markdown section is
-ignored by morphing; surrounding controls and source remain server-owned.
+source/connectivity before applying asynchronous results. Each unchanged retained
+source fence restores its own Diagram source open/closed state after morphs;
+identical diagrams do not share disclosure state. Changed/new fences start closed.
+This state is page-local, not browser storage or persistence across navigation.
+No Markdown section is ignored by morphing; surrounding controls and source
+remain server-owned.
 
 - `run_detail.templ`: run-detail page, Chat/Trace history and separate controls;
   composer, filter and tab links are outside patch roots.
