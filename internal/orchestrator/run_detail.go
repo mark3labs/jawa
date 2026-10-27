@@ -14,6 +14,7 @@ import (
 	"jawa/internal/reportprotocol"
 	"jawa/internal/runapitoken"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -570,10 +571,10 @@ func (d *runDetail) placeChat() {
 			place(i, index)
 		}
 	}
-	for k := len(unindexed) - 1; k >= 0; k-- {
-		i := unindexed[k]
-		for index := len(d.Messages) - 1; index >= 0; index-- {
-			if !claimed[index] && d.Messages[index].Role == "user" && shows(index, d.Chat[i].Text) {
+	for _, i := range slices.Backward(unindexed) {
+
+		for index, v := range slices.Backward(d.Messages) {
+			if !claimed[index] && v.Role == "user" && shows(index, d.Chat[i].Text) {
 				place(i, index)
 				break
 			}

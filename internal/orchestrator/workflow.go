@@ -45,6 +45,7 @@ type Workflow struct {
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
 	mu               sync.RWMutex
+	controlMu        sync.Mutex
 	verifier         Verifier
 	identity         IdentityChecker
 	conflicts        *conflictMonitor
@@ -94,6 +95,9 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	if err = publishAPIKey(ctx, conn, key); err != nil {
 		return nil, err
 	}
+	if err = publishAgentConcurrency(ctx, s, conn); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
 	w.runAPI = newRunAPI(ctx, conn, key)
@@ -126,6 +130,9 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for {
+			if err := w.syncAgentConcurrency(w.ctx); err != nil && w.ctx.Err() == nil {
+				w.log().Warn("Agent concurrency synchronization failed; retrying")
+			}
 			w.resyncRuns(conn)
 			if err := w.recoverPlanningResults(conn); err != nil && w.ctx.Err() == nil {
 				w.log().Warn("Planning result recovery failed")

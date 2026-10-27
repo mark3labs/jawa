@@ -498,3 +498,21 @@ Runs keep literal code and copy controls. See `PLANNING_MARKDOWN.md` for support
 syntax, resource restrictions, limits and the production-markup `npm run
 test:mermaid` browser regression (also run in CI). Public-only PWA caching is
 unchanged; diagram source is not persisted by the browser renderer.
+
+## Global per-agent concurrency
+
+Settings → Agents uses shadcn Input/Label for optional `agent-concurrency`
+(1–1024). POST `/settings/orchestrator` validates before persisting any fields;
+missing field preserves the override, empty removes it. Reset removes it along
+with other dashboard overrides. Only the explicit dashboard value is published
+to `jawa_control` / `agent_concurrency`; absent override deletes a stale KV key,
+never publishes an orchestrator default. Startup synchronizes after API-key
+publication, successful saves/resets synchronize immediately, and the workflow
+retries/reconciles every ten seconds with bounded NATS I/O. A publication outage
+does not roll back durable settings; the save response reports pending delivery.
+Each agent chooses its own CLI/environment/default concurrency when no dashboard
+override exists. Agents read this KV policy every two seconds. Lowering the
+limit leaves existing executions running. The gate bounds model executions, not
+broker task ownership or total fleet capacity. Shared transport consumer
+`MaxAckPending` can independently lower throughput unless adjusted separately;
+the dashboard override does not resize that transport setting.

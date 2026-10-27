@@ -172,6 +172,20 @@ export async function runScenario(scenario) {
       // alter its hidden input (the old document-wide observer is gone).
       const html = await page.locator('#settings-content').evaluate(el => {const clone = el.cloneNode(true); const input = clone.querySelector('#runtime-auto-resume'); input.removeAttribute('checked'); const field = input.closest('.switch-field'); field.id = 'runtime-auto-resume-off'; return clone.outerHTML;});
       patch(html); await expect(input).not.toBeChecked(); await expect(root).toHaveAttribute('aria-checked', 'false');
+      const concurrency = page.getByLabel('Global per-agent concurrency override');
+      await expect(concurrency).toHaveValue('');
+      await expect(concurrency).toHaveAttribute('min', '1');
+      await expect(concurrency).toHaveAttribute('max', '1024');
+      await concurrency.fill('0');
+      assert.equal(await concurrency.evaluate(el => el.checkValidity()), false);
+      await concurrency.fill('1025');
+      assert.equal(await concurrency.evaluate(el => el.checkValidity()), false);
+      await concurrency.fill('12');
+      const concurrencyForm = concurrency.locator('xpath=ancestor::form');
+      assert.equal(await concurrencyForm.evaluate(el => new FormData(el).get('agent-concurrency')), '12');
+      await concurrency.fill('');
+      assert.equal(await concurrency.evaluate(el => el.checkValidity()), true);
+      assert.equal(await concurrencyForm.evaluate(el => new FormData(el).get('agent-concurrency')), '');
       await page.goto(`${base}/planning`); await chooseSelect(page, '[id^=plan-revision-][role=combobox]', '2');
       const id = await page.locator('[id^=plan-revision-][role=combobox]').getAttribute('id'); const html2 = await page.locator('#planning-content').evaluate(el => el.outerHTML); patch(html2); await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
     }

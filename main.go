@@ -9,9 +9,11 @@ package main
 import (
 	"errors"
 	"fmt"
+	"jawa/internal/agentconcurrency"
 	"jawa/internal/orchestrator"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/mark3labs/bonnie"
@@ -96,6 +98,8 @@ func servingFlags(root *cobra.Command, apply func(string, natschannel.Config)) {
 func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) error) {
 	cfg := natsAuthConfig(natsConfig())
 	name := envOr("JAWA_NAME", "jawa")
+	concurrency := envOr("JAWA_CONCURRENCY", strconv.Itoa(agentconcurrency.Default))
+	root.Flags().StringVar(&concurrency, "concurrency", concurrency, "maximum concurrent executions per agent, 1–1024 (JAWA_CONCURRENCY; dashboard overrides)")
 	root.Flags().StringVar(&name, "name", name, "agent display name")
 	root.Flags().StringVar(&cfg.AgentID, "nats-agent-id", cfg.AgentID, "unique, stable NATS agent ID (required)")
 	root.Flags().StringVar(&cfg.RootSubject, "nats-root-subject", cfg.RootSubject, "NATS subject prefix (JAWA_NATS_ROOT_SUBJECT)")
@@ -121,6 +125,11 @@ func servingFlagsE(root *cobra.Command, apply func(string, natschannel.Config) e
 				return err
 			}
 		}
+		limit, err := agentconcurrency.Parse(concurrency)
+		if err != nil {
+			return err
+		}
+		cfg.Concurrency = limit
 		return apply(name, cfg)
 	}
 }

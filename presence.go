@@ -101,6 +101,7 @@ func configureServing(cmd *cobra.Command, agent *bonnie.Agent) {
 			pc.Labels["jawa.run_chat"] = "1"
 			agent.Configure(bonnie.WithNATSAPI(natsapi.Config{Conn: shared.Conn, Subject: subject, Authenticator: auth}))
 		}
+		trustedReports.SetConcurrency(cfg.Concurrency)
 		agent.Configure(bonnie.WithName(name), trustedReports.Channel(shared), bonnie.WithPresence(pc))
 		return nil
 	})

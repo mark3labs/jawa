@@ -3,10 +3,12 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -442,7 +444,9 @@ func TestProviderReaderSafety(t *testing.T) {
 				case "timeout":
 					<-r.Context().Done()
 				case "oversize":
-					if _, err := fmt.Fprint(w, strings.Repeat(" ", 4<<20+1)); err != nil {
+					// The bounded reader may close the connection before this write
+					// finishes. Only expected peer-disconnect errors are acceptable.
+					if _, err := fmt.Fprint(w, strings.Repeat(" ", 4<<20+1)); err != nil && !errors.Is(err, syscall.ECONNRESET) && !errors.Is(err, syscall.EPIPE) {
 						t.Errorf("write provider fixture: %v", err)
 					}
 				case "status":

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"jawa/internal/agentconcurrency"
 	"jawa/internal/reportprotocol"
 	"jawa/internal/reporttools"
 	"strings"
@@ -24,6 +25,8 @@ import (
 // Bridge is host configuration, never model input. Managed setup captures
 // the runtime scope; admission correlation comes from BONNIE's durable journal.
 type Bridge struct {
+	gate               *agentconcurrency.Gate
+	concurrencyDefault int
 	// Serialize intent admission so simultaneous report tools cannot race.
 	submitMu      sync.Mutex
 	resumeWG      sync.WaitGroup
@@ -37,7 +40,21 @@ type Bridge struct {
 	conn           *nats.Conn
 }
 
-func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) error {
+func (b *Bridge) Setup(ctx context.Context, k *kit.Kit, scope bonnie.RunScope) (err error) {
+	if b.gate != nil {
+		if err = b.gate.Acquire(ctx); err != nil {
+			return err
+		}
+		var once sync.Once
+		release := func() { once.Do(b.gate.Release) }
+		stop := context.AfterFunc(ctx, release)
+		defer func() {
+			if err != nil {
+				stop()
+				release()
+			}
+		}()
+	}
 	// A follow-up can resume an old suspension whose saved Context still
 	// contains the original task. Overlay conversational scope on every model
 	// request as well as enforcing report rejection independently below.
@@ -162,20 +179,36 @@ func (b *Bridge) admission(ctx context.Context, runID string) (reportprotocol.Id
 
 type reportChannel struct {
 	bonnie.Channel
-	bridge       *Bridge
-	cfg          natschannel.Config
-	owned        *nats.Conn
-	chatSub      *nats.Subscription
-	resumeSub    *nats.Subscription
-	resumeCancel context.CancelFunc
+	bridge        *Bridge
+	cfg           natschannel.Config
+	owned         *nats.Conn
+	chatSub       *nats.Subscription
+	resumeSub     *nats.Subscription
+	resumeCancel  context.CancelFunc
+	concurrencyWG sync.WaitGroup
+	policyCancel  context.CancelFunc
 }
 
-func (c *reportChannel) Start(ctx context.Context) error {
+func (c *reportChannel) Start(ctx context.Context) (err error) {
 	conn, owned, err := reportConnection(ctx, c.cfg)
 	if err != nil {
 		return err
 	}
 	c.owned = owned
+	policyCtx, policyCancel := context.WithCancel(ctx)
+	c.policyCancel = policyCancel
+	// A failed Start is not necessarily followed by Shutdown. Stop the policy
+	// reader before closing its transport, including when a later setup fails.
+	defer func() {
+		if err != nil {
+			policyCancel()
+			c.concurrencyWG.Wait()
+			c.bridge.mu.Lock()
+			c.bridge.conn = nil
+			c.bridge.mu.Unlock()
+		}
+	}()
+	c.startConcurrency(policyCtx, conn)
 	c.bridge.submitMu.Lock()
 	c.bridge.resumeStopped = false
 	c.bridge.submitMu.Unlock()
@@ -218,6 +251,10 @@ func (c *reportChannel) Start(ctx context.Context) error {
 	return nil
 }
 func (c *reportChannel) Shutdown(ctx context.Context) error {
+	if c.policyCancel != nil {
+		c.policyCancel()
+	}
+	c.concurrencyWG.Wait()
 	if c.resumeCancel != nil {
 		c.resumeCancel()
 	}
@@ -298,6 +335,11 @@ func validReportRoot(root string) bool { return root != "" && !strings.ContainsA
 // New binds the trusted runtime and channel without starting a root BONNIE host.
 // It is the same adapter used by Channel and permits embedded runtime tests.
 func (b *Bridge) New(r *runtime.Runner, cfg natschannel.Config) (bonnie.Channel, error) {
+	// BONNIE's worker pool is fixed at startup. The live gate in Setup bounds
+	// actual model work across NATS, run chat, resumes and recovery.
+	if b.gate != nil {
+		cfg.Concurrency = agentconcurrency.Max
+	}
 	ch, err := natschannel.New(r, cfg)
 	if err != nil {
 		return nil, err

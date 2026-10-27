@@ -272,6 +272,7 @@ jawa serve --model anthropic/claude-sonnet-latest --nats-agent-id jawa-1
 | `JAWA_NATS_AGENT_ID` | `--nats-agent-id` |
 | `JAWA_NATS_ROOT_SUBJECT` | `--nats-root-subject` |
 | `JAWA_NATS_CONSUMER` | `--nats-consumer` |
+| `JAWA_CONCURRENCY` | `--concurrency` (1–1024, default 4; dashboard override wins) |
 | `JAWA_NATS_CREATE_STREAM` | `--nats-create-stream` |
 | `JAWA_NATS_API` | `--nats-api` |
 | `JAWA_NATS_PRESENCE_BUCKET` | `--nats-presence-bucket` |
@@ -441,7 +442,26 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 | `JAWA_NATS_ROOT_SUBJECT` | `bonnie` |
 | `JAWA_NATS_CREATE_STREAM` | `true` |
 | `JAWA_NATS_CONSUMER` | Optional shared task consumer override |
+| `JAWA_CONCURRENCY` | Per-agent simultaneous model executions; default `4`, range `1–1024`; `--concurrency` overrides. |
 | `JAWA_NATS_PRESENCE_BUCKET` | `jawa_agents`; use the same bucket for a discovery scope |
+
+**Agent concurrency:** Settings → Agents → Concurrent model executions per agent
+is a persisted, live override for all updated agents: dashboard > `--concurrency` >
+`JAWA_CONCURRENCY` > `4`. Blank removes the override; resetting dashboard overrides
+also restores each agent's own startup default. Agents refresh the policy every
+two seconds. Lowering it does not cancel existing executions; new model work waits
+for a slot. Suspended/input-waiting runs do not hold a slot. The gate covers managed
+model turns, including chat, resumes and recovery, not total retained runs or a
+fleet-wide quota. Broker admission may already mark waiting work running.
+
+BONNIE uses a fixed transport worker pool, so updated agents reserve up to 1024
+transport slots while the live gate bounds model execution. Existing JetStream
+consumers retain `MaxAckPending`, which can independently restrict throughput
+(including a shared cap across agents using the shared task consumer). To raise
+throughput above that existing cap, an operator must adjust the relevant consumer
+configuration separately; dashboard changes do not rewrite broker resources.
+Deploy updated agents to use the live override; older agents ignore it. During a
+broker outage agents retain the last policy read successfully.
 
 **Presence migration:** `JAWA_NATS_PRESENCE` is no longer read; old `false`
 values cannot disable discovery. Remove `--nats-presence` from deployment commands:

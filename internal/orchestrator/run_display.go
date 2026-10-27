@@ -661,7 +661,7 @@ func resultDescription(name string, r *runTool) string {
 	for _, section := range r.Sections {
 		if section.Diff {
 			added, removed := 0, 0
-			for _, line := range strings.Split(section.Text, "\n") {
+			for line := range strings.SplitSeq(section.Text, "\n") {
 				switch {
 				case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
 				case strings.HasPrefix(line, "+"):

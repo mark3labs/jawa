@@ -66,3 +66,16 @@ Auto merge is dashboard-only: no CLI/environment override. Global default Off is
 live for inherited cards; explicit card On overrides Off. Reset dashboard overrides
 restores global Off without resetting card preferences. See PROVIDERS.md and README
 for squash-only permissions, eligibility and in-flight-disable limitations.
+
+## Agent concurrency
+
+Settings → Agents has a persisted global **per-agent** concurrency override
+(`agent-concurrency`, integer 1–1024). It applies live to every connected agent;
+it is not a fleet-wide capacity limit. Blank removes the override, and Reset
+clears it too. Agent precedence is dashboard override > agent `--concurrency` >
+`JAWA_CONCURRENCY` > 4. The orchestrator never publishes a fallback value: without
+an override, each agent retains its own defaults. Lowering the limit does not
+cancel already-running executions. Agents check the dashboard KV policy every two
+seconds. This gate limits model executions, not broker task ownership. The shared
+transport consumer’s `MaxAckPending` can independently lower throughput unless
+adjusted separately; the dashboard override does not change it.

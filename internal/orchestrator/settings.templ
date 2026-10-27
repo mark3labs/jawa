@@ -2,6 +2,7 @@ package orchestrator
 
 import (
  "strconv"
+ "jawa/internal/agentconcurrency"
 	"strings"
 
 	"github.com/axadrn/shadcn-templ/v2/components/alert"
@@ -58,6 +59,20 @@ templ settingsContent(d pageData) {
 						}
 					</div>
 				</form>
+                <form method="post" action="/settings/orchestrator" class="settings-sub">
+                    <input type="hidden" name="_csrf" value={ d.csrf }/>
+                    @viewFields(d.v)
+                    <div class="field">
+                        @label.Label(label.Props{For: "runtime-agent-concurrency"}) {
+                            Global per-agent concurrency override
+                        }
+                        @input.Input(input.Props{ID: "runtime-agent-concurrency", Name: "agent-concurrency", Type: "number", Value: d.dashboard["agent-concurrency"], Placeholder: "Use each agent's defaults", Attributes: templ.Attributes{"min": "1", "max": strconv.Itoa(agentconcurrency.Max), "step": "1", "aria-describedby": "agent-concurrency-help"}})
+                        <p id="agent-concurrency-help" class="muted small">Maximum simultaneous model executions per agent, not a fleet-wide limit or broker ownership limit. Agents check for updates every 2 seconds. Blank removes the override; each agent uses --concurrency, then JAWA_CONCURRENCY, then { strconv.Itoa(agentconcurrency.Default) }. Lowering the limit does not interrupt running executions.</p>
+                    </div>
+                    <div class="form-actions">
+                        @submit("Save")
+                    </div>
+                </form>
 				<div class="settings-sub" id="connect-agent">
 					<div class="settings-sub-head">
 						<h3>Connect an agent</h3>

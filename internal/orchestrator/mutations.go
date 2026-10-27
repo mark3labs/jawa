@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"jawa/internal/agentconcurrency"
 	"net/http"
 	"strconv"
 	"strings"
@@ -272,6 +273,7 @@ func (a *app) mutateSettingsOrchestratorReset(w http.ResponseWriter, r *http.Req
 	err := a.s.ClearDashboardOverrides()
 	if err == nil {
 		ctx.effects.flash = "Dashboard overrides cleared. Restart required for listener changes."
+		a.syncAgentConcurrency(r.Context(), &ctx.effects)
 		if a.logger != nil {
 			if a.debugDefault {
 				a.logger.SetLevel(log.DebugLevel)
@@ -296,6 +298,16 @@ func (a *app) mutateSettingsOrchestrator(w http.ResponseWriter, r *http.Request,
 				break
 			}
 			values[key] = value
+		}
+	}
+	if err == nil && r.Form.Has("agent-concurrency") {
+		value := strings.TrimSpace(r.Form.Get("agent-concurrency"))
+		if value == "" {
+			delete(values, "agent-concurrency")
+		} else if n, e := agentconcurrency.Parse(value); e != nil {
+			err = fmt.Errorf("agent concurrency must be an integer from 1 to %d", agentconcurrency.Max)
+		} else {
+			values["agent-concurrency"] = strconv.Itoa(n)
 		}
 	}
 	if err == nil && r.Form.Has("debug") {
@@ -341,6 +353,9 @@ func (a *app) mutateSettingsOrchestrator(w http.ResponseWriter, r *http.Request,
 	if err == nil {
 		err = a.s.ReplaceDashboardOverrides(values)
 		ctx.effects.flash = "Overrides saved. Listener changes require a restart; debug logging applies immediately."
+	}
+	if err == nil {
+		a.syncAgentConcurrency(r.Context(), &ctx.effects)
 	}
 	if err == nil && values["debug"] != "" && a.logger != nil {
 		if values["debug"] == "true" {
