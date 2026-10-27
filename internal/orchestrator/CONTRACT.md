@@ -63,6 +63,14 @@ the shared launch options without starting a browser.
 
 ## First-paint and card fixture checks
 
+Full-page link navigations opt into cross-document view transitions
+(`@view-transition { navigation: auto; }` in `frontend/src/style.css`), as
+Datastar recommends for MPA navigation. The browser keeps the old page painted
+until the new one renders, then crossfades the page in 120ms. `.sidebar` and
+`.topbar` carry their own `view-transition-name` with no animation, so they
+stay still. `prefers-reduced-motion: reduce` turns transitions off. Browsers
+without support fall back to ordinary navigation.
+
 Export deterministic **real Board and Archive pages** (the Archive export uses
 `.archive` as a suffix) from the repository root:
 

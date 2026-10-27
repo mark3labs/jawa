@@ -531,6 +531,24 @@ details pre { margin-top: 10px; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
 
+/* Full-page navigations: keep the old page painted until the new one is ready,
+   then crossfade only the content. The sidebar and top bar are named so they
+   stay put instead of fading. Unsupported browsers ignore this. */
+@view-transition { navigation: auto; }
+.sidebar { view-transition-name: app-sidebar; }
+.topbar { view-transition-name: app-topbar; }
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: 120ms; }
+::view-transition-group(app-sidebar),
+::view-transition-group(app-topbar),
+::view-transition-old(app-sidebar),
+::view-transition-new(app-sidebar),
+::view-transition-old(app-topbar),
+::view-transition-new(app-topbar) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}
+
 /* Planning detail: sanitized, server-rendered Markdown. */
 .lane-Planning .lane-ic { color: var(--rust); }
 .planning-view { max-width: 960px; margin-inline: auto; }
