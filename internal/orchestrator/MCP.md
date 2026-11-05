@@ -77,7 +77,7 @@ JSON-RPC protocol errors. Unexpected storage errors are sanitized to
 
 Read the card, retain its version, then loop `wait_for_card` with that version.
 It returns as soon as the card changes or the timeout expires. Always update the
-version from the returned card; `changed:false` is an ordinary polling timeout.
+version from the returned card; `changed:false` is an ordinary wait timeout.
 Alternatively poll `get_card`. Lifecycle writes below return immediately after
 queuing work or recording a decision; they do not wait for an agent.
 
@@ -94,7 +94,7 @@ provider methods may impose shorter bounds; client cancellation always applies.
 | list_agents | none | Workflow.Agents | 10s | R |
 | list_cards | [project_id, lane, include_archived] | snapshot / card projections | 10s | R |
 | get_card | card_id | card | 10s | R |
-| wait_for_card | card_id, version, [timeout_seconds] | card polling | 30s outer; 1–25s wait | R |
+| wait_for_card | card_id, version, [timeout_seconds] | change-driven card wait | 30s outer; 1–25s wait | R |
 | create_project | name, idempotency_key, [provider, repo, repo_name, forgejo_url, base_branch] | replayOrRun / insertProjectDetails | 20s | I |
 | create_card | project_id, title, idempotency_key, [description, issue_url, auto_merge, create_issue, issue_recovery, recovery_url] | replayOrRun / insertCardOptions / submitIssueCardForm | 20s; 30s issue | I |
 | set_auto_merge | card_id, mode, expected_mode | SetCardAutoMerge | 20s | — |
@@ -181,7 +181,8 @@ natural text. Re-fetch actions after any rejected or stale request.
 ## Bounds and logging
 
 Ordinary read calls have a 10-second context timeout; wait calls have a 30-second
-outer timeout and poll once per second for up to 25 seconds. Requests honor
+outer timeout and wake on database or presence changes for up to 25 seconds;
+they do not poll. Requests honor
 cancellation. HTTP uses a 5-second header timeout, 120-second idle timeout,
 32 KiB maximum headers and 1 MiB maximum request bodies. There is deliberately
 no HTTP ReadTimeout or WriteTimeout, since net/http background reads could

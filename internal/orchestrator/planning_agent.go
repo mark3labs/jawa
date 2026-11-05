@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	client "github.com/mark3labs/bonnie/client/nats"
@@ -202,7 +203,15 @@ func (w *Workflow) dispatchPlanning() {
 	if err != nil {
 		return
 	}
+	now := time.Now()
+	queued := map[string]bool{}
+	defer func() { w.retry.retain("turn:", queued) }()
 	for _, t := range turns {
+		key := "turn:" + t.ID
+		queued[key] = true
+		if !w.retry.due(key, now) {
+			continue
+		}
 		// Resolve routing before taking the write lock: it may query presence.
 		route, routeErr := "", error(nil)
 		if t.TargetAgentID == "" {
@@ -242,11 +251,13 @@ func (w *Workflow) dispatchPlanning() {
 			err = w.submitTask(ctx, latest.TargetAgentID, task)
 			cancel()
 		}
-		now := time.Now().UnixMilli()
+		at := time.Now().UnixMilli()
 		if err != nil {
-			_, _ = tx.Exec(`UPDATE planning_turns SET error=?,updated_at=? WHERE id=?`, err.Error(), now, t.ID)
+			w.retry.fail(key, now)
+			_, _ = tx.Exec(`UPDATE planning_turns SET error=?,updated_at=? WHERE id=? AND error<>?`, err.Error(), at, t.ID, err.Error())
 		} else {
-			if _, err = tx.Exec(`UPDATE planning_turns SET published=1,state='submitted',error='',updated_at=? WHERE id=?`, now, t.ID); err != nil {
+			w.retry.done(key)
+			if _, err = tx.Exec(`UPDATE planning_turns SET published=1,state='submitted',error='',updated_at=? WHERE id=?`, at, t.ID); err != nil {
 				_ = tx.Rollback()
 				continue
 			}
@@ -267,26 +278,40 @@ func (w *Workflow) dispatchPlanningCancellations() {
 	if err != nil {
 		return
 	}
+	now := time.Now()
+	pending := map[string]bool{}
+	defer func() { w.retry.retain("cancel:", pending) }()
 	for _, t := range turns {
+		key := "cancel:" + t.ID
+		pending[key] = true
+		// The run's own progress (its event sequence) makes a retry due at once.
+		fingerprint := strconv.FormatInt(t.EventSeq, 10)
+		if !w.retry.due(key, now, fingerprint) {
+			continue
+		}
 		target := client.Target{TaskID: t.ID, AgentID: t.AgentID, RunID: t.RunID, AttemptID: t.RemoteAttemptID}
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second)
 		status, err := w.client.Status(ctx, target)
 		cancel()
 		if err != nil || status.Error != "" || status.Target != target {
+			w.retry.fail(key, now, fingerprint)
 			continue
 		}
 		terminal := status.State == "completed" || status.State == "failed" || status.State == "cancelled"
 		if !terminal {
 			if status.TurnID == "" {
+				w.retry.fail(key, now, fingerprint)
 				continue
 			}
 			ctx, cancel = context.WithTimeout(w.ctx, time.Second)
 			reply, e := w.client.CancelTurn(ctx, target, status.TurnID)
 			cancel()
 			if e != nil || reply.Error != "" || reply.Target != target || !reply.CancelRequested {
+				w.retry.fail(key, now, fingerprint)
 				continue
 			}
 		}
+		w.retry.done(key)
 		_ = q.MarkPlanningCancellationSent(w.ctx, sqlc.MarkPlanningCancellationSentParams{ID: t.ID, AgentID: t.AgentID, RunID: t.RunID, RemoteAttemptID: t.RemoteAttemptID})
 	}
 }

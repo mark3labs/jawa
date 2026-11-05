@@ -322,10 +322,23 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 			delete(w.resumePromoteChecks, task)
 		}
 	}
+	now := time.Now()
+	keys := map[string]bool{}
+	defer func() { w.retry.retain("resume:", keys) }()
 	for _, c := range commands {
 		var req reportprotocol.FailedResume
 		if json.Unmarshal([]byte(c.raw), &req) != nil {
 			w.log().Error("Invalid pending resume command", "resume_id", c.id)
+			continue
+		}
+		key := "resume:" + c.id
+		keys[key] = true
+		// The host returns a final receipt only when asked. Ask again when the
+		// task's own run changes (its events and outcome arrive through the
+		// consumers) or when a staleness check falls due, otherwise after backoff.
+		fingerprint := w.resumeFingerprint(req.Target.TaskID)
+		staleCheckDue := now.Sub(time.UnixMilli(c.created)) >= threshold && w.resumeCheckDue(c.id, now)
+		if !w.retry.due(key, now, fingerprint) && !staleCheckDue {
 			continue
 		}
 		reconcile, observed := w.resumeNeedsReconcile(c.id, req.Target, time.UnixMilli(c.created), threshold)
@@ -335,16 +348,35 @@ func (w *Workflow) dispatchFailedResumes(conn *nats.Conn) {
 		cancel()
 		if e != nil {
 			w.log().Warn("Resume delivery failed; will retry", "resume_id", c.id)
+			w.retry.fail(key, now, fingerprint)
 			continue
 		}
 		if reply.Status == "pending" {
 			w.promoteResumeIfRunning(req.Target, observed)
+			w.retry.fail(key, now, w.resumeFingerprint(req.Target.TaskID))
 			continue
 		}
+		w.retry.done(key)
 		if e = w.finishFailedResume(c.id, reply); e != nil {
 			w.log().Error("Failed to apply resume receipt", "resume_id", c.id, "status", reply.Status)
 		}
 	}
+}
+
+// resumeFingerprint identifies the local state of a resumed task's run.
+func (w *Workflow) resumeFingerprint(task string) string {
+	var fp string
+	err := w.s.db.QueryRow(`SELECT coalesce((SELECT state||':'||event_seq||':'||updated_at FROM workflow_attempts WHERE task_id=?),(SELECT state||':'||event_seq||':'||updated_at FROM planning_turns WHERE id=?),'')`, task, task).Scan(&fp)
+	if err != nil {
+		return ""
+	}
+	return fp
+}
+
+// resumeCheckDue reports whether a stale resume's owner check is due.
+func (w *Workflow) resumeCheckDue(id string, now time.Time) bool {
+	next, ok := w.resumeChecks[id]
+	return !ok || !now.Before(next)
 }
 
 // Staleness is measured from the last observed progress, not reservation age:

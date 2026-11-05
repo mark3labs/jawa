@@ -448,8 +448,9 @@ is allowed; unreadable or invalid files stop startup without printing their cont
 **Agent concurrency:** Settings → Agents → Concurrent model executions per agent
 is a persisted, live override for all updated agents: dashboard > `--concurrency` >
 `JAWA_CONCURRENCY` > `4`. Blank removes the override; resetting dashboard overrides
-also restores each agent's own startup default. Agents refresh the policy every
-two seconds. Lowering it does not cancel existing executions; new model work waits
+also restores each agent's own startup default. Agents follow the policy through
+a KV watch and apply changes as they are published; after a reconnect they re-read
+it, and while disconnected they keep the last known value. Lowering it does not cancel existing executions; new model work waits
 for a slot. Suspended/input-waiting runs do not hold a slot. The gate covers managed
 model turns, including chat, resumes and recovery, not total retained runs or a
 fleet-wide quota. Broker admission may already mark waiting work running.
@@ -750,8 +751,10 @@ in its settings database and publishes only its public key in persistent KV
 brokers must provision this bucket/public key and equivalent ACLs independently;
 agents open, never create, the control bucket. Five-minute audience-bound tokens
 allow 30 seconds of future clock skew. Rotation invalidates new requests; it
-need not revoke existing streams. The agent watches changes and rechecks the key
-with bounded reads, failing closed on deletion, malformed keys or outages.
+need not revoke existing streams. The agent follows the key through a KV watch,
+not periodic reads, and fails closed at once on a disconnect, a closed watch, a
+deleted or purged key, a deleted control bucket (JetStream advisory) or a
+malformed key; a reconnect re-reads it.
 
 Chat uses Bonnie’s ordered message/tool hierarchy in Jawa’s theme: wrapping user
 prose, sanitized assistant Markdown, and agent steps as compact rows modelled on

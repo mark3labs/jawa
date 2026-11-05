@@ -15,7 +15,7 @@ import (
 	"jawa/internal/orchestrator/db/sqlc"
 
 	"golang.org/x/crypto/bcrypt"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 type Project struct {
@@ -33,7 +33,8 @@ type Card struct {
 // NATSConfig deliberately exposes no password or password hash.
 type NATSConfig struct{ URL, Username string }
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	changes *storeChanges
 	// runtimeDefaults are command-local and never persisted to dashboard settings.
 	runtimeDefaults map[string]string
 }
@@ -71,10 +72,12 @@ func OpenStore(path string) (*Store, error) {
 			}
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	connector, err := sqlite.NewConnector(path)
 	if err != nil {
 		return nil, err
 	}
+	changes := newStoreChanges()
+	db := sql.OpenDB(changeConnector{Connector: connector, changes: changes})
 	// Keep PRAGMAs and in-memory databases on a single persistent connection.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -116,7 +119,7 @@ func OpenStore(path string) (*Store, error) {
 	if err = tx.Commit(); err != nil {
 		return fail(err)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, changes: changes}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

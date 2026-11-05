@@ -11,11 +11,9 @@ import (
 	"time"
 )
 
-// SSE timings are variables so tests can shorten them.
-var (
-	ssePollInterval      = time.Second
-	sseHeartbeatInterval = 15 * time.Second
-)
+// The heartbeat only keeps idle connections open; updates are change-driven.
+// It is a variable so tests can shorten it.
+var sseHeartbeatInterval = 15 * time.Second
 
 func datastarRequest(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("Datastar-Request"), "true")
@@ -195,8 +193,18 @@ func (a *app) mutationSnapshot(r *http.Request, v viewParams, fx mutationEffects
 	return out.String(), nil
 }
 
+// changes closes after the next change to anything a view renders: committed
+// store rows or agent presence.
+func (a *app) changes() (<-chan struct{}, <-chan struct{}) {
+	return a.s.Changes(), a.workflow.PresenceChanges()
+}
+
+// events streams a view's patch roots whenever server state changes. There is
+// no timer behind updates: an idle server sends only keep-alive comments.
 func (a *app) events(w http.ResponseWriter, r *http.Request) {
 	v := parseViewParams(r, "")
+	// Subscribe before rendering so a change during the render is not missed.
+	stored, agents := a.changes()
 	content, err := a.liveSnapshot(r, v)
 	if err != nil {
 		http.Error(w, "workspace unavailable", http.StatusServiceUnavailable)
@@ -206,18 +214,30 @@ func (a *app) events(w http.ResponseWriter, r *http.Request) {
 	if err := stream.write(elementsFrame(content)); err != nil {
 		return
 	}
-	poll := time.NewTicker(ssePollInterval)
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
-	defer poll.Stop()
 	defer heartbeat.Stop()
 	for {
+		changed := false
 		select {
 		case <-r.Context().Done():
 			return
-		case <-poll.C:
+		case <-stored:
+			changed = true
+		case <-agents:
+			changed = true
+		case <-heartbeat.C:
 			if r.Context().Err() != nil || !a.authed(r) {
 				return
 			}
+			if err := stream.write(": heartbeat\n\n"); err != nil {
+				return
+			}
+		}
+		if changed {
+			if r.Context().Err() != nil || !a.authed(r) {
+				return
+			}
+			stored, agents = a.changes()
 			next, err := a.liveSnapshot(r, v)
 			if err != nil {
 				return
@@ -227,13 +247,6 @@ func (a *app) events(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				content = next
-			}
-		case <-heartbeat.C:
-			if r.Context().Err() != nil || !a.authed(r) {
-				return
-			}
-			if err := stream.write(": heartbeat\n\n"); err != nil {
-				return
 			}
 		}
 	}

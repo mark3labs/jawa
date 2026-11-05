@@ -109,6 +109,8 @@ func TestRunChatOfflineReconnectBothModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			stopped = false
+			// A returning agent republishes presence, which expedites paced retries.
+			registerChoice(t, w, "chat-agent", true)
 			waitWorkflow(t, func() bool {
 				rows := w.chatMessages(record)
 				return len(rows) == 2 && rows[0].Status == "completed" && rows[1].Status == "completed"

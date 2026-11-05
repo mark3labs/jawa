@@ -529,10 +529,12 @@ with other dashboard overrides. Only the explicit dashboard value is published
 to `jawa_control` / `agent_concurrency`; absent override deletes a stale KV key,
 never publishes an orchestrator default. Startup synchronizes after API-key
 publication, successful saves/resets synchronize immediately, and the workflow
-retries/reconciles every ten seconds with bounded NATS I/O. A publication outage
+republishes on settings changes and NATS reconnects, retrying a failed
+publication with backoff, with bounded NATS I/O. A publication outage
 does not roll back durable settings; the save response reports pending delivery.
 Each agent chooses its own CLI/environment/default concurrency when no dashboard
-override exists. Agents read this KV policy every two seconds. Lowering the
+override exists. Agents follow this KV policy through a watch (re-read after a
+reconnect; the last value is kept while disconnected). Lowering the
 limit leaves existing executions running. The gate bounds model executions, not
 broker task ownership or total fleet capacity. Shared transport consumer
 `MaxAckPending` can independently lower throughput unless adjusted separately;

@@ -308,15 +308,23 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 	}
 	defer func() { release() }()
 	stream := newSSEWriter(w)
-	poll := time.NewTicker(time.Second)
-	defer poll.Stop()
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 	var patches runDetailPatcher
-	waited := 0
+	// A reconnecting viewer's new hub may still be loading its first snapshot;
+	// stop waiting for it at this one-shot deadline.
+	firstSnapshot := time.NewTimer(10 * time.Second)
+	defer firstSnapshot.Stop()
+	waiting := true
 	for {
 		if !a.authed(r) {
 			return
+		}
+		// Subscribe before reading so a change during the render is not missed.
+		stored, agents := a.changes()
+		var observed <-chan struct{}
+		if hub != nil {
+			observed = hub.changes.C()
 		}
 		fresh, e := a.workflow.historyByID(r.Context(), attempt.Mode, attempt.ID)
 		if e != nil {
@@ -342,13 +350,15 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 			if err == nil {
 				hub = newHub
 				release = newRelease
+				observed = hub.changes.C()
+				obs = hub.read()
 			}
 		}
 		// A reconnecting viewer gets a new hub whose first snapshot is still in
-		// flight. Wait for it (bounded by the snapshot timeout) instead of
-		// patching the viewer's page with that empty observation.
-		if hub != nil && !obs.Observed && waited < 10 {
-			waited++
+		// flight. Wait for it (bounded by the deadline) instead of patching the
+		// viewer's page with that empty observation.
+		if hub != nil && !obs.Observed && waiting {
+			// The hub's own change wakes this loop when the snapshot lands.
 		} else {
 			detail := a.historyDetailModel(r, fresh, obs, available)
 			frames, err := patches.frames(r.Context(), detail)
@@ -361,16 +371,27 @@ func (a *app) runDetailEvents(w http.ResponseWriter, r *http.Request, attempt Ru
 				}
 			}
 		}
-		select {
-		case <-r.Context().Done():
-			return
-		case <-a.workflow.ctx.Done():
-			return
-		case <-heartbeat.C:
-			if stream.write(": heartbeat\n\n") != nil {
+		// Sleep until the run, its history or agent presence changes; the
+		// heartbeat only keeps the connection open.
+		for woken := false; !woken; {
+			select {
+			case <-r.Context().Done():
 				return
+			case <-a.workflow.ctx.Done():
+				return
+			case <-heartbeat.C:
+				if stream.write(": heartbeat\n\n") != nil {
+					return
+				}
+			case <-firstSnapshot.C:
+				waiting, woken = false, true
+			case <-stored:
+				woken = true
+			case <-agents:
+				woken = true
+			case <-observed:
+				woken = true
 			}
-		case <-poll.C:
 		}
 	}
 }

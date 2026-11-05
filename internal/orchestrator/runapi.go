@@ -48,8 +48,10 @@ type runObservation struct {
 	Observed bool
 }
 type runHub struct {
-	mu      sync.Mutex
-	state   runObservation
+	mu    sync.Mutex
+	state runObservation
+	// changes closes after each state update, so viewers render on change.
+	changes *changeFeed
 	viewers int
 	cancel  context.CancelFunc
 	done    chan struct{}
@@ -148,7 +150,7 @@ func (p *runAPI) observe(source runObserver) (*runHub, func(), error) {
 			return nil, nil, errRunBusy
 		}
 		ctx, cancel := context.WithCancel(p.ctx)
-		h = &runHub{viewers: 1, cancel: cancel, done: make(chan struct{}), state: runObservation{Unreachable: true}}
+		h = &runHub{viewers: 1, cancel: cancel, done: make(chan struct{}), state: runObservation{Unreachable: true}, changes: newChangeFeed()}
 		p.hubs[k] = h
 		go p.runHub(ctx, a, h)
 	}
@@ -206,6 +208,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 		h.mu.Lock()
 		h.state.Observed = true
 		h.mu.Unlock()
+		h.changes.notify()
 	}()
 	defer func() {
 		p.mu.Lock()
@@ -233,15 +236,26 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 			currentTurn = snap.TurnID
 			h.state.Live = nil
 			h.mu.Unlock()
+			h.changes.notify()
 			// Replay historical durable activity on the single upstream stream.
 			events, stop, streamErr := c.Stream(ctx, a.RunID, cursor)
 			if streamErr == nil {
 				h.mu.Lock()
 				h.state.Unreachable = false
 				h.mu.Unlock()
+				h.changes.notify()
 				backoff = time.Second
-				refresh := time.NewTicker(250 * time.Millisecond)
+				// Coalesce snapshot refreshes: the timer is armed only once a
+				// refresh is due, so an idle run causes no wakeups.
+				refresh := time.NewTimer(time.Hour)
+				refresh.Stop()
 				dirty := false
+				markDirty := func() {
+					if !dirty {
+						dirty = true
+						refresh.Reset(250 * time.Millisecond)
+					}
+				}
 			streamLoop:
 				for {
 					select {
@@ -266,6 +280,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 							}
 							h.state.Live = live
 							h.mu.Unlock()
+							h.changes.notify()
 							dirty = false
 						}
 					case ev, ok := <-events:
@@ -287,7 +302,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 								h.state.Truncated = h.state.Truncated || truncated
 								cursor = ev.Seq
 								if ev.Seq > snap.Cursor {
-									dirty = true
+									markDirty()
 								}
 							}
 						} else {
@@ -298,10 +313,11 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 								h.state.Truncated = h.state.Truncated || truncated
 							}
 							if ev.Type == string(kit.EventStepFinish) {
-								dirty = true
+								markDirty()
 							}
 						}
 						h.mu.Unlock()
+						h.changes.notify()
 					}
 				}
 				refresh.Stop()
@@ -312,6 +328,7 @@ func (p *runAPI) runHub(ctx context.Context, source runObserver, h *runHub) {
 		h.state.Unreachable = true
 		h.state.Observed = true
 		h.mu.Unlock()
+		h.changes.notify()
 		select {
 		case <-ctx.Done():
 			return

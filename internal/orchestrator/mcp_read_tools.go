@@ -92,24 +92,29 @@ func (m *mcpService) registerReadTools(srv *server.MCPServer) {
 		if timeout < 1 || timeout > 25 {
 			return mcp.NewToolResultError("timeout_seconds must be between 1 and 25"), nil
 		}
-		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-		ticker := time.NewTicker(mcpWaitPollInterval)
-		defer ticker.Stop()
+		deadline := time.NewTimer(time.Duration(timeout) * time.Second)
+		defer deadline.Stop()
+		expired := false
 		for {
 			if ctx.Err() != nil {
 				return mcp.NewToolResultError("wait cancelled"), nil
 			}
+			// Subscribe before reading so a change during the read is not missed.
+			stored, agents := m.w.s.Changes(), m.w.PresenceChanges()
 			card, err := m.card(ctx, args.CardID)
 			if err != nil {
 				return m.toolError("wait_for_card", err)
 			}
-			if card.Version != args.Version || !time.Now().Before(deadline) {
+			if card.Version != args.Version || expired {
 				return mcpJSON(map[string]any{"changed": card.Version != args.Version, "card": card})
 			}
 			select {
 			case <-ctx.Done():
 				return mcp.NewToolResultError("wait cancelled"), nil
-			case <-ticker.C:
+			case <-deadline.C:
+				expired = true
+			case <-stored:
+			case <-agents:
 			}
 		}
 	})

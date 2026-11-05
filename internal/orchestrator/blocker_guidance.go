@@ -219,24 +219,38 @@ func (w *Workflow) dispatchBlockerGuidance() {
 		w.log().Warn("Failed to read queued blocker guidance; will retry")
 	}
 	_ = rows.Close()
+	now := time.Now()
+	queued := map[string]bool{}
 	for _, id := range ids {
-		w.deliverBlockerGuidance(id)
+		key := "guidance:" + id
+		queued[key] = true
+		if !w.retry.due(key, now) {
+			continue
+		}
+		if w.deliverBlockerGuidance(id) {
+			w.retry.fail(key, now)
+		} else {
+			w.retry.done(key)
+		}
 	}
+	w.retry.retain("guidance:", queued)
 }
 
-func (w *Workflow) deliverBlockerGuidance(id string) {
+// deliverBlockerGuidance reports whether delivery failed remotely and should
+// be retried after a backoff.
+func (w *Workflow) deliverBlockerGuidance(id string) (retry bool) {
 	tx, err := w.s.writeTx()
 	if err != nil {
-		return
+		return false
 	}
 	defer func() { _ = tx.Rollback() }()
 	var raw, text, task string
 	if err = tx.QueryRow(`SELECT waiting_json,reply,task_id FROM workflow_interactions WHERE report_id=? AND status='queued'`, id).Scan(&raw, &text, &task); err != nil {
-		return
+		return false
 	}
 	var out client.Outcome
 	if err = json.Unmarshal([]byte(raw), &out); err != nil || out.Suspend == nil {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
 	_, err = w.client.Answer(ctx, out, []runtime.InputResponse{{TurnID: out.Suspend.TurnID, Text: text}})
@@ -245,18 +259,19 @@ func (w *Workflow) deliverBlockerGuidance(id string) {
 		if w.ctx.Err() == nil {
 			w.log().Warn("Blocker guidance delivery failed; will retry", "task_id", task)
 		}
-		return
+		return true
 	}
 	now := time.Now().UnixMilli()
 	if _, err = tx.Exec(`UPDATE workflow_interactions SET status='answered',answered_at=? WHERE report_id=? AND status='queued'`, now, id); err != nil {
-		return
+		return false
 	}
 	if _, err = tx.Exec(`UPDATE workflow_attempts SET state='running',run_state='running',error='',updated_at=? WHERE task_id=? AND state='blocked' AND ready=0`, now, task); err != nil {
-		return
+		return false
 	}
 	if tx.Commit() == nil {
 		w.log().Info("Blocker guidance delivered", "task_id", task)
 	}
+	return false
 }
 
 // blockerGuidance lists open build blockers by card for presentation.

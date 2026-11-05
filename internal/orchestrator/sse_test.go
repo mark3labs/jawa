@@ -320,9 +320,9 @@ func TestSSEFramesDeadlinesAndHeartbeat(t *testing.T) {
 }
 
 func TestSSEHeartbeatWithoutChanges(t *testing.T) {
-	// Long enough for many polls, so a spurious patch would arrive first.
+	// Long enough that a spurious patch would arrive first.
 	old := sseHeartbeatInterval
-	sseHeartbeatInterval = 20 * ssePollInterval
+	sseHeartbeatInterval = 500 * time.Millisecond
 	t.Cleanup(func() { sseHeartbeatInterval = old })
 	a := &app{s: actionWorkflow(t).s}
 	session, csrf := sseCookies(t, a)
@@ -361,7 +361,7 @@ func TestSSEHeartbeatWithoutChanges(t *testing.T) {
 	if line != ": heartbeat\n" {
 		t.Fatalf("unexpected periodic patch: %q", line)
 	}
-	if time.Since(started) < 19*ssePollInterval {
+	if time.Since(started) < 450*time.Millisecond {
 		t.Fatal("heartbeat sent too early")
 	}
 	line, err = reader.ReadString('\n')

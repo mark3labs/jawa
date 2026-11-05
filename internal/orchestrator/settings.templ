@@ -67,7 +67,7 @@ templ settingsContent(d pageData) {
                             Global per-agent concurrency override
                         }
                         @input.Input(input.Props{ID: "runtime-agent-concurrency", Name: "agent-concurrency", Type: "number", Value: d.dashboard["agent-concurrency"], Placeholder: "Use each agent's defaults", Attributes: templ.Attributes{"min": "1", "max": strconv.Itoa(agentconcurrency.Max), "step": "1", "aria-describedby": "agent-concurrency-help"}})
-                        <p id="agent-concurrency-help" class="muted small">Maximum simultaneous model executions per agent, not a fleet-wide limit or broker ownership limit. Agents check for updates every 2 seconds. Blank removes the override; each agent uses --concurrency, then JAWA_CONCURRENCY, then { strconv.Itoa(agentconcurrency.Default) }. Lowering the limit does not interrupt running executions.</p>
+                        <p id="agent-concurrency-help" class="muted small">Maximum simultaneous model executions per agent, not a fleet-wide limit or broker ownership limit. Agents apply changes as soon as they are published. Blank removes the override; each agent uses --concurrency, then JAWA_CONCURRENCY, then { strconv.Itoa(agentconcurrency.Default) }. Lowering the limit does not interrupt running executions.</p>
                     </div>
                     <div class="form-actions">
                         @submit("Save")

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -175,71 +176,101 @@ func (w *Workflow) dispatchRunChat() {
 	}
 	pass, cancel := context.WithTimeout(w.ctx, 20*time.Second)
 	defer cancel()
+	now := time.Now()
+	pending := map[string]bool{}
+	defer func() { w.retry.retain("chat:", pending) }()
 	for _, m := range messages {
 		if pass.Err() != nil {
 			return
 		}
-		w.dispatchChatMessage(pass, m)
+		key := "chat:" + m.ID
+		pending[key] = true
+		// The local run record changes as its events arrive; that makes a paced
+		// message due at once.
+		fingerprint := w.chatRunFingerprint(m)
+		if !w.retry.due(key, now, fingerprint) {
+			continue
+		}
+		if w.dispatchChatMessage(pass, m) {
+			w.retry.fail(key, now, fingerprint)
+		} else {
+			w.retry.done(key)
+		}
 	}
 }
-func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
+
+func (w *Workflow) chatRunFingerprint(m RunChatMessage) string {
+	query := `SELECT updated_at FROM workflow_attempts WHERE id=?`
+	if m.Mode == "Planning" {
+		query = `SELECT updated_at FROM planning_turns WHERE id=?`
+	}
+	var updated int64
+	if w.s.db.QueryRow(query, m.LocalID).Scan(&updated) != nil {
+		return ""
+	}
+	return strconv.FormatInt(updated, 10)
+}
+
+// dispatchChatMessage reports whether the message waits on the owning agent
+// (unreachable, or still running before a follow-up) and should be retried.
+func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) (retry bool) {
 	var cmd reportprotocol.Chat
 	if m.Classification == "interaction" {
-		return
+		return false
 	}
 	if m.Request == "" {
 		tx, err := w.s.writeTx()
 		if err != nil {
-			return
+			return false
 		}
 		defer func() { _ = tx.Rollback() }()
 		r, err := resolveChat(ctx, tx, m.Mode, m.LocalID)
 		if err != nil || r.AgentID != m.AgentID || r.RunID != m.RunID || r.RemoteAttemptID != m.AttemptID {
 			_ = tx.Rollback()
 			w.failChat(m.ID, "identity_changed")
-			return
+			return false
 		}
 		class, err := classifyChat(tx, r)
 		if err != nil {
-			return
+			return false
 		}
 		if m.Classification == "followup" {
 			class = "followup"
 		}
 		var pending bool
 		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM failed_resumes WHERE task_id=? AND status='pending') OR EXISTS(SELECT 1 FROM workflow_cancel_requests WHERE id=(SELECT max(id) FROM workflow_cancel_requests WHERE task_id=?) AND status IN ('pending','requested','uncertain'))`, r.TaskID, r.TaskID).Scan(&pending); err != nil || pending {
-			return
+			return false
 		}
 		token, state, err := chatInteraction(tx, r)
 		if err != nil {
-			return
+			return false
 		}
 		if class == "continuation" && token != "" {
 			if state == "queued" {
-				return
+				return false
 			}
 			if token != m.Interaction {
 				_ = tx.Rollback()
 				w.failChat(m.ID, "interaction_changed")
-				return
+				return false
 			}
 			if r.Mode == "Planning" {
 				var session string
 				if err = tx.QueryRow(`SELECT session_id FROM planning_turns WHERE id=?`, r.ID).Scan(&session); err != nil {
-					return
+					return false
 				}
 				err = queuePlanningReply(tx, session, token, m.Text, false)
 			} else {
 				err = queueBlockedReply(tx, r.Build, token, m.Text)
 			}
 			if err != nil {
-				return
+				return false
 			}
 			_, err = tx.Exec(`UPDATE run_chat SET classification='interaction',status='active',updated_at=? WHERE id=? AND status='queued'`, time.Now().UnixMilli(), m.ID)
 			if err == nil {
 				_ = tx.Commit()
 			}
-			return
+			return false
 		}
 		target := client.Target{TaskID: r.TaskID, AgentID: r.AgentID, RunID: r.RunID, AttemptID: r.RemoteAttemptID}
 		query, cancel := context.WithTimeout(ctx, time.Second)
@@ -248,29 +279,32 @@ func (w *Workflow) dispatchChatMessage(ctx context.Context, m RunChatMessage) {
 		if e != nil || status.Target != target {
 			_, _ = tx.Exec(`UPDATE run_chat SET failure='owner_unreachable_or_journal_unavailable' WHERE id=?`, m.ID)
 			_ = tx.Commit()
-			return
+			return true
 		}
 		if status.Active && class == "followup" {
-			return
+			return true
 		}
 		cmd = reportprotocol.Chat{Version: 1, ID: m.ID, Target: target, Text: m.Text, Followup: class == "followup", Seq: status.Seq, TurnID: status.TurnID}
 		raw, _ := json.Marshal(cmd)
 		_, err = tx.Exec(`UPDATE run_chat SET classification=?,status='dispatched',request_json=?,failure='',updated_at=? WHERE id=? AND status='queued'`, class, string(raw), time.Now().UnixMilli(), m.ID)
 		if err != nil || tx.Commit() != nil {
-			return
+			return false
 		}
 	} else if json.Unmarshal([]byte(m.Request), &cmd) != nil {
-		return
+		return false
 	}
 	if m.Classification == "interaction" {
-		return
+		return false
 	}
 	receipt, err := w.sendChat(ctx, cmd, 2*time.Second)
 	if err != nil {
 		_, _ = w.s.db.Exec(`UPDATE run_chat SET failure='owner_unreachable_or_unsupported' WHERE id=?`, m.ID)
-		return
+		return true
 	} // Offline/old agents remain visibly pending, never fallback.
 	w.applyChatReceipt(ctx, m, cmd, receipt)
+	// The host reports the final receipt only when asked again: keep pacing a
+	// message it has not admitted yet or is still executing.
+	return receipt.Status == "queued" || receipt.Status == "active"
 }
 
 // applyChatReceipt projects only host-confirmed execution into the existing workflow.

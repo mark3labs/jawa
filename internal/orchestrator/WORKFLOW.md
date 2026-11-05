@@ -25,7 +25,7 @@ Migration 7 extends the durable `typed_reports` inbox to report ID and task/tool
 
 `SetVerifier(Verifier)` installs `func(context.Context, Attempt) (bool, error)`. It must independently verify repository/branch, actual PR existence, CI and required reviews; agent claims alone are not evidence. Callback receives immutable task context in TaskJSON plus the PR URL derived from the project’s configured provider and repository. Without a verifier, completed attempts are blocked awaiting verification. Verification is retried periodically, including after restart; false/error keeps Building. Only true from a verifier transactionally sets ready and moves the card to Done, preserving lane ordering. Callbacks must honor context cancellation and be safe to repeat. The existing provider adapter independently verifies readiness.
 
-`Agents(ctx) ([]presence.Record, error)` discovers live records in `jawa_agents` (30-second TTL, create enabled). Presence is advisory, never a prerequisite for queued shared work. BONNIE's API is Discover, not List. Durable event/result consumers are suffixed with a stable database-owned identity so independent boards do not compete for deliveries. Startup and periodic resync recover retained status history to discover missed execution identities. Unknown tasks are acknowledged; database errors cause redelivery. Poison/invalid protocol messages are retained by BONNIE and retried, not silently discarded.
+`Agents(ctx) ([]presence.Record, error)` discovers live records in `jawa_agents` (30-second TTL, create enabled). Presence is advisory, never a prerequisite for queued shared work. BONNIE's API is Discover, not List. Durable event/result consumers are suffixed with a stable database-owned identity so independent boards do not compete for deliveries. Startup, NATS reconnects and material presence changes (an agent appearing, leaving, expiring or changing state, endpoints or labels; not heartbeat refreshes) recover retained status history and query owners to discover missed execution identities. Unknown tasks are acknowledged; database errors cause redelivery. Poison/invalid protocol messages are retained by BONNIE and retried, not silently discarded.
 
 ## Resumable planning
 
@@ -174,3 +174,21 @@ identical revision, interaction, resume and auto-merge CAS tokens. They add no
 new transitions: writes queue durable work or record a decision and return a
 refreshed card; clients follow progress through get_card/wait_for_card. Creation
 shares transactional insert helpers and the dashboard's issue submission ledger.
+
+## Scheduling
+
+Workflow loops are change-driven; none runs on a fixed interval except provider
+checks. Dispatch (task/planning outboxes, replies, guidance, cancellations, run
+chat, failed and automatic resumes) runs when a committed transaction changes
+rows, an agent materially changes presence, NATS reconnects, or a run status
+event or outcome is consumed. It sleeps until the earliest time-based work: an
+`auto_resumes.next_check_at`, a stale-resume check, or a paced retry. A remote
+failure (or a host that is still executing) paces that item with a 1s→30s
+backoff, so an item's own error write cannot wake the loop again. Recording an
+identical error is not a change. An agent appearing or a reconnect makes paced
+retries due at once, and run activity does so for chat, resume and cancellation
+asks. Triage runs on `auto_resumes` and settings changes. Agent concurrency is
+republished on settings changes and reconnects. Provider PR, CI, conflict and
+auto-merge checks still run every 10 seconds, because GitHub and Forgejo offer
+no push channel without webhooks. A returned NATS consumer restarts after a
+short delay; that is reconnection, not polling.

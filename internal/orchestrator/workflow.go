@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -63,6 +64,17 @@ type Workflow struct {
 	resumePromoteChecks map[string]time.Time
 	// classifyFailure is optional advisory triage before automatic resume.
 	classifyFailure FailureClassifier
+	// presenceChanges is fed by the presence KV watch; presenceMaterialChanges
+	// excludes heartbeat-only refreshes.
+	presenceChanges         *changeFeed
+	presenceMaterialChanges *changeFeed
+	// retry paces remote work whose last attempt failed or is still pending.
+	retry *retrySchedule
+	// runActivity fires for every consumed run status event or outcome, even
+	// one that changes no local row.
+	runActivity *changeFeed
+	// dispatchPasses counts dispatch passes, so tests can prove idleness.
+	dispatchPasses atomic.Int64
 }
 
 func NewWorkflow(ctx context.Context, s *Store, conn *nats.Conn) (*Workflow, error) {
@@ -84,7 +96,7 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	if err != nil {
 		return nil, err
 	}
-	p, err := presencenats.New(ctx, conn, presencenats.Config{Bucket: "jawa_agents", TTL: 30 * time.Second, Create: true})
+	p, err := presencenats.New(ctx, conn, presencenats.Config{Bucket: presenceBucket, TTL: 30 * time.Second, Create: true})
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +111,7 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger}
+	w := &Workflow{s: s, client: c, presence: p, ctx: ctx, cancel: cancel, logger: logger, presenceChanges: newChangeFeed(), presenceMaterialChanges: newChangeFeed(), retry: newRetrySchedule(), runActivity: newChangeFeed()}
 	w.runAPI = newRunAPI(ctx, conn, key)
 	w.resumeConn = conn
 	w.resumeStaleAfter, err = resumeStaleDuration()
@@ -120,23 +132,66 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 		_ = w.Close()
 		return nil, err
 	}
-	w.wg.Add(5)
-	go w.consumerLoop("triage", func() error { w.triagePass(); return nil })
+	reconnects := watchReconnects(w, conn)
+	w.wg.Add(8)
+	go w.watchPresence(conn)
 	go w.consumerLoop("results", func() error { return c.Consume(ctx, w.result) })
 	go w.consumerLoop("events", func() error { return c.ConsumeEvents(ctx, w.event) })
-	go w.loop(func() error { w.dispatch(); return nil })
-	go func() {
-		defer w.wg.Done()
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for {
-			if err := w.syncAgentConcurrency(w.ctx); err != nil && w.ctx.Err() == nil {
+	// Triage classifies newly scheduled automatic-resume failures.
+	go w.runOnChange(func() []<-chan struct{} {
+		return []<-chan struct{}{w.s.TableChanges("auto_resumes"), w.s.TableChanges("settings")}
+	}, func() time.Time { w.triagePass(); return time.Time{} })
+	// Dispatch publishes outboxes and paced retries when state changes. An
+	// agent appearing or a reconnect makes paced remote retries due at once.
+	var agents, reconnected <-chan struct{}
+	go w.runOnChange(func() []<-chan struct{} {
+		agents, reconnected = w.presenceMaterial(), reconnects.C()
+		return []<-chan struct{}{w.s.Changes(), agents, reconnected, w.runActivity.C()}
+	}, func() time.Time {
+		select {
+		case <-agents:
+			w.retry.expedite(time.Now())
+		case <-reconnected:
+			w.retry.expedite(time.Now())
+		default:
+		}
+		w.dispatchPasses.Add(1)
+		w.dispatch()
+		return w.dispatchDeadline(time.Now())
+	})
+	// Agent concurrency is republished when its setting changes or NATS reconnects.
+	concurrency := newRetrySchedule()
+	go w.runOnChange(func() []<-chan struct{} {
+		return []<-chan struct{}{w.s.TableChanges("settings"), reconnects.C()}
+	}, func() time.Time {
+		if err := w.syncAgentConcurrency(w.ctx); err != nil {
+			if w.ctx.Err() == nil {
 				w.log().Warn("Agent concurrency synchronization failed; retrying")
 			}
-			w.resyncRuns(conn)
-			if err := w.recoverPlanningResults(conn); err != nil && w.ctx.Err() == nil {
-				w.log().Warn("Planning result recovery failed")
-			}
+			concurrency.fail("sync", time.Now())
+		} else {
+			concurrency.done("sync")
+		}
+		return concurrency.next()
+	})
+	// Reconciliation re-reads retained events/results and asks owners for run
+	// status after a reconnect or when an agent appears, leaves or changes. An
+	// unreachable owner is retried when its presence next changes.
+	go w.runOnChange(func() []<-chan struct{} {
+		return []<-chan struct{}{w.presenceMaterial(), reconnects.C()}
+	}, func() time.Time {
+		w.resyncRuns(conn)
+		if err := w.recoverPlanningResults(conn); err != nil && w.ctx.Err() == nil {
+			w.log().Warn("Planning result recovery failed")
+		}
+		return time.Time{}
+	})
+	// Providers (GitHub, Forgejo) have no push channel without webhooks.
+	go func() {
+		defer w.wg.Done()
+		ticker := time.NewTicker(providerCheckInterval)
+		defer ticker.Stop()
+		for {
 			w.verifyPending()
 			w.autoMergePass(w.ctx)
 			if err := w.PollPRConflicts(w.ctx); err != nil && w.ctx.Err() == nil {
@@ -152,11 +207,9 @@ func newWorkflow(ctx context.Context, s *Store, conn *nats.Conn, logger *log.Log
 	return w, nil
 }
 
-// workflowLoopInterval paces the dispatch and consumer retry loops. Tests
-// shorten it.
+// workflowLoopInterval is the restart delay for a returned NATS consumer, not
+// a polling interval. Tests shorten it.
 var workflowLoopInterval = 250 * time.Millisecond
-
-func (w *Workflow) loop(f func() error) { w.consumerLoop("dispatch", f) }
 
 func (w *Workflow) consumerLoop(consumer string, f func() error) {
 	defer w.wg.Done()
@@ -539,8 +592,15 @@ func (w *Workflow) dispatch() {
 	if err != nil {
 		return
 	}
+	now := time.Now()
+	queued := map[string]bool{}
 	for _, a := range attempts {
 		if a.Published || a.State != "queued" {
+			continue
+		}
+		key := "attempt:" + a.ID
+		queued[key] = true
+		if !w.retry.due(key, now) {
 			continue
 		}
 		var task client.Task
@@ -558,9 +618,12 @@ func (w *Workflow) dispatch() {
 			if w.ctx.Err() == nil {
 				w.logAttempt(log.WarnLevel, "Task submission failed; will retry", a)
 			}
-			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND published=0 AND state='queued'`, err.Error(), time.Now().UnixMilli(), a.ID)
+			w.retry.fail(key, now)
+			// Recording the same error again is not a change and wakes nobody.
+			_, _ = w.s.db.Exec(`UPDATE workflow_attempts SET error=?,updated_at=? WHERE id=? AND published=0 AND state='queued' AND error<>?`, err.Error(), time.Now().UnixMilli(), a.ID, err.Error())
 			continue
 		}
+		w.retry.done(key)
 		if _, err = w.s.db.Exec(`UPDATE workflow_attempts SET published=1,state=CASE WHEN state='queued' THEN 'submitted' ELSE state END,error=CASE WHEN state='queued' THEN '' ELSE error END,updated_at=? WHERE id=?`, time.Now().UnixMilli(), a.ID); err != nil {
 			w.logAttempt(log.ErrorLevel, "Task published but outbox update failed", a)
 			continue
@@ -568,12 +631,24 @@ func (w *Workflow) dispatch() {
 		a.State = "submitted"
 		w.logAttempt(log.InfoLevel, "Task dispatched", a)
 	}
+	w.retry.retain("attempt:", queued)
 }
 
 func matches(a Attempt, agent, run, remote string) bool {
 	return identityMatches(a.TargetAgentID, a.AgentID, a.RunID, a.RemoteAttemptID, agent, run, remote)
 }
+// noteRunActivity makes asks that wait on a run's host (chat receipts, pending
+// resumes, planning cancellations) due again, since the host just reported.
+func (w *Workflow) noteRunActivity() {
+	now := time.Now()
+	for _, prefix := range []string{"chat:", "resume:", "cancel:"} {
+		w.retry.expeditePrefix(prefix, now)
+	}
+	w.runActivity.notify()
+}
+
 func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
+	defer w.noteRunActivity()
 	tx, err := w.s.writeTx()
 	if err != nil {
 		return err
@@ -658,6 +733,7 @@ func (w *Workflow) event(ctx context.Context, ev client.StatusEvent) error {
 	return nil
 }
 func (w *Workflow) result(ctx context.Context, out client.Outcome) error {
+	defer w.noteRunActivity()
 	if transientOutcome(out) {
 		w.noteTransientOutcome(out)
 		return nil

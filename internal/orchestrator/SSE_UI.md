@@ -6,10 +6,16 @@ fall back safely. Forms submit hidden view/project/state/card fields alongside
 CSRF and their normal named fields, so mutation responses patch the originating view.
 Native forms redirect to the same canonical view (project creation goes to its board).
 
-The authenticated stream rechecks session validity and snapshots once per second,
-emitting changed HTML plus 15-second heartbeat comments. This is server-side
-snapshot polling, not browser polling. Streams terminate on disconnect, revocation,
-or shutdown. Write deadlines are refreshed to bound slow consumers.
+The authenticated stream is change-driven, with no polling interval. It renders
+again only when a committed database transaction changes rows (SQLite commit and
+pre-update hooks; identical rewrites, reads and rollbacks do not count) or agent
+presence changes (a JetStream KV watch, plus a timer at the earliest record
+expiry). It sends the patch roots only when their HTML differs, and an idle
+server sends only 15-second heartbeat comments. Session validity is rechecked
+on each change and heartbeat; logout and revocation are database changes.
+Streams terminate on disconnect, revocation, or shutdown. Write deadlines are
+refreshed to bound slow consumers. Relative times update in the browser from
+`$_now`, so they need no server push.
 
 Stable element patch roots:
 - Full card: `planning-content` (`/planning?card=<id>`), including direct builds.
@@ -18,8 +24,8 @@ Stable element patch roots:
 - Agents: `agents-content` (presence summaries and endpoints).
 - Settings: static form content, deliberately not morphed. Agent roles lists
   presence, so its form is `data-ignore-morph` with an ID keyed by the listed
-  agents and saved roles: unsaved toggles survive polling, and server changes
-  replace it.
+  agents and saved roles: unsaved toggles survive live patches, and server
+  changes replace it.
 - All screens: `sidebar-nav`, `agent-status`, and action-only `notice`.
 
 Live updates omit notice; mutation success clears it or shows a success flash.
@@ -53,8 +59,10 @@ example after the tab was hidden) waits, bounded, for its hub's first snapshot
 attempt before patching. A missing snapshot is never rendered as an empty
 conversation: the transcript and Trace tables are left as the viewer has them,
 and the next snapshot morphs the list in place, keeping scroll and open rows. Draft, tab links, filter and
-Trace source toggles are outside those roots. Session validity is rechecked each iteration (one-second
-poll), with 15-second heartbeats and bounded writes. One upstream BONNIE stream
+Trace source toggles are outside those roots. The stream renders on change: the
+run's observation hub, its history rows or agent presence. Session validity is
+rechecked on each change, with 15-second heartbeats and bounded writes. A new
+hub's first snapshot is awaited for at most 10 seconds. One upstream BONNIE stream
 per agent/run is shared by viewers; each browser reads an immutable copied
 observation without blocking upstream. Initial replay starts at zero for bounded
 historical durable activity; subsequent reconnections use only the processed

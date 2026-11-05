@@ -21,7 +21,15 @@ func (w *Workflow) dispatchPlanningReplies() {
 	if err != nil {
 		return
 	}
+	now := time.Now()
+	queued := map[string]bool{}
+	defer func() { w.retry.retain("reply:", queued) }()
 	for _, id := range ids {
+		key := "reply:" + id
+		queued[key] = true
+		if !w.retry.due(key, now) {
+			continue
+		}
 		// Serialize cancellation against publish; failures remain queued across restart.
 		tx, err := w.s.writeTx()
 		if err != nil {
@@ -47,8 +55,10 @@ func (w *Workflow) dispatchPlanningReplies() {
 		}
 		if err != nil {
 			_ = tx.Rollback()
+			w.retry.fail(key, now)
 			continue
 		}
+		w.retry.done(key)
 		if _, err = tx.Exec(`UPDATE planning_interactions SET status='answered',answered_at=? WHERE report_id=? AND status='queued'`, time.Now().UnixMilli(), id); err == nil {
 			_, err = tx.Exec(`UPDATE planning_turns SET state='running',error='',updated_at=? WHERE id=? AND state='waiting'`, time.Now().UnixMilli(), task)
 		}

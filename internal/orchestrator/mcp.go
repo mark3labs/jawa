@@ -16,7 +16,6 @@ import (
 
 const mcpEndpoint = "/mcp"
 
-var mcpWaitPollInterval = time.Second
 
 const mcpInstructions = `Jawa orchestrates coding agents on a kanban board.
 Lanes: Todo -> Planning (optional) -> Building -> Done ("Ready for review": a verified PR); Fix repairs an existing PR.

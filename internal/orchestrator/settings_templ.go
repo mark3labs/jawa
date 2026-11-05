@@ -304,14 +304,14 @@ func settingsContent(d pageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<p id=\"agent-concurrency-help\" class=\"muted small\">Maximum simultaneous model executions per agent, not a fleet-wide limit or broker ownership limit. Agents check for updates every 2 seconds. Blank removes the override; each agent uses --concurrency, then JAWA_CONCURRENCY, then ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<p id=\"agent-concurrency-help\" class=\"muted small\">Maximum simultaneous model executions per agent, not a fleet-wide limit or broker ownership limit. Agents apply changes as soon as they are published. Blank removes the override; each agent uses --concurrency, then JAWA_CONCURRENCY, then ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(agentconcurrency.Default))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 70, Col: 343}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/orchestrator/settings.templ`, Line: 70, Col: 353}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
