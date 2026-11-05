@@ -37,7 +37,8 @@ User-authored card descriptions and proposed specs are visible just as in the UI
 do not put credentials in them.
 
 Project objects contain `id`, `name`, `provider`, `repo`, `base_branch`, `created_at`.
-Agent choices contain `id`, `provider`, `model`, `availability`, `selectable`, never
+Agent choices contain `id`, `provider`, `model`, `availability`, `selectable`,
+`planning_disabled` and `building_disabled` (Settings → Agent roles; Fix is building), never
 transport addresses or arbitrary labels.
 
 Card summaries contain `id`, `key`, `project_id`, `title`, `lane`, `lane_label`,
@@ -215,8 +216,9 @@ Settings in the dashboard first.” Read tools remain available.
 | `reset_card` | `card_id` | Reset inactive work to Todo, retaining history |
 | `move_card` | `card_id`, `position` | Nonnegative position within current lane only |
 
-Optional `agent` is an ID from `list_agents`. Omit it for shared-queue work;
-explicit targets are presence-validated and never fall back to another agent.
+Optional `agent` is an ID from `list_agents`. Omit it for shared-queue work, or,
+when agent roles restrict that kind of work, for routing to an eligible agent.
+Explicit targets are presence- and role-validated and never fall back to another agent.
 Workflow calls are bounded to 20 seconds; issue creation to 30 seconds.
 
 Success is `{ok:true, card:..., note?:string}`; creation also includes `replayed`.

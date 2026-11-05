@@ -194,7 +194,7 @@ func TestDatastarBrowserFixture(t *testing.T) {
 		write(name+".html", component)
 	}
 	write("issues.html", cardIssueField([]projectIssue{{Number: 1, Title: "Issue title", Body: "Issue body", URL: "https://github.com/example/fixture/issues/1"}}, "Choose an issue, or leave No linked issue selected.", ""))
-	write("agents.html", assignmentAgentField([]AgentChoice{{ID: "busy-agent", Selectable: true}}, nil))
+	write("agents.html", assignmentAgentField("build", []AgentChoice{{ID: "busy-agent", Selectable: true}}, nil))
 	write("recovery.html", issueRecoveryControls("uncertain", "Check repository before recovering."))
 	write("blocked-issues.html", cardIssueField(nil, "Check repository before recovering.", "uncertain"))
 }

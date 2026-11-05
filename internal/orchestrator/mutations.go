@@ -61,6 +61,7 @@ var mutations = map[string]mutation{
 	"/cards/force-stop":            {needsWorkflow: true, run: (*app).mutateCardsForceStop},
 	"/settings/orchestrator/reset": {run: (*app).mutateSettingsOrchestratorReset},
 	"/settings/orchestrator":       {run: (*app).mutateSettingsOrchestrator},
+	"/settings/routing":            {run: (*app).mutateSettingsRouting},
 	"/settings/nats":               {allowBeforeNATS: true, run: (*app).mutateSettingsNATS},
 }
 

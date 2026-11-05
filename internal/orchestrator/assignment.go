@@ -20,6 +20,9 @@ type AgentChoice struct {
 	Model        string `json:"model"`
 	Availability string `json:"availability"`
 	Selectable   bool   `json:"selectable"`
+	// Role restrictions from Settings; zero values allow both kinds of work.
+	PlanningDisabled bool `json:"planning_disabled"`
+	BuildingDisabled bool `json:"building_disabled"`
 }
 
 func validTargetID(id string) bool {
@@ -58,7 +61,7 @@ func agentChoices(records []presence.Record) []AgentChoice {
 		if agentReady(record) {
 			availability = "Available"
 		}
-		choices = append(choices, AgentChoice{id, agentModelLabel(record, "jawa.provider"), agentModelLabel(record, "jawa.model"), availability, selectable})
+		choices = append(choices, AgentChoice{ID: id, Provider: agentModelLabel(record, "jawa.provider"), Model: agentModelLabel(record, "jawa.model"), Availability: availability, Selectable: selectable})
 	}
 	return choices
 }
@@ -73,10 +76,19 @@ func (w *Workflow) choices(ctx context.Context) ([]AgentChoice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("agent discovery unavailable: %w", err)
 	}
-	return agentChoices(records), nil
+	routing, err := w.s.AgentRouting()
+	if err != nil {
+		return nil, err
+	}
+	choices := agentChoices(records)
+	for i := range choices {
+		choices[i].PlanningDisabled = !routing.Allows(choices[i].ID, routePlan)
+		choices[i].BuildingDisabled = !routing.Allows(choices[i].ID, routeBuild)
+	}
+	return choices, nil
 }
 
-func (w *Workflow) validateTarget(ctx context.Context, target string) error {
+func (w *Workflow) validateTarget(ctx context.Context, target, mode string) error {
 	if !validTargetID(target) {
 		return errors.New("select a valid agent")
 	}
@@ -86,32 +98,42 @@ func (w *Workflow) validateTarget(ctx context.Context, target string) error {
 	}
 	for _, choice := range choices {
 		if choice.ID == target && choice.Selectable {
+			if !choice.allows(mode) {
+				return fmt.Errorf("selected agent has %s disabled in Settings", routeModeLabel(mode))
+			}
 			return nil
 		}
 	}
 	return errors.New("selected agent is disconnected or cannot accept tasks; refresh agents")
 }
 
+func (c AgentChoice) allows(mode string) bool {
+	if mode == routePlan {
+		return !c.PlanningDisabled
+	}
+	return !c.BuildingDisabled
+}
+
 func (w *Workflow) PlanWithAgent(ctx context.Context, id, target string) error {
-	if err := w.validateTarget(ctx, target); err != nil {
+	if err := w.validateTarget(ctx, target, routePlan); err != nil {
 		return err
 	}
 	return w.startPlanningTo(id, 0, target)
 }
 func (w *Workflow) BuildWithAgent(ctx context.Context, id, target string) error {
-	if err := w.validateTarget(ctx, target); err != nil {
+	if err := w.validateTarget(ctx, target, routeBuild); err != nil {
 		return err
 	}
 	return w.moveCardTo(id, "Building", 0, false, target)
 }
 func (w *Workflow) ApprovePlanningWithAgent(ctx context.Context, id string, revision int, target string) error {
-	if err := w.validateTarget(ctx, target); err != nil {
+	if err := w.validateTarget(ctx, target, routeBuild); err != nil {
 		return err
 	}
 	return w.approvePlanningTo(id, revision, target)
 }
 func (w *Workflow) FixWithAgent(ctx context.Context, id, message, target string) error {
-	if err := w.validateTarget(ctx, target); err != nil {
+	if err := w.validateTarget(ctx, target, routeBuild); err != nil {
 		return err
 	}
 	return w.fixCardTo(id, message, target)

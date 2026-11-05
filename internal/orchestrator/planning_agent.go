@@ -203,6 +203,13 @@ func (w *Workflow) dispatchPlanning() {
 		return
 	}
 	for _, t := range turns {
+		// Resolve routing before taking the write lock: it may query presence.
+		route, routeErr := "", error(nil)
+		if t.TargetAgentID == "" {
+			ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
+			route, routeErr = w.resolveRoute(ctx, routePlan, t.ID)
+			cancel()
+		}
 		// Serialize cancellation/approval against publish. The small bounded broker call
 		// inside the write lock prevents a cancelled queued task being published later.
 		tx, err := w.s.writeTx()
@@ -221,6 +228,15 @@ func (w *Workflow) dispatchPlanning() {
 		}
 		var task client.Task
 		err = json.Unmarshal([]byte(latest.TaskJson), &task)
+		if err == nil && latest.TargetAgentID == "" {
+			// Persist the route with the publish so a retry reaches the same agent.
+			err = routeErr
+			if err == nil && route != "" {
+				if _, err = tx.Exec(`UPDATE planning_turns SET target_agent_id=? WHERE id=?`, route, t.ID); err == nil {
+					latest.TargetAgentID = route
+				}
+			}
+		}
 		if err == nil {
 			ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
 			err = w.submitTask(ctx, latest.TargetAgentID, task)

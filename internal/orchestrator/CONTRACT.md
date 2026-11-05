@@ -369,13 +369,34 @@ Assignment fences admission but is not isolation against hostile trusted agents.
 
 `GET /dialogs/assign/agents` is authenticated, setup-guarded, GET-only and no-store.
 Discovery is bounded to two seconds; the rendered choices contain only agent ID, provider,
-model, availability and selectable capability. Targeted mutations revalidate
+model, availability, selectable capability and whether the agent's role allows the
+dialog's mode (`?mode=plan|build`; Fix is build). Targeted mutations revalidate
 this projection before their atomic lane/task transaction. Shared actions do not
 require presence. No browser-supplied subject, PR URL, branch or run selects work.
 The assignment dialog stays outside SSE patch roots. It loads on open/Refresh,
 aborts and invalidates stale reads, and retains drafts on failed submissions.
 Successful `/cards/assign` responses remove only their operation-keyed frame.
 Run `npm run test:agents` in the frontend directory for selector race regressions.
+
+### Agent roles
+
+Settings → **Agent roles** lists connected agents, plus offline agents that have
+saved roles, each with a **Planning** and a **Building** switch. Fix counts as
+building. Every agent has both roles until you change them. Roles are stored in
+the `agent-routing` setting, and **Reset overrides** keeps them. They apply to
+work queued from then on.
+While every agent has both roles, untargeted work uses the shared queue as
+before. Once any agent has a role turned off, untargeted work of that kind is
+sent to an eligible connected agent just before its first publish. The choice
+favours available agents over busy ones, is spread by task ID, and is saved
+before publishing, so a retried publish goes to the same agent. If no eligible
+agent is connected, the work stays queued with that error and is retried. To
+send all planning to one agent, leave Planning on for that agent only.
+Explicit **… with agent** choices and MCP `agent` arguments must name an agent
+that has the matching role. Disabled agents appear as disabled options.
+Retries and later planning turns keep their earlier target unless that agent
+has since lost the role; then the work is routed again. Replies, guidance,
+cancellation and Resume still address the observed execution.
 
 Back up the database before migration 00019 and coordinate backend deployment.
 Existing streams must include `bonnie.tasks.agent.*`; existing agents already

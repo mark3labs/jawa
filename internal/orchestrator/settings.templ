@@ -82,6 +82,7 @@ templ settingsContent(d pageData) {
 				</div>
 			}
 		}
+		@agentRoutingPanel(d)
 		@card.Card(card.Props{Class: "panel", ID: "providers"}) {
 			@card.Header() {
 				@card.Title() {
@@ -138,7 +139,7 @@ templ settingsContent(d pageData) {
 		<div class="settings-reset">
 			<div>
 				<strong>Reset dashboard overrides</strong>
-				<p class="muted small">Restores every value above, including saved tokens, to CLI flags, environment variables or built-in defaults.</p>
+				<p class="muted small">Restores every value above, including saved tokens, to CLI flags, environment variables or built-in defaults. Agent roles are kept.</p>
 			</div>
 			<form method="post" action="/settings/orchestrator/reset">
 				<input type="hidden" name="_csrf" value={ d.csrf }/>
@@ -202,4 +203,44 @@ templ monoField(id, name, title, value string) {
 		}
 		@input.Input(input.Props{ID: id, Name: name, Value: value, Class: "mono-input", Attributes: templ.Attributes{"spellcheck": "false", "autocomplete": "off"}})
 	</div>
+}
+
+templ agentRoutingPanel(d pageData) {
+	{{ rows := d.routingRows() }}
+	@card.Card(card.Props{Class: "panel", ID: "agent-routing"}) {
+		@card.Header() {
+			@card.Title() {
+				Agent roles
+			}
+			@card.Description() {
+				Choose which agents plan and which build. Fix counts as building. Once any agent has a role turned off, cards without a chosen agent go to an eligible connected agent instead of the shared queue, and wait while none is connected. Leave planning on for one agent to send all planning there. Work already queued for an agent stays with that agent.
+			}
+		}
+		@card.Content() {
+			<form method="post" action="/settings/routing">
+				<input type="hidden" name="_csrf" value={ d.csrf }/>
+				@viewFields(d.v)
+				if len(rows) == 0 {
+					<p class="muted small">No agents connected yet. Connected agents appear here with both roles enabled.</p>
+				} else {
+					<ul class="rows provider-rows">
+						for _, row := range rows {
+							<li class="row provider-row">
+								<input type="hidden" name="agent" value={ row.ID }/>
+								<div class="row-text">
+									<strong class="mono">{ row.ID }</strong>
+									<span class="muted small">{ row.Detail }</span>
+								</div>
+								@switchField("routing-plan-"+row.ID, "plan:"+row.ID, "Planning", "Investigate and propose specs", row.Plan)
+								@switchField("routing-build-"+row.ID, "build:"+row.ID, "Building", "Build and Fix pull requests", row.Build)
+							</li>
+						}
+					</ul>
+				}
+				<div class="form-actions">
+					@submit("Save")
+				</div>
+			</form>
+		}
+	}
 }

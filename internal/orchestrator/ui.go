@@ -53,6 +53,7 @@ type pageData struct {
 	v                  viewParams
 	dashboard          map[string]string
 	defaults           map[string]string
+	routing            AgentRouting
 	uiSnapshot
 }
 
@@ -172,6 +173,9 @@ func loadPageData(ctx context.Context, s *Store, wf *Workflow, csrf string, v vi
 	}
 	if err == nil && v.View == viewSettings {
 		d.apiKeys, err = s.APIKeys(ctx)
+		if err == nil {
+			d.routing, err = s.AgentRouting()
+		}
 	}
 	return d, err
 }

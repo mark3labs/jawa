@@ -13,7 +13,7 @@ import (
 templ assignDialog(d pageData, op string, c Card, mode string, choices []AgentChoice, choicesErr error) {
  {{ needsAck := mode == "build" && c.Status == "Planning" && d.planning[c.ID].CanApprove }}
  @dialogFrame("assign", op, "Choose an agent") {
- @dialog.Description() { Targeted work may wait when an agent is busy or goes offline. There is no fallback to another agent. Planning and build agents are chosen independently. }
+ @dialog.Description() { Targeted work may wait when an agent is busy or goes offline. There is no fallback to another agent. Planning and build agents are chosen independently. Fix counts as building for agent roles. }
  <form method="post" action="/cards/assign" { dialogForm("assign", "/cards/assign")... }
  data-signals={ assignmentSignals(mode, needsAck) }
  data-computed:_assign-ready="!!$assignAgent && ($assignMode !== 'fix' || $assignMessage.trim() !== '') && (!$assignNeedsAck || $assignAck)">
@@ -22,7 +22,7 @@ templ assignDialog(d pageData, op string, c Card, mode string, choices []AgentCh
  @viewFields(d.v)
  <input type="hidden" name="card_id" value={ c.ID }/>
  <input type="hidden" name="mode" value={ mode }/>
- @assignmentAgentField(choices, choicesErr)
+ @assignmentAgentField(mode, choices, choicesErr)
  if mode == "fix" {
  <div class="field">
  @label.Label(label.Props{For: "assignment-message"}) { Fix message (required) }
@@ -51,14 +51,14 @@ templ assignDialog(d pageData, op string, c Card, mode string, choices []AgentCh
  }
 }
 
-templ assignmentAgentField(choices []AgentChoice, choicesErr error) {
+templ assignmentAgentField(mode string, choices []AgentChoice, choicesErr error) {
  <div id="assignment-agent-field" class="field" data-signals:assign-agent="''" data-on:change="evt.target.name === 'target_agent_id' && ($assignAgent = evt.target.value)">
  @label.Label(label.Props{For: "assignment-agent"}) { Connected agent }
- @selectField("assignment-agent", "", "target_agent_id", "", true, len(choices) == 0, agentOptions(choices), nil)
+ @selectField("assignment-agent", "", "target_agent_id", "", true, len(choices) == 0, agentOptions(mode, choices), nil)
  <p class="meta" role="status" aria-live="polite">{ agentChoiceStatus(choices, choicesErr) }</p>
  @button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
  "data-indicator:_agents-loading": true, "data-attr:disabled": "$_agentsLoading || $_assignPending",
- "data-on:click": "@get('/dialogs/assign/agents', {filterSignals: {include: /^$/}})",
+ "data-on:click": "@get('/dialogs/assign/agents?mode=" + assignmentRouteMode(mode) + "', {filterSignals: {include: /^$/}})",
  }}) { Refresh agents }
  </div>
 }

@@ -266,12 +266,17 @@ func (w *Workflow) moveCardTo(id, status string, pos int, retry bool, target str
 		return errors.New("only Todo cards can build directly with an agent")
 	}
 	if retry && !noAttempt {
-		target = latest.TargetAgentID
+		routing, err := loadAgentRouting(tx)
+		if err != nil {
+			return err
+		}
+		target = routedTarget(routing, latest.TargetAgentID, routeBuild)
 	}
 	if retry && source == "Fix" {
 		if noAttempt || latest.RepairPRURL == "" || !terminalFailure(latest) {
 			return errors.New("retry requires a terminal failed or blocked repair")
 		}
+		latest.TargetAgentID = target
 		if err = queueRepair(tx, latest, latest.RepairMessage); err != nil {
 			return err
 		}
@@ -544,7 +549,10 @@ func (w *Workflow) dispatch() {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(w.ctx, 2*time.Second)
-		err := w.submitTask(ctx, a.TargetAgentID, task)
+		err := w.routeAttempt(ctx, &a)
+		if err == nil {
+			err = w.submitTask(ctx, a.TargetAgentID, task)
+		}
 		cancel()
 		if err != nil {
 			if w.ctx.Err() == nil {

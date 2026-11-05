@@ -26,14 +26,26 @@ func assignLabel(mode string, needsAck bool) string {
 	}
 	return "Build with agent"
 }
-func agentOptions(choices []AgentChoice) []selectOption {
+
+// assignmentRouteMode maps a dialog mode to its agent role; Fix is building.
+func assignmentRouteMode(mode string) string {
+	if mode == "plan" {
+		return routePlan
+	}
+	return routeBuild
+}
+func agentOptions(mode string, choices []AgentChoice) []selectOption {
 	options := []selectOption{{Value: "", Label: "Select an agent"}}
+	route := assignmentRouteMode(mode)
 	for _, c := range choices {
 		label := fmt.Sprintf("%s · %s / %s · %s", c.ID, c.Provider, c.Model, c.Availability)
+		allowed := c.allows(route)
 		if !c.Selectable {
 			label += " · Cannot accept tasks"
+		} else if !allowed {
+			label += " · Disabled for " + routeModeLabel(route)
 		}
-		options = append(options, selectOption{Value: c.ID, Label: label, Disabled: !c.Selectable})
+		options = append(options, selectOption{Value: c.ID, Label: label, Disabled: !c.Selectable || !allowed})
 	}
 	return options
 }
@@ -53,8 +65,12 @@ func (a *app) assignmentAgents(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	choices, err := a.workflow.choices(ctx)
+	mode := r.URL.Query().Get("mode")
+	if mode != routePlan {
+		mode = routeBuild
+	}
 	var buf bytes.Buffer
-	if assignmentAgentField(choices, err).Render(ctx, &buf) != nil {
+	if assignmentAgentField(mode, choices, err).Render(ctx, &buf) != nil {
 		return
 	}
 	_ = newSSEWriter(w).write(elementsFrameMode("replace", "", buf.String()))

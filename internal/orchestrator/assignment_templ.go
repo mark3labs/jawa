@@ -64,7 +64,7 @@ func assignDialog(d pageData, op string, c Card, mode string, choices []AgentCho
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "Targeted work may wait when an agent is busy or goes offline. There is no fallback to another agent. Planning and build agents are chosen independently. ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "Targeted work may wait when an agent is busy or goes offline. There is no fallback to another agent. Planning and build agents are chosen independently. Fix counts as building for agent roles. ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -159,7 +159,7 @@ func assignDialog(d pageData, op string, c Card, mode string, choices []AgentCho
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = assignmentAgentField(choices, choicesErr).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = assignmentAgentField(mode, choices, choicesErr).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -385,7 +385,7 @@ func assignDialog(d pageData, op string, c Card, mode string, choices []AgentCho
 	})
 }
 
-func assignmentAgentField(choices []AgentChoice, choicesErr error) templ.Component {
+func assignmentAgentField(mode string, choices []AgentChoice, choicesErr error) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -432,7 +432,7 @@ func assignmentAgentField(choices []AgentChoice, choicesErr error) templ.Compone
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = selectField("assignment-agent", "", "target_agent_id", "", true, len(choices) == 0, agentOptions(choices), nil).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = selectField("assignment-agent", "", "target_agent_id", "", true, len(choices) == 0, agentOptions(mode, choices), nil).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -473,7 +473,7 @@ func assignmentAgentField(choices []AgentChoice, choicesErr error) templ.Compone
 		})
 		templ_7745c5c3_Err = button.Button(button.Props{Type: button.TypeButton, Variant: button.VariantOutline, Attributes: templ.Attributes{
 			"data-indicator:_agents-loading": true, "data-attr:disabled": "$_agentsLoading || $_assignPending",
-			"data-on:click": "@get('/dialogs/assign/agents', {filterSignals: {include: /^$/}})",
+			"data-on:click": "@get('/dialogs/assign/agents?mode=" + assignmentRouteMode(mode) + "', {filterSignals: {include: /^$/}})",
 		}}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var22), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

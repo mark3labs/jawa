@@ -261,6 +261,11 @@ func queuePlanningTurn(tx *sql.Tx, ctx context.Context, id string, targets ...st
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+		routing, err := loadAgentRouting(tx)
+		if err != nil {
+			return err
+		}
+		target = routedTarget(routing, target, routePlan)
 	}
 	q := sqlc.New(tx)
 	p, err := q.GetPlanningSessionByID(ctx, id)
