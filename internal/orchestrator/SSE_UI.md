@@ -16,7 +16,10 @@ Stable element patch roots:
 - Board: `board-content` (only the selected project's lanes/cards).
 - Runs: `runs-content` (card/state filters, newest-first rows).
 - Agents: `agents-content` (presence summaries and endpoints).
-- Settings: static form content, deliberately not morphed.
+- Settings: static form content, deliberately not morphed. Agent roles lists
+  presence, so its form is `data-ignore-morph` with an ID keyed by the listed
+  agents and saved roles: unsaved toggles survive polling, and server changes
+  replace it.
 - All screens: `sidebar-nav`, `agent-status`, and action-only `notice`.
 
 Live updates omit notice; mutation success clears it or shows a success flash.

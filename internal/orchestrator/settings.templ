@@ -217,7 +217,7 @@ templ agentRoutingPanel(d pageData) {
 			}
 		}
 		@card.Content() {
-			<form method="post" action="/settings/routing">
+			<form id={ "agent-routing-form-" + routingFormKey(rows) } method="post" action="/settings/routing" data-ignore-morph>
 				<input type="hidden" name="_csrf" value={ d.csrf }/>
 				@viewFields(d.v)
 				if len(rows) == 0 {

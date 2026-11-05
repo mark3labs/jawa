@@ -1,12 +1,15 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/bonnie/presence"
 )
 
 func TestAgentRoutingStoreValidatesAndKeepsOnlyRestrictions(t *testing.T) {
@@ -185,5 +188,34 @@ func TestSettingsRoutingMutation(t *testing.T) {
 	form.Set("plan:planner", "maybe")
 	if err := post(form); err == nil {
 		t.Fatal("accepted an invalid switch value")
+	}
+}
+
+// Live snapshot polling morphs Settings; unsaved role toggles must survive it.
+func TestAgentRoutingFormSurvivesLiveSnapshots(t *testing.T) {
+	record := func(state presence.State) presence.Record {
+		return presence.Record{Identity: presence.Identity{Agent: "worker", Instance: "one"}, State: state, Labels: map[string]string{"jawa.provider": "fixture", "jawa.model": "offline"}, Endpoints: []presence.Endpoint{{Channel: "nats", Address: "bonnie.tasks", Input: true, Ready: true}}}
+	}
+	render := func(d pageData) string {
+		var buf bytes.Buffer
+		if err := agentRoutingPanel(d).Render(t.Context(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	busy, ready := pageData{}, pageData{}
+	busy.agents = []presence.Record{record(presence.Starting)}
+	ready.agents = []presence.Record{record(presence.Ready)}
+	first, second := render(busy), render(ready)
+	if !strings.Contains(first, "data-ignore-morph") || !strings.Contains(first, `id="agent-routing-form-`) {
+		t.Fatalf("routing form is not protected from live morphs: %s", first)
+	}
+	if first != second {
+		t.Fatal("availability changes re-render the routing form")
+	}
+	saved := ready
+	saved.routing = AgentRouting{Agents: map[string]AgentRoles{"worker": {Build: true}}}
+	if routingFormKey(saved.routingRows()) == routingFormKey(ready.routingRows()) {
+		t.Fatal("saved role changes keep the stale form")
 	}
 }

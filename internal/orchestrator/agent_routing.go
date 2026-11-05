@@ -2,6 +2,8 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -220,11 +222,21 @@ func (d pageData) routingRows() []routingRow {
 	for _, id := range routingAgentIDs(d.routing, choices) {
 		row := routingRow{ID: id, Detail: "Offline", Plan: d.routing.Allows(id, routePlan), Build: d.routing.Allows(id, routeBuild)}
 		if c, ok := byID[id]; ok {
-			row.Connected, row.Detail = true, c.Provider+" / "+c.Model+" · "+c.Availability
+			// No live availability: the form ignores morphs, so it would go stale.
+			row.Connected, row.Detail = true, c.Provider+" / "+c.Model
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// routingFormKey changes only when the listed agents or saved roles change.
+// The form ignores live morphs so unsaved toggles survive snapshot polling;
+// a new key replaces it when the server state it was rendered from changes.
+func routingFormKey(rows []routingRow) string {
+	data, _ := json.Marshal(rows)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:4])
 }
 
 // mutateSettingsRouting replaces the routing policy for the agents the form
